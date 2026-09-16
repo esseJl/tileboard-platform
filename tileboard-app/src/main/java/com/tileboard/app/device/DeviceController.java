@@ -34,11 +34,7 @@ public class DeviceController {
                 .map(DeviceConfigurationResponse::from)
                 .orElseThrow(DeviceNotConfiguredException::new);
     }
-
-    @GetMapping("/configured")
-    public ResponseEntity<Boolean> isConfigured() {
-        return ResponseEntity.ok(deviceConfigurationService.isConfigured());
-    }
+    
 
     @PutMapping
     public DeviceConfigurationResponse configure(@RequestBody @Valid DeviceConfigurationRequest request) {
