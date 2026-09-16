@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: tileboard-app
+
+server:
+  port: 8080
+
+tileboard:
+  serial:
+    baud-rate: 115200
+    data-bits: 8
+    stop-bits: 1
+    read-timeout-millis: 50
+    write-timeout-millis: 50
+    handshake-min-sequence: 0
+
+logging:
+  level:
+    com.tileboard: DEBUG
