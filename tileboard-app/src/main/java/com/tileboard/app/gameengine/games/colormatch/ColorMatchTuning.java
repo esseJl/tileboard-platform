@@ -15,7 +15,7 @@ record ColorMatchTuning(int pairCount, Duration revealAllDuration, Duration eval
 
     /** Colors used for pairs. {@link TileColor#WHITE} is reserved for face-down tiles and {@link TileColor#OFF} for non-participating ones. */
     static final TileColor[] PALETTE = {
-            TileColor.RED, TileColor.GREEN, TileColor.BLUE, TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.Yellow
+            TileColor.RED, TileColor.GREEN, TileColor.BLUE, TileColor.PINK, TileColor.LIGHT_BLUE
     };
 
     static ColorMatchTuning forMode(GameMode mode, int boardArea) {

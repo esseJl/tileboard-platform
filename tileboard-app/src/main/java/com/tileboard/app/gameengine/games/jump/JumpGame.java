@@ -1,11 +1,14 @@
 package com.tileboard.app.gameengine.games.jump;
 
-import com.tileboard.app.gameengine.Cancellable;
 import com.tileboard.app.gameengine.Game;
 import com.tileboard.app.gameengine.GameContext;
 import com.tileboard.app.gameengine.GameDefinition;
 import com.tileboard.app.gameengine.TileColor;
 import com.tileboard.app.gameengine.TileColors;
+import com.tileboard.gamekit.pattern.MovementPattern;
+import com.tileboard.gamekit.state.HealthTracker;
+import com.tileboard.gamekit.state.Outcome;
+import com.tileboard.gamekit.time.Cancellable;
 import com.tileboard.serial.board.Board;
 import com.tileboard.serial.board.Position;
 import com.tileboard.serial.board.TileCodec;
@@ -16,16 +19,17 @@ import java.util.Set;
 /**
  * Reflex/avoidance game: a colored band sweeps back and forth across the
  * board (its shape - row, column, diagonal, ... - coming entirely from a
- * {@link JumpPattern}) and the player must avoid touching it. Every touch
- * that lands on the band costs one of a limited number of lives; running
- * out of lives before the round's duration elapses ends the round in a
- * loss, surviving the full duration is a win.
+ * {@code tileboard-game-kit} {@link MovementPattern}) and the player must
+ * avoid touching it. Every touch that lands on the band costs one point of
+ * {@link HealthTracker "health"}; running out before the round's duration
+ * elapses ends the round in a loss, surviving the full duration is a win.
  *
- * <p>This single class replaces what the previous implementation split into
- * five nearly-identical subclasses (one per sweep shape, each re-deriving
- * its own bounce/lose/win logic with subtly different bugs). Here the sweep
- * shape is pure {@link JumpPattern} data and everything else - timing,
- * lives, win/lose - is written exactly once.
+ * <p>The sweep shape, the "lives" bookkeeping and the win/loss vocabulary
+ * are all {@code tileboard-game-kit} building blocks now
+ * ({@link MovementPattern}/{@link com.tileboard.gamekit.pattern.Patterns},
+ * {@link HealthTracker}, {@link Outcome}) - this class is left with only
+ * what is actually specific to "jump": bouncing a step index back and
+ * forth across the pattern's frames, and turning a band hit into damage.
  *
  * <p>{@link #start} runs on the HTTP request thread that starts the game;
  * {@link #onPlayerInput} runs on the gateway's callback thread; the tick
@@ -35,10 +39,8 @@ import java.util.Set;
  */
 final class JumpGame implements Game<TileColor> {
 
-    private enum Outcome {NONE, WON, LOST}
-
     private final GameDefinition definition;
-    private final JumpPattern pattern;
+    private final MovementPattern pattern;
     private final JumpTuning tuning;
     private final int width;
     private final int height;
@@ -49,10 +51,10 @@ final class JumpGame implements Game<TileColor> {
     private List<List<Position>> frames;
     private int step;
     private int direction = 1;
-    private int livesRemaining;
-    private Outcome outcome = Outcome.NONE;
+    private HealthTracker lives;
+    private Outcome outcome = Outcome.IN_PROGRESS;
 
-    JumpGame(GameDefinition definition, JumpPattern pattern, JumpTuning tuning, int width, int height) {
+    JumpGame(GameDefinition definition, MovementPattern pattern, JumpTuning tuning, int width, int height) {
         this.definition = definition;
         this.pattern = pattern;
         this.tuning = tuning;
@@ -77,8 +79,8 @@ final class JumpGame implements Game<TileColor> {
             this.frames = pattern.framesFor(width, height);
             this.step = 0;
             this.direction = 1;
-            this.livesRemaining = tuning.lives();
-            this.outcome = Outcome.NONE;
+            this.lives = new HealthTracker(tuning.lives());
+            this.outcome = Outcome.IN_PROGRESS;
             publishCurrentFrame();
             this.ticking = context.scheduleAtFixedRate(tuning.tickInterval(), this::tick);
         }
@@ -86,10 +88,10 @@ final class JumpGame implements Game<TileColor> {
 
     private void tick() {
         synchronized (lock) {
-            if (outcome != Outcome.NONE) {
+            if (outcome.isFinal()) {
                 return;
             }
-            if (context.elapsed().compareTo(tuning.roundDuration()) >= 0) {
+            if (context.hasElapsed(tuning.roundDuration())) {
                 finish(Outcome.WON);
                 return;
             }
@@ -116,7 +118,7 @@ final class JumpGame implements Game<TileColor> {
     @Override
     public void onPlayerInput(Board<Boolean> touchedTiles) {
         synchronized (lock) {
-            if (outcome != Outcome.NONE || context == null) {
+            if (outcome.isFinal() || context == null) {
                 return;
             }
             Set<Position> band = Set.copyOf(frames.get(step));
@@ -124,8 +126,8 @@ final class JumpGame implements Game<TileColor> {
             if (!hitBand) {
                 return;
             }
-            livesRemaining--;
-            if (livesRemaining <= 0) {
+            lives.damage(1);
+            if (lives.isDepleted()) {
                 finish(Outcome.LOST);
             }
         }

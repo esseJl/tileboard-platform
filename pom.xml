@@ -18,6 +18,7 @@
 
     <modules>
         <module>tileboard-serial-protocol</module>
+        <module>tileboard-game-kit</module>
         <module>tileboard-app</module>
     </modules>
 

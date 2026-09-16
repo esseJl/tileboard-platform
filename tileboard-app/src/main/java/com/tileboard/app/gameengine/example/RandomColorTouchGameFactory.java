@@ -4,7 +4,10 @@ import com.tileboard.app.gameengine.Game;
 import com.tileboard.app.gameengine.GameDefinition;
 import com.tileboard.app.gameengine.GameFactory;
 import com.tileboard.app.gameengine.GameMode;
+import com.tileboard.gamekit.catalog.GameGenre;
 import org.springframework.stereotype.Component;
+
+import java.util.Set;
 
 /**
  * Registers {@link RandomColorTouchGame}. Same shape as
@@ -18,7 +21,8 @@ class RandomColorTouchGameFactory implements GameFactory {
     private static final GameDefinition DEFINITION = new GameDefinition(
             "random-color-touch",
             "Random Color Touch",
-            "Every touched tile is repainted with a random color; untouched tiles keep their last color.");
+            "Every touched tile is repainted with a random color; untouched tiles keep their last color.",
+            Set.of(GameGenre.ARCADE));
 
     @Override
     public String gameId() {

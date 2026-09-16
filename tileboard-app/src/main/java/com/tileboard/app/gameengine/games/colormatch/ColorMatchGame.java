@@ -1,6 +1,6 @@
 package com.tileboard.app.gameengine.games.colormatch;
 
-import com.tileboard.app.gameengine.Cancellable;
+import com.tileboard.gamekit.time.Cancellable;
 import com.tileboard.app.gameengine.Game;
 import com.tileboard.app.gameengine.GameContext;
 import com.tileboard.app.gameengine.GameDefinition;

@@ -1,5 +1,7 @@
 package com.tileboard.app.gameengine;
 
+import com.tileboard.gamekit.time.Cancellable;
+import com.tileboard.gamekit.time.GameClock;
 import com.tileboard.serial.board.Board;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +42,7 @@ import java.util.function.Consumer;
  * @param <T> the tile type this game's board is made of (an enum of colors,
  *            a boolean on/off state, ...), matching {@link Game#tileCodec()}
  */
-public final class GameContext<T> implements AutoCloseable {
+public final class GameContext<T> implements GameClock, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(GameContext.class);
     private static final AtomicInteger CLOCK_THREAD_SEQUENCE = new AtomicInteger();
@@ -73,6 +75,7 @@ public final class GameContext<T> implements AutoCloseable {
     }
 
     /** How long this game has been running since {@link Game#start} was called. */
+    @Override
     public Duration elapsed() {
         return Duration.between(startedAt, Instant.now());
     }
@@ -96,12 +99,23 @@ public final class GameContext<T> implements AutoCloseable {
      * documented behavior); it is logged and swallowed here instead so one
      * bad tick doesn't leave a game frozen with no visible error.
      */
+    @Override
     public Cancellable scheduleAtFixedRate(Duration period, Runnable task) {
         Objects.requireNonNull(period, "period");
         Objects.requireNonNull(task, "task");
         long periodMillis = Math.max(1, period.toMillis());
         ScheduledFuture<?> future = clock().scheduleAtFixedRate(
                 guarded(task), periodMillis, periodMillis, TimeUnit.MILLISECONDS);
+        return () -> future.cancel(false);
+    }
+
+    /** Runs {@code task} once, after {@code delay} - e.g. a "reveal, then hide" or "get ready" countdown. Part of the {@link GameClock} contract. */
+    @Override
+    public Cancellable scheduleOnce(Duration delay, Runnable task) {
+        Objects.requireNonNull(delay, "delay");
+        Objects.requireNonNull(task, "task");
+        long delayMillis = Math.max(0, delay.toMillis());
+        ScheduledFuture<?> future = clock().schedule(guarded(task), delayMillis, TimeUnit.MILLISECONDS);
         return () -> future.cancel(false);
     }
 

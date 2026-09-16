@@ -22,8 +22,7 @@ public enum TileColor {
     BLUE(3),
     PINK(4),
     LIGHT_BLUE(5),
-    Yellow(6),
-    WHITE(7);
+    WHITE(6);
 
     private final int code;
 

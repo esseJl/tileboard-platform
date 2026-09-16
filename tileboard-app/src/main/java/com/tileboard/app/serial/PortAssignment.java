@@ -12,8 +12,4 @@ public record PortAssignment(Optional<String> inPort, Optional<String> outPort) 
     public boolean isOutAssigned() {
         return outPort.isPresent();
     }
-
-    public boolean isInAssigned() {
-        return inPort.isPresent();
-    }
 }

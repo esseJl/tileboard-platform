@@ -32,7 +32,7 @@ final class RandomColorTouchGame implements Game<TileColor> {
 
     private static final TileColor[] PALETTE = {
             TileColor.RED, TileColor.GREEN, TileColor.BLUE,
-            TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.Yellow, TileColor.WHITE
+            TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.WHITE
     };
 
     private final GameDefinition definition;
