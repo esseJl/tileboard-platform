@@ -11,3 +11,4 @@
 target/
 /tileboard-serial-protocol/target/
 /tileboard-app/target/
+/tileboard-game-kit/target/

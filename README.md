@@ -36,7 +36,7 @@ to the next one through an interface:
 |---|---|---|
 | `device` | The board's width/height. One value, one interface (`DeviceConfigurationService`), one in-memory impl for now. | nobody |
 | `serial` | Discovering ports, assigning IN/OUT roles, opening/closing the `TileGatewayClient` from the library. Publishes `GatewayConnectedEvent`/`GatewayDisconnectedEvent`. | `device` (for the handshake), the library |
-| `gameengine` | The `Game`/`GameFactory`/`GameRegistry` extension point and `GameSessionManager`, which reacts to gateway events and wires touch input to whichever game is active. | `device`, `serial` (via events only), `streaming` |
+| `game` | The `Game`/`GameFactory`/`GameRegistry` extension point and `GameSessionManager`, which reacts to gateway events and wires touch input to whichever game is active. | `device`, `serial` (via events only), `streaming` |
 | `streaming` | Fans out board frames to any number of SSE subscribers (a live dashboard mirror). | nobody |
 | `common` | Exception hierarchy (`ApiException` + subclasses) and one `@RestControllerAdvice` translating them to RFC 7807 `ProblemDetail` responses. | nobody |
 | `config` | Bean wiring (`SerialPortRegistry` impl) and `tileboard.serial.*` properties. | the library |

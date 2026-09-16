@@ -36,14 +36,6 @@
             <artifactId>tileboard-serial-protocol</artifactId>
             <version>1.0.0</version>
         </dependency>
-
-        <!-- Reusable, framework-free game-building-block library (touch tracking, patterns, scoring, timers, ...) -->
-        <dependency>
-            <groupId>com.tileboard</groupId>
-            <artifactId>tileboard-game-kit</artifactId>
-            <version>1.0.0</version>
-        </dependency>
-
         <!--
             jSerialComm is an optional dependency of tileboard-serial-protocol.
             The application is the one talking to real hardware, so it is the
