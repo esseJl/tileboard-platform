@@ -31,7 +31,7 @@ final class HardwareTestConfig {
     static final int DEFAULT_WIDTH = 3;
     static final int DEFAULT_HEIGHT = 3;
     static final int DEFAULT_BAUD_RATE = 115200;
-    static final long DEFAULT_STEP_DELAY_MILLIS = 200L;
+    static final long DEFAULT_STEP_DELAY_MILLIS = 1000L;
     static final long DEFAULT_ID_TIMEOUT_SECONDS = 5L;
 
     private HardwareTestConfig() {

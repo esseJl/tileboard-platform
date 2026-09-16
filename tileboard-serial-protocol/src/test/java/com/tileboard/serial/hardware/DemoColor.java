@@ -20,7 +20,8 @@ enum DemoColor {
     BLUE(3),
     PINK(4),
     LIGHT_BLUE(5),
-    WHITE(6);
+    Yellow(6),
+    WHITE(7);
 
     private final int wireValue;
 
@@ -30,7 +31,7 @@ enum DemoColor {
 
     /** Every color except {@link #OFF} - used by the "cycle through colors" step of the animation demo. */
     static List<DemoColor> visiblePalette() {
-        return List.of(RED, GREEN, BLUE, PINK, LIGHT_BLUE, WHITE);
+        return List.of(RED, GREEN, BLUE, PINK, LIGHT_BLUE,Yellow, WHITE);
     }
 
     static TileCodec<DemoColor> codec() {
