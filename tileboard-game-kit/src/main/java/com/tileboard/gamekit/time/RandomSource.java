@@ -1,78 +1,29 @@
 package com.tileboard.gamekit.time;
 
 import java.util.List;
-import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.Objects;
+import java.util.random.RandomGenerator;
+import java.util.random.RandomGeneratorFactory;
 
-/**
- * The built-in "random" capability: every place in this kit that needs
- * randomness (shuffling a {@link com.tileboard.gamekit.pattern.Patterns#rotating
- * rotating pattern}, dealing a {@link com.tileboard.gamekit.memory.RevealChallenge
- * memory assignment}, picking a random target color) takes a
- * {@code RandomSource} rather than calling {@link ThreadLocalRandom}
- * directly. That keeps randomness swappable: production games use
- * {@link #threadLocal()} (fast, thread-safe, no shared state to
- * synchronize on), while a game's unit test can use {@link #seeded(long)}
- * for a fully deterministic, repeatable sequence.
- */
+/** Injectable random source; deterministic implementations can be supplied in tests. */
+@FunctionalInterface
 public interface RandomSource {
-
-    /** A pseudo-random int in {@code [0, bound)}. */
     int nextInt(int bound);
 
-    /** A pseudo-random double in {@code [0.0, 1.0)}. */
-    double nextDouble();
+    default boolean nextBoolean() { return nextInt(2) == 1; }
 
-    /** A uniformly random element of {@code items}. @throws IllegalArgumentException if {@code items} is empty */
-    default <T> T pick(List<T> items) {
-        if (items.isEmpty()) {
-            throw new IllegalArgumentException("Cannot pick from an empty list");
-        }
-        return items.get(nextInt(items.size()));
+    default <T> T pick(List<T> values) {
+        Objects.requireNonNull(values, "values");
+        if (values.isEmpty()) throw new IllegalArgumentException("values must not be empty");
+        return values.get(nextInt(values.size()));
     }
 
-    /**
-     * Thread-safe, non-deterministic source backed by {@link ThreadLocalRandom}.
-     * Safe to share a single instance across every game session - it holds
-     * no mutable state of its own.
-     */
     static RandomSource threadLocal() {
-        return new RandomSource() {
-            @Override
-            public int nextInt(int bound) {
-                return ThreadLocalRandom.current().nextInt(bound);
-            }
-
-            @Override
-            public double nextDouble() {
-                return ThreadLocalRandom.current().nextDouble();
-            }
-        };
+        return bound -> java.util.concurrent.ThreadLocalRandom.current().nextInt(bound);
     }
 
-    /**
-     * Deterministic source seeded with {@code seed}, for reproducible game
-     * rounds or tests. Backed by a single {@link Random} instance guarded
-     * by a lock, since {@link Random} itself is thread-safe but a fixed
-     * seed only reproduces a given sequence if callers are serialized.
-     */
     static RandomSource seeded(long seed) {
-        Random random = new Random(seed);
-        Object lock = new Object();
-        return new RandomSource() {
-            @Override
-            public int nextInt(int bound) {
-                synchronized (lock) {
-                    return random.nextInt(bound);
-                }
-            }
-
-            @Override
-            public double nextDouble() {
-                synchronized (lock) {
-                    return random.nextDouble();
-                }
-            }
-        };
+        RandomGenerator generator = RandomGeneratorFactory.<RandomGenerator>of("L64X128MixRandom").create(seed);
+        return generator::nextInt;
     }
 }

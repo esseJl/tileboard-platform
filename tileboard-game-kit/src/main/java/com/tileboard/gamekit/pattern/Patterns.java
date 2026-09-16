@@ -1,176 +1,98 @@
 package com.tileboard.gamekit.pattern;
 
-import com.tileboard.gamekit.time.RandomSource;
 import com.tileboard.serial.board.Position;
-
+import com.tileboard.gamekit.time.RandomSource;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.stream.IntStream;
+import java.util.Objects;
 
-/**
- * The built-in {@link MovementPattern} shapes, covering "الگوی حرکت"
- * (movement pattern), "مسیر" (path) and "wave". Every method is a pure
- * function of {@code (width, height)} (or of a supplied {@link RandomSource}
- * / waypoint list) - none holds per-game state.
- */
+/** Factory for reusable rows, columns, diagonals, paths, waves and randomized patterns. */
 public final class Patterns {
+    private Patterns() {}
 
-    private Patterns() {
+    public static MovementPattern rows() {
+        return (w, h) -> {
+            validate(w, h);
+            List<List<Position>> frames = new ArrayList<>();
+            for (int r = 0; r < h; r++) {
+                List<Position> row = new ArrayList<>();
+                for (int c = 0; c < w; c++) row.add(new Position(r, c));
+                frames.add(List.copyOf(row));
+            }
+            return List.copyOf(frames);
+        };
     }
 
-    /** One frame per row, top to bottom - the whole row lights up at once. */
-    public static MovementPattern row() {
-        return (width, height) -> IntStream.range(0, height)
-                .mapToObj(row -> wholeRow(width, row))
-                .toList();
+    public static MovementPattern columns() {
+        return (w, h) -> {
+            validate(w, h);
+            List<List<Position>> frames = new ArrayList<>();
+            for (int c = 0; c < w; c++) {
+                List<Position> col = new ArrayList<>();
+                for (int r = 0; r < h; r++) col.add(new Position(r, c));
+                frames.add(List.copyOf(col));
+            }
+            return List.copyOf(frames);
+        };
     }
 
-    /** One frame per column, left to right - the whole column lights up at once. */
-    public static MovementPattern column() {
-        return (width, height) -> IntStream.range(0, width)
-                .mapToObj(col -> wholeColumn(height, col))
-                .toList();
-    }
-
-    /** Diagonal band running top-left to bottom-right, swept left to right. */
-    public static MovementPattern mainDiagonal() {
-        return (width, height) -> IntStream.range(-(width - 1), height)
-                .mapToObj(offset -> positionsWhere(width, height, (row, col) -> row - col == offset))
-                .toList();
-    }
-
-    /** Diagonal band running top-right to bottom-left, swept left to right. */
-    public static MovementPattern antiDiagonal() {
-        return (width, height) -> IntStream.range(0, width + height - 1)
-                .mapToObj(sum -> positionsWhere(width, height, (row, col) -> row + col == sum))
-                .toList();
-    }
-
-    /**
-     * A single-cell "path" pattern: one frame per waypoint, in the order
-     * given - e.g. a route a token walks along, or the sequence a
-     * memory/Simon-style game must be touched back in. {@code waypoints}
-     * must be non-empty.
-     */
-    public static MovementPattern path(List<Position> waypoints) {
-        if (waypoints.isEmpty()) {
-            throw new IllegalArgumentException("waypoints must not be empty");
-        }
-        List<List<Position>> frames = waypoints.stream().map(List::of).toList();
-        return (width, height) -> frames;
-    }
-
-    /**
-     * A sine-shaped band of {@code thickness} rows sweeping left to right,
-     * its vertical center following {@code amplitude * sin(2*pi*col/wavelength)}
-     * around the vertical middle of the board - the built-in "wave" shape.
-     */
-    public static MovementPattern wave(double amplitude, double wavelength, int thickness) {
-        if (thickness < 1) {
-            throw new IllegalArgumentException("thickness must be >= 1, got " + thickness);
-        }
-        return (width, height) -> {
-            List<List<Position>> frames = new ArrayList<>(width);
-            double centerRow = (height - 1) / 2.0;
-            for (int col = 0; col < width; col++) {
-                double waveCenter = centerRow + amplitude * Math.sin(2 * Math.PI * col / wavelength);
-                int centerRowInt = (int) Math.round(waveCenter);
-                List<Position> frame = new ArrayList<>(thickness);
-                for (int r = centerRowInt - thickness / 2; r <= centerRowInt + (thickness - 1) / 2; r++) {
-                    if (r >= 0 && r < height) {
-                        frame.add(new Position(r, col));
-                    }
+    public static MovementPattern diagonal() {
+        return (w, h) -> {
+            validate(w, h);
+            List<List<Position>> frames = new ArrayList<>();
+            for (int sum = 0; sum <= w + h - 2; sum++) {
+                List<Position> frame = new ArrayList<>();
+                for (int r = 0; r < h; r++) {
+                    int c = sum - r;
+                    if (c >= 0 && c < w) frame.add(new Position(r, c));
                 }
-                frames.add(frame.isEmpty() ? List.of(new Position(clamp(centerRowInt, 0, height - 1), col)) : frame);
+                frames.add(List.copyOf(frame));
             }
-            return frames;
+            return List.copyOf(frames);
         };
     }
 
-    /**
-     * A single-cell token performing a random walk of {@code steps} steps,
-     * starting at the board's center - the built-in "random" pattern, e.g.
-     * for a target that wanders unpredictably. Re-rolled fresh every time
-     * {@link MovementPattern#framesFor} is called (it is not a constant
-     * sequence), since a random pattern that always produced the same walk
-     * for a given board size would not actually be random across sessions.
-     */
-    public static MovementPattern randomWalk(RandomSource random, int steps) {
-        if (steps < 1) {
-            throw new IllegalArgumentException("steps must be >= 1, got " + steps);
-        }
-        return (width, height) -> {
-            List<List<Position>> frames = new ArrayList<>(steps);
-            int row = height / 2;
-            int col = width / 2;
-            frames.add(List.of(new Position(row, col)));
-            int[][] moves = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
-            for (int i = 1; i < steps; i++) {
-                int[] move = moves[random.nextInt(moves.length)];
-                row = clamp(row + move[0], 0, height - 1);
-                col = clamp(col + move[1], 0, width - 1);
-                frames.add(List.of(new Position(row, col)));
+    public static MovementPattern wave() {
+        return (w, h) -> {
+            validate(w, h);
+            List<Position> path = new ArrayList<>();
+            for (int r = 0; r < h; r++) {
+                if ((r & 1) == 0) for (int c = 0; c < w; c++) path.add(new Position(r, c));
+                else for (int c = w - 1; c >= 0; c--) path.add(new Position(r, c));
             }
-            return frames;
+            return path.stream().map(List::of).toList();
         };
     }
 
-    /**
-     * Chains a repertoire of patterns in a random order (re-shuffled every
-     * time {@link MovementPattern#framesFor} is called), so the player
-     * faces a different, unpredictable sequence each round instead of
-     * always the same fixed one.
-     */
-    public static MovementPattern rotating(RandomSource random, List<MovementPattern> repertoire) {
-        List<MovementPattern> fixed = List.copyOf(repertoire);
-        return (width, height) -> {
-            List<MovementPattern> shuffled = new ArrayList<>(fixed);
-            shuffle(shuffled, random);
-            return shuffled.stream()
-                    .flatMap(pattern -> pattern.framesFor(width, height).stream())
-                    .toList();
-        };
-    }
-
-    /** {@link #rotating(RandomSource, List)} pre-loaded with the four straight-line built-ins. */
     public static MovementPattern rotatingBuiltins(RandomSource random) {
-        return rotating(random, List.of(row(), column(), mainDiagonal(), antiDiagonal()));
+        Objects.requireNonNull(random, "random");
+        List<MovementPattern> builtins = List.of(rows(), columns(), diagonal(), wave());
+        return (w, h) -> builtins.get(random.nextInt(builtins.size())).framesFor(w, h);
     }
 
-    private static void shuffle(List<?> list, RandomSource random) {
-        for (int i = list.size() - 1; i > 0; i--) {
-            int j = random.nextInt(i + 1);
-            Collections.swap(list, i, j);
-        }
-    }
-
-    private static int clamp(int value, int min, int max) {
-        return Math.max(min, Math.min(max, value));
-    }
-
-    private static List<Position> wholeRow(int width, int row) {
-        return IntStream.range(0, width).mapToObj(col -> new Position(row, col)).toList();
-    }
-
-    private static List<Position> wholeColumn(int height, int col) {
-        return IntStream.range(0, height).mapToObj(row -> new Position(row, col)).toList();
-    }
-
-    private static List<Position> positionsWhere(int width, int height, CellPredicate predicate) {
-        List<Position> positions = new ArrayList<>();
-        for (int row = 0; row < height; row++) {
-            for (int col = 0; col < width; col++) {
-                if (predicate.test(row, col)) {
-                    positions.add(new Position(row, col));
+    public static MovementPattern randomTiles(RandomSource random, int activeTiles, int frames) {
+        Objects.requireNonNull(random, "random");
+        if (activeTiles < 1 || frames < 1) throw new IllegalArgumentException("activeTiles and frames must be >= 1");
+        return (w, h) -> {
+            validate(w, h);
+            int total = Math.multiplyExact(w, h);
+            if (activeTiles > total) throw new IllegalArgumentException("activeTiles exceeds board size");
+            List<Position> all = new ArrayList<>();
+            for (int r = 0; r < h; r++) for (int c = 0; c < w; c++) all.add(new Position(r, c));
+            List<List<Position>> result = new ArrayList<>();
+            for (int f = 0; f < frames; f++) {
+                List<Position> shuffled = new ArrayList<>(all);
+                for (int i = shuffled.size() - 1; i > 0; i--) {
+                    int j = random.nextInt(i + 1);
+                    Position tmp = shuffled.get(i); shuffled.set(i, shuffled.get(j)); shuffled.set(j, tmp);
                 }
+                result.add(List.copyOf(shuffled.subList(0, activeTiles)));
             }
-        }
-        return positions;
+            return List.copyOf(result);
+        };
     }
 
-    @FunctionalInterface
-    private interface CellPredicate {
-        boolean test(int row, int col);
+    private static void validate(int w, int h) {
+        if (w < 1 || h < 1) throw new IllegalArgumentException("width and height must be >= 1");
     }
 }

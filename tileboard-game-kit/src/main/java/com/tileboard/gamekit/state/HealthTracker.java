@@ -1,52 +1,37 @@
 package com.tileboard.gamekit.state;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
-/**
- * The built-in "health" capability - a bounded life/hit-point counter that
- * exposes {@link Outcome#LOST} once depleted, e.g. a limited number of
- * lives in a reflex game ({@code JumpGame}'s "lives"). Backed by a single
- * {@link AtomicInteger}: {@link #damage} and {@link #heal} are safe to call
- * concurrently from a touch-input thread and a clock-tick thread without
- * external locking.
- */
+/** Thread-safe bounded health/lives counter. */
 public final class HealthTracker {
+    private final int maximum;
+    private int current;
 
-    private final int maxHealth;
-    private final AtomicInteger health;
-
-    public HealthTracker(int maxHealth) {
-        if (maxHealth <= 0) {
-            throw new IllegalArgumentException("maxHealth must be > 0, got " + maxHealth);
-        }
-        this.maxHealth = maxHealth;
-        this.health = new AtomicInteger(maxHealth);
+    public HealthTracker(int maximum) {
+        if (maximum < 1) throw new IllegalArgumentException("maximum must be >= 1");
+        this.maximum = maximum;
+        this.current = maximum;
     }
 
-    public int current() {
-        return health.get();
+    public synchronized int current() { return current; }
+    public int maximum() { return maximum; }
+    public synchronized boolean isDepleted() { return current == 0; }
+
+    public synchronized int damage(int amount) {
+        requirePositive(amount);
+        int before = current;
+        current = Math.max(0, current - amount);
+        return before - current;
     }
 
-    public int max() {
-        return maxHealth;
+    public synchronized int heal(int amount) {
+        requirePositive(amount);
+        int before = current;
+        current = Math.min(maximum, current + amount);
+        return current - before;
     }
 
-    /** Reduces health by {@code amount} (clamped at zero) and returns the health remaining. */
-    public int damage(int amount) {
-        return health.updateAndGet(current -> Math.max(0, current - amount));
-    }
+    public synchronized void reset() { current = maximum; }
 
-    /** Increases health by {@code amount} (clamped at {@link #max()}) and returns the health remaining. */
-    public int heal(int amount) {
-        return health.updateAndGet(current -> Math.min(maxHealth, current + amount));
-    }
-
-    public boolean isDepleted() {
-        return health.get() <= 0;
-    }
-
-    /** {@link Outcome#LOST} once depleted, {@link Outcome#IN_PROGRESS} otherwise - health alone never produces {@link Outcome#WON}. */
-    public Outcome outcome() {
-        return isDepleted() ? Outcome.LOST : Outcome.IN_PROGRESS;
+    private static void requirePositive(int value) {
+        if (value < 1) throw new IllegalArgumentException("amount must be >= 1");
     }
 }

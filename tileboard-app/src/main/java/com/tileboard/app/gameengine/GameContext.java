@@ -75,7 +75,6 @@ public final class GameContext<T> implements GameClock, AutoCloseable {
     }
 
     /** How long this game has been running since {@link Game#start} was called. */
-    @Override
     public Duration elapsed() {
         return Duration.between(startedAt, Instant.now());
     }

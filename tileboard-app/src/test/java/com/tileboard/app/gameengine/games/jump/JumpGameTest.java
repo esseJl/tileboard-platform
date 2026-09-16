@@ -37,7 +37,7 @@ class JumpGameTest {
     @Test
     void survivingTheRoundDurationIsAWin() {
         List<Board<TileColor>> published = new CopyOnWriteArrayList<>();
-        game = new JumpGame(DEFINITION, Patterns.row(),
+        game = new JumpGame(DEFINITION, Patterns.rows(),
                 new JumpTuning(Duration.ofMillis(20), 5, Duration.ofMillis(150)), 2, 2);
         context = new GameContext<>(2, 2, GameMode.NORMAL, published::add);
 
@@ -51,7 +51,7 @@ class JumpGameTest {
     void touchingTheBandUntilOutOfLivesIsALoss() {
         List<Board<TileColor>> published = new CopyOnWriteArrayList<>();
         // 1x1 board + row() pattern: the single tile is always part of the band, so every touch is a hit.
-        game = new JumpGame(DEFINITION, Patterns.row(),
+        game = new JumpGame(DEFINITION, Patterns.rows(),
                 new JumpTuning(Duration.ofSeconds(30), 2, Duration.ofSeconds(30)), 1, 1);
         context = new GameContext<>(1, 1, GameMode.NORMAL, published::add);
 

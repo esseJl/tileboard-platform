@@ -13,6 +13,7 @@ import com.tileboard.serial.board.Board;
 import com.tileboard.serial.board.Position;
 import com.tileboard.serial.board.TileCodec;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 
@@ -91,7 +92,7 @@ final class JumpGame implements Game<TileColor> {
             if (outcome.isFinal()) {
                 return;
             }
-            if (context.hasElapsed(tuning.roundDuration())) {
+            if (context.hasElapsed(tuning.roundDuration(), Instant.now())) {
                 finish(Outcome.WON);
                 return;
             }
