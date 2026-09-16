@@ -4,7 +4,6 @@ import com.tileboard.app.common.exception.DeviceNotConfiguredException;
 import com.tileboard.app.device.dto.DeviceConfigurationRequest;
 import com.tileboard.app.device.dto.DeviceConfigurationResponse;
 import jakarta.validation.Valid;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,7 +33,7 @@ public class DeviceController {
                 .map(DeviceConfigurationResponse::from)
                 .orElseThrow(DeviceNotConfiguredException::new);
     }
-    
+
 
     @PutMapping
     public DeviceConfigurationResponse configure(@RequestBody @Valid DeviceConfigurationRequest request) {
