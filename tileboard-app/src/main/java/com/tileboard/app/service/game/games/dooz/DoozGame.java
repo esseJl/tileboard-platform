@@ -60,7 +60,7 @@ public final class DoozGame implements Game<TileColor> {
             }
             if (isDraw()) {
                 finished = true;
-                ctx.fill(TileColor.CYAN);
+                ctx.fill(TileColor.LIGHT_BLUE);
                 ctx.publish();
                 ctx.lose("Draw");
                 return;

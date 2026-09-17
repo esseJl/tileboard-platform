@@ -20,7 +20,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class ColorMatchGame implements Game<TileColor> {
 
     private static final TileColor[] PALETTE = {
-            TileColor.RED, TileColor.GREEN, TileColor.BLUE, TileColor.PINK, TileColor.CYAN
+            TileColor.RED, TileColor.GREEN, TileColor.BLUE, TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.Yellow
     };
 
     private final int targetsPerLevel;
