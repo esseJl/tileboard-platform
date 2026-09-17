@@ -12,8 +12,9 @@ public enum TileColor {
     GREEN((byte) 2),
     BLUE((byte) 3),
     PINK((byte) 4),
-    CYAN((byte) 5),   // was BLUE_LIGHT
-    WHITE((byte) 6);
+    LIGHT_BLUE((byte) 5),
+    Yellow((byte) 6),
+    WHITE((byte) 7);
 
     private final byte wireValue;
 

@@ -1,0 +1,12 @@
+# Activate with --spring.profiles.active=prod (or SPRING_PROFILES_ACTIVE=prod).
+#
+# The base application.yml keeps DEBUG logging for com.tileboard, which is
+# convenient during development but noisy (and, since it can log raw serial
+# TX/RX hex frames - see JSerialCommTransport - unnecessarily verbose) for a
+# long-running production deployment. This profile only overrides logging;
+# everything else (serial settings, exposed actuator endpoints) is inherited
+# from application.yml.
+logging:
+  level:
+    root: INFO
+    com.tileboard: INFO
