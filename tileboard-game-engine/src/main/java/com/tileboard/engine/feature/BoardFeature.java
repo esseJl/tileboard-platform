@@ -33,8 +33,7 @@ public final class BoardFeature {
 
     /** {@code true} if every tile on the board satisfies {@code predicate}. */
     public boolean allMatch(Board<TileColor> board, Predicate<TileColor> predicate) {
-        return findByColor(board, TileColor.OFF).size() == 0
-                || board.positionsWhere(predicate).size() == width * height;
+        return board.positionsWhere(predicate.negate()).isEmpty();
     }
 
     /** {@code true} if no tile satisfies {@code predicate}. */

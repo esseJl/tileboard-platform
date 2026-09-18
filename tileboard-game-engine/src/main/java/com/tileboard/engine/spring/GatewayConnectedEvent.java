@@ -24,9 +24,11 @@ import java.util.Objects;
  *               {@code ApplicationEvent} subclassing required) are used here,
  *               matching {@code ApplicationEventPublisher#publishEvent(Object)}.
  */
-public record GatewayConnectedEvent(TileGatewayClient client) {
+public record GatewayConnectedEvent(TileGatewayClient client, int boardWidth, int boardHeight) {
 
     public GatewayConnectedEvent {
         Objects.requireNonNull(client, "client");
+        if (boardWidth <= 0)  throw new IllegalArgumentException("boardWidth must be > 0");
+        if (boardHeight <= 0) throw new IllegalArgumentException("boardHeight must be > 0");
     }
 }

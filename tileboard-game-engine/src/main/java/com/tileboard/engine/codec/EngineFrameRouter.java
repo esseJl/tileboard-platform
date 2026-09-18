@@ -22,9 +22,20 @@ public final class EngineFrameRouter implements FrameListener {
 
     private static final Logger log = LoggerFactory.getLogger(EngineFrameRouter.class);
 
+    private final int width;
+    private final int height;
     private final Consumer<Board<Boolean>> touchBoardConsumer;
 
-    public EngineFrameRouter(Consumer<Board<Boolean>> touchBoardConsumer) {
+    /**
+     * @param width  actual physical board width (columns), as reported by the connected gateway
+     * @param height actual physical board height (rows), as reported by the connected gateway
+     */
+    public EngineFrameRouter(int width, int height, Consumer<Board<Boolean>> touchBoardConsumer) {
+        if (width <= 0 || height <= 0) {
+            throw new IllegalArgumentException("width and height must be > 0");
+        }
+        this.width = width;
+        this.height = height;
         this.touchBoardConsumer = touchBoardConsumer;
     }
 
@@ -35,19 +46,14 @@ public final class EngineFrameRouter implements FrameListener {
         byte[] payload = frame.payload();
         if (payload.length == 0) return;
 
-        // Derive dimensions: treat payload as a square when possible,
-        // otherwise assume width == payload.length (single row).
-        int side = (int) Math.sqrt(payload.length);
-        int w, h;
-        if (side * side == payload.length) {
-            w = h = side;
-        } else {
-            w = payload.length;
-            h = 1;
+        if (payload.length != width * height) {
+            log.warn("Discarding DATA_IN payload of {} bytes: expected {}x{}={} bytes for the connected board",
+                    payload.length, width, height, width * height);
+            return;
         }
 
         try {
-            Board<Boolean> board = Board.fromWireBytes(payload, w, h, TileCodec.booleanState());
+            Board<Boolean> board = Board.fromWireBytes(payload, width, height, TileCodec.booleanState());
             touchBoardConsumer.accept(board);
         } catch (RuntimeException e) {
             log.warn("Failed to decode DATA_IN payload of {} bytes", payload.length, e);

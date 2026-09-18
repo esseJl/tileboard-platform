@@ -40,6 +40,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final TileGatewayClient       gateway;
     private final TileCodec<TileColor>    colorCodec;
     private final Instant                 startedAt = Instant.now();
+    private final AnimationSystem         animationSystem;
 
     // ── State ─────────────────────────────────────────────────────────────
     private final AtomicReference<GameStatus> status = new AtomicReference<>(GameStatus.IDLE);
@@ -88,7 +89,6 @@ public final class GameSessionImpl implements GameSession, GameContext {
         this.gateway     = Objects.requireNonNull(gateway);
         this.colorCodec  = ColorTileCodec.instance();
         this.eventBus    = sharedEventBus;
-
         int w = game.descriptor().requiredWidth();
         int h = game.descriptor().requiredHeight();
         this.boardBuffer = new Board<>(w, h, TileColor.OFF);
@@ -109,6 +109,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         this.memoryFeature = new MemoryFeature();
         this.reactionSpeed = new ReactionSpeedTracker();
         this.graphFeature  = new GraphFeature(w, h);
+        this.animationSystem = new AnimationSystem(w, h, this::publishBoard);
 
         this.tickExecutor  = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "tileboard-tick-" + sessionId);
@@ -184,6 +185,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     @Override
     public void publishBoard(Board<TileColor> board) {
         synchronized (boardWriteLock) {
+            board.forEach(boardBuffer::set);
             gateway.sendBoard(Command.DATA_OUT, CommandType.SET, board, colorCodec);
         }
         eventBus.publish(com.tileboard.engine.event.GameEvent.of(
@@ -230,7 +232,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     @Override public ReactionSpeedTracker  reactionSpeed() { return reactionSpeed; }
     @Override public GraphFeature          graph()         { return graphFeature;  }
     @Override public GameEventBus          eventBus()      { return eventBus;      }
-
+    @Override public AnimationSystem       animations()    { return animationSystem; }
     // ── Session control ───────────────────────────────────────────────────
 
     @Override

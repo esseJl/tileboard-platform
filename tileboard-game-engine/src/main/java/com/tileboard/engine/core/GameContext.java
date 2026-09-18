@@ -70,6 +70,10 @@ public interface GameContext {
     MemoryFeature   memory();
     ReactionSpeedTracker reactionSpeed();
     GraphFeature    graph();
+    /**
+     * Animation system for different game states
+     */
+    AnimationSystem animations();
 
     // ── Event bus ────────────────────────────────────────────────────────
 

@@ -26,6 +26,7 @@ public final class MemoryFeature {
     /** {@code true} if the player's input so far matches the target prefix. */
     public boolean isCorrectSoFar() {
         List<Position> input = List.copyOf(playerInput);
+        if (input.size() > targetSequence.size()) return false; // player over-input: fail fast, no crash
         for (int i = 0; i < input.size(); i++) {
             if (!input.get(i).equals(targetSequence.get(i))) return false;
         }

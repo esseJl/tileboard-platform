@@ -1,5 +1,6 @@
 package com.tileboard.app.service.serial;
 
+import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.exception.PortsNotAssignedException;
 import com.tileboard.app.exception.SerialPortOperationException;
 import com.tileboard.app.config.TileboardProperties;
@@ -172,9 +173,19 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
         openTransports.putAll(openedThisAttempt);
         this.client = newClient;
-        eventPublisher.publishEvent(new GatewayConnectedEvent(newClient));
-        newClient.start();
-        log.info("Tile board gateway connected (in={}, out={})", inPort, outPort);
+        if (deviceConfigurationService.current().isPresent()){
+            eventPublisher.publishEvent(
+                    new GatewayConnectedEvent(newClient,
+                            deviceConfigurationService.current().get().width(),
+                            deviceConfigurationService.current().get().height()));
+            newClient.start();
+            log.info("Tile board gateway connected (in={}, out={})", inPort, outPort);
+        }else {
+            log.info("Device Does not configured");
+            throw new DeviceNotConfiguredException();
+        }
+
+
     }
 
     private void closeQuietly(Iterable<SerialTransport> transports) {

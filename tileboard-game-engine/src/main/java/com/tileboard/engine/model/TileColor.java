@@ -12,7 +12,7 @@ public enum TileColor {
     BLUE(3),
     PINK(4),
     LIGHT_BLUE(5),
-    Yellow(6),
+    YELLOW(6),
     WHITE(7);
 
     private final int wireCode;

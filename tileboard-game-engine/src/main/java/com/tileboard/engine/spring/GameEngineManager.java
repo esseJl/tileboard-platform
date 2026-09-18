@@ -59,8 +59,11 @@ public class GameEngineManager {
                     + "(missing disconnect event?) - stopping its sessions before rebinding");
             shutdownCurrentEngine();
         }
-        engine = new GameEngineImpl(registry, event.client(), eventBus, tickInterval);
-        log.info("Game engine bound to the newly connected tile gateway");
+        engine = new GameEngineImpl(
+                registry, event.client(), eventBus, tickInterval,
+                event.boardWidth(), event.boardHeight());
+        log.info("Game engine bound to the newly connected tile gateway ({}x{})",
+                event.boardWidth(), event.boardHeight());
     }
 
     @EventListener

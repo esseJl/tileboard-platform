@@ -1,16 +1,12 @@
 package com.tileboard.engine.core;
 
-import com.tileboard.engine.codec.ColorTileCodec;
 import com.tileboard.engine.codec.EngineFrameRouter;
 import com.tileboard.engine.event.GameEventBus;
-import com.tileboard.engine.exception.GameSessionException;
 import com.tileboard.engine.model.Player;
-import com.tileboard.engine.model.TileColor;
 import com.tileboard.engine.model.TileEvent;
 import com.tileboard.serial.board.Board;
 import com.tileboard.serial.board.Position;
 import com.tileboard.serial.gateway.TileGatewayClient;
-import com.tileboard.serial.protocol.Command;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -36,15 +32,17 @@ public final class GameEngineImpl implements GameEngine {
             GameRegistry registry,
             TileGatewayClient gateway,
             GameEventBus eventBus,
-            Duration tickInterval
+            Duration tickInterval,
+            int boardWidth,
+            int boardHeight
     ) {
         this.registry     = Objects.requireNonNull(registry);
         this.gateway      = Objects.requireNonNull(gateway);
         this.eventBus     = Objects.requireNonNull(eventBus);
         this.tickInterval = tickInterval != null ? tickInterval : Duration.ofMillis(100);
 
-        // Register the DATA_IN router that fans out touch events to active sessions
-        gateway.addFrameListener(new EngineFrameRouter(this::routeTouchFrame));
+        // Register the DATA_IN router with the *actual* connected board's dimensions
+        gateway.addFrameListener(new EngineFrameRouter(boardWidth, boardHeight, this::routeTouchFrame));
     }
 
     @Override
@@ -58,12 +56,15 @@ public final class GameEngineImpl implements GameEngine {
         activeSessions.put(sessionId, session);
         session.start();
 
-        // Cleanup when the session finishes
-        eventBus.subscribe(event -> {
+        // Cleanup when the session finishes — unsubscribe must be captured and invoked,
+        // otherwise the listener leaks on the shared event bus for the engine's lifetime.
+        Runnable[] unsubscribeRef = new Runnable[1];
+        unsubscribeRef[0] = eventBus.subscribe(event -> {
             if (event.sessionId().equals(sessionId) &&
                     (event.type() == com.tileboard.engine.event.GameEventType.SESSION_FINISHED ||
                             event.type() == com.tileboard.engine.event.GameEventType.SESSION_STOPPED)) {
                 activeSessions.remove(sessionId);
+                unsubscribeRef[0].run();
             }
         });
 
