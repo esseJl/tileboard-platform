@@ -13,18 +13,9 @@ tileboard:
     read-timeout-millis: 50
     write-timeout-millis: 50
     handshake-min-sequence: 0
-  # tileboard-game-engine's only setting. There is deliberately no
-  # tileboard.engine.serial-port/board-width/board-height/handshake-* here:
-  # the engine never opens its own connection, it binds to whatever gateway
-  # tileboard.serial + the /api/v1/ports endpoints above bring up.
   engine:
     tick-interval: 100ms
 
-# Only read-only, non-sensitive endpoints are exposed by default - health
-# and info are safe to leave world-readable behind a load balancer / k8s
-# probe even with no auth in front of the app yet. Anything more (env,
-# beans, heapdump, ...) must stay opt-in and, once Spring Security is added
-# (see README "What's intentionally deferred"), should be locked down too.
 management:
   endpoints:
     web:
