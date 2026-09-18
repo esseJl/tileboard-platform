@@ -7,8 +7,9 @@ import com.tileboard.serial.board.Position;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -21,9 +22,13 @@ public final class AnimationSystem {
     private final int width;
     private final int height;
     private final Consumer<Board<TileColor>> boardPublisher;
-    private final Executor animationExecutor;
+    private final ExecutorService animationExecutor;
     private volatile CompletableFuture<Void> currentAnimation;
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
+    /** The thread currently executing an animation body, if any. Used so
+     *  {@link #cancelCurrent()} can actually interrupt a blocking {@link #sleep(long)}
+     *  instead of only flipping a flag nobody re-checks until the next sleep call. */
+    private volatile Thread runningThread;
 
 
     public AnimationSystem(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
@@ -116,11 +121,41 @@ public final class AnimationSystem {
 
     /**
      * لغو انیمیشن در حال اجرا
-     * Cancel currently running animation
+     * Cancel currently running animation.
+     *
+     * <p><strong>Bug fix:</strong> the previous implementation only called
+     * {@code currentAnimation.cancel(true)}. {@link CompletableFuture#cancel}
+     * never interrupts the thread actually running the task regardless of the
+     * {@code mayInterruptIfRunning} argument, so a running animation's
+     * {@code sleep()} loop was never woken up and kept running to completion,
+     * racing with whatever animation was queued next. We now (1) flip the
+     * cooperative flag so a {@code sleep()} call that is *not* currently
+     * blocked notices immediately, and (2) explicitly interrupt the actual
+     * worker thread so a {@code sleep()} call that *is* currently blocked is
+     * woken up right away.
      */
     public void cancelCurrent() {
-        if (currentAnimation != null && !currentAnimation.isDone()) {
-            currentAnimation.cancel(true);
+        cancelRequested.set(true);
+        Thread t = runningThread;
+        if (t != null) {
+            t.interrupt();
+        }
+    }
+
+    /**
+     * Releases the background animation thread. Must be called exactly once
+     * when the owning {@link com.tileboard.engine.core.GameSession} ends,
+     * otherwise the dedicated single-thread executor created in the
+     * constructor leaks for the lifetime of the JVM (it never stopped itself
+     * before this fix).
+     */
+    public void shutdown() {
+        cancelCurrent();
+        animationExecutor.shutdownNow();
+        try {
+            animationExecutor.awaitTermination(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -538,11 +573,17 @@ public final class AnimationSystem {
     /** Submits an animation body, handling cooperative cancellation. */
     private CompletableFuture<Void> submit(Runnable animationBody) {
         currentAnimation = CompletableFuture.runAsync(() -> {
+            runningThread = Thread.currentThread();
             cancelRequested.set(false); // this animation now owns the executor thread
             try {
                 animationBody.run();
             } catch (AnimationCancelledException ignored) {
                 // pre-empted by a newer play*() call; stop silently, board is left to the new animation
+            } finally {
+                runningThread = null;
+                // Clear any pending interrupt flag left over from a cancellation so the
+                // next animation submitted to this thread doesn't inherit it.
+                Thread.interrupted();
             }
         }, animationExecutor);
         return currentAnimation;

@@ -272,6 +272,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         }
         gameTimer.stop();
         cancelTick();
+        animationSystem.shutdown();
 
         result = new GameResult(
                 sessionId,

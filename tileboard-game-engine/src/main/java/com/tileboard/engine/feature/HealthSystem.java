@@ -13,12 +13,23 @@ public final class HealthSystem {
 
     private final Map<String, AtomicInteger> health    = new ConcurrentHashMap<>();
     private final Map<String, Integer>       maxHealth = new ConcurrentHashMap<>();
+    /**
+     * Bug fix: this used to be a constructor parameter only, never stored.
+     * {@link #getOrCreate(String)} therefore always fell back to a hard-coded
+     * {@code 3} for any player id not already present in {@code players} at
+     * construction time (e.g. a late joiner, or a caller passing a typo'd
+     * id), silently ignoring whatever value was passed here. It is now kept
+     * so every lazily-created player is consistent with the configured
+     * default.
+     */
+    private final int defaultMaxHealth;
 
     public HealthSystem(List<Player> players) {
         this(players, 3);
     }
 
     public HealthSystem(List<Player> players, int defaultMaxHealth) {
+        this.defaultMaxHealth = defaultMaxHealth;
         players.forEach(p -> {
             health.put(p.id(), new AtomicInteger(defaultMaxHealth));
             maxHealth.put(p.id(), defaultMaxHealth);
@@ -27,7 +38,7 @@ public final class HealthSystem {
 
     public int current(String playerId) { return getOrCreate(playerId).get(); }
 
-    public int max(String playerId) { return maxHealth.getOrDefault(playerId, 3); }
+    public int max(String playerId) { return maxHealth.getOrDefault(playerId, defaultMaxHealth); }
 
     /** Decrements health by 1. Returns {@code true} if the player is still alive. */
     public boolean damage(String playerId) { return damage(playerId, 1); }
@@ -39,7 +50,7 @@ public final class HealthSystem {
     }
 
     public void heal(String playerId, int amount) {
-        int max = maxHealth.getOrDefault(playerId, 3);
+        int max = max(playerId);
         getOrCreate(playerId).updateAndGet(h -> Math.min(max, h + amount));
     }
 
@@ -57,6 +68,7 @@ public final class HealthSystem {
     }
 
     private AtomicInteger getOrCreate(String playerId) {
-        return health.computeIfAbsent(playerId, k -> new AtomicInteger(3));
+        maxHealth.putIfAbsent(playerId, defaultMaxHealth);
+        return health.computeIfAbsent(playerId, k -> new AtomicInteger(defaultMaxHealth));
     }
 }

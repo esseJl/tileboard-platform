@@ -6,10 +6,6 @@ import com.tileboard.engine.feature.neighbor.NeighborFinder;
 import com.tileboard.engine.model.Player;
 import com.tileboard.engine.model.TileColor;
 import com.tileboard.serial.board.Board;
-import com.tileboard.serial.board.Position;
-import com.tileboard.serial.board.TileCodec;
-import com.tileboard.serial.protocol.Command;
-import com.tileboard.serial.protocol.CommandType;
 
 import java.util.List;
 

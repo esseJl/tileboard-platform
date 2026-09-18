@@ -23,8 +23,6 @@ public final class DefaultGameRegistry implements GameRegistry {
     public void register(Game game) {
         Objects.requireNonNull(game, "game");
         register(game.descriptor(), () -> game);
-
-        entries.put(game.descriptor().gameId(), new Entry(game.descriptor(), () -> game));
         log.info("Registered game '{}' ({})", game.descriptor().displayName(), game.descriptor().gameId());
     }
 
