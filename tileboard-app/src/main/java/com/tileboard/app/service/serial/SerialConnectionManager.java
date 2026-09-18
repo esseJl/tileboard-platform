@@ -1,6 +1,8 @@
 package com.tileboard.app.service.serial;
 
 import com.tileboard.app.exception.PortsNotAssignedException;
+import com.tileboard.engine.spring.GatewayConnectedEvent;
+import com.tileboard.engine.spring.GatewayDisconnectedEvent;
 
 import java.util.List;
 
@@ -10,9 +12,13 @@ import java.util.List;
  * open/closed lifecycle of the resulting {@link com.tileboard.serial.gateway.TileGatewayClient}.
  *
  * <p>This is the seam between "the board is reachable" (a connectivity
- * concern) and "a game is running" (an application concern, see
- * {@code gameengine}) - the game engine never opens or closes a port itself,
- * it only reacts to {@link GatewayConnectedEvent}/{@link GatewayDisconnectedEvent}.
+ * concern) and "a game is running" (an engine concern, see
+ * {@code com.tileboard.engine.spring.GameEngineManager} in
+ * {@code tileboard-game-engine}) - the game engine never opens or closes a
+ * port itself, it only reacts to {@link GatewayConnectedEvent}/{@link GatewayDisconnectedEvent},
+ * which this implementation publishes. Those two events live in the engine
+ * module (not here) precisely so both this application and the engine can
+ * depend on the same definition without a circular module dependency.
  */
 public interface SerialConnectionManager {
 

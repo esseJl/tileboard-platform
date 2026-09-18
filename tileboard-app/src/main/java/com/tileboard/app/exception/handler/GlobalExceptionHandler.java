@@ -1,6 +1,10 @@
 package com.tileboard.app.exception.handler;
 
 import com.tileboard.app.exception.ApiException;
+import com.tileboard.engine.exception.EngineNotReadyException;
+import com.tileboard.engine.exception.GameEngineException;
+import com.tileboard.engine.exception.GameNotFoundException;
+import com.tileboard.engine.exception.GameSessionException;
 import com.tileboard.serial.exception.BoardException;
 import com.tileboard.serial.exception.ProtocolException;
 import com.tileboard.serial.exception.SerialTransportException;
@@ -60,6 +64,47 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+    }
+
+    /**
+     * The engine module has its own exception hierarchy (it is a
+     * framework-free library and cannot depend on {@link ApiException}), so
+     * each of its exception types is translated to a {@link ProblemDetail}
+     * here explicitly, most-specific first, instead of the application
+     * defining parallel duplicate exception classes that would need to be
+     * kept in sync by hand.
+     */
+    @ExceptionHandler(EngineNotReadyException.class)
+    public ProblemDetail handleEngineNotReady(EngineNotReadyException exception) {
+        log.warn("engine_not_ready: {}", exception.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setProperty("errorCode", "engine_not_ready");
+        return problem;
+    }
+
+    @ExceptionHandler(GameNotFoundException.class)
+    public ProblemDetail handleGameNotFound(GameNotFoundException exception) {
+        log.warn("game_not_found: {}", exception.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+        problem.setProperty("errorCode", "game_not_found");
+        return problem;
+    }
+
+    @ExceptionHandler(GameSessionException.class)
+    public ProblemDetail handleGameSessionException(GameSessionException exception) {
+        log.warn("game_session_error: {}", exception.getMessage());
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+        problem.setProperty("errorCode", "game_session_error");
+        return problem;
+    }
+
+    /** Catch-all for any other engine failure not covered by a more specific handler above. */
+    @ExceptionHandler(GameEngineException.class)
+    public ProblemDetail handleGameEngineException(GameEngineException exception) {
+        log.error("game_engine_error", exception);
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, "Game engine error.");
+        problem.setProperty("errorCode", "game_engine_error");
+        return problem;
     }
 
     /** Anything the tileboard-serial-protocol library raises while talking to real hardware. */

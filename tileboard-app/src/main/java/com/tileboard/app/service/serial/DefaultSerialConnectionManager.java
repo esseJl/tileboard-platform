@@ -4,6 +4,8 @@ import com.tileboard.app.exception.PortsNotAssignedException;
 import com.tileboard.app.exception.SerialPortOperationException;
 import com.tileboard.app.config.TileboardProperties;
 import com.tileboard.app.service.device.DeviceConfigurationService;
+import com.tileboard.engine.spring.GatewayConnectedEvent;
+import com.tileboard.engine.spring.GatewayDisconnectedEvent;
 import com.tileboard.serial.gateway.TileGatewayClient;
 import com.tileboard.serial.gateway.handshake.DeviceAddress;
 import com.tileboard.serial.gateway.handshake.SequentialIdSequenceValidator;
