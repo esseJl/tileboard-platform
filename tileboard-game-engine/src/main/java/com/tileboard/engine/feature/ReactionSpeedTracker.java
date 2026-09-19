@@ -16,15 +16,21 @@ import java.util.concurrent.atomic.LongAdder;
 public final class ReactionSpeedTracker {
 
     private final AtomicReference<Instant> stimulusAt = new AtomicReference<>();
-    private final LongAdder                totalNanos  = new LongAdder();
-    private final AtomicLong               count       = new AtomicLong(0L);
-    private volatile long                  lastNanos   = -1L;
-    private volatile long                  bestNanos   = Long.MAX_VALUE;
+    private final LongAdder totalNanos = new LongAdder();
+    private final AtomicLong count = new AtomicLong(0L);
+    private volatile long lastNanos = -1L;
+    private volatile long bestNanos = Long.MAX_VALUE;
 
-    /** Marks the moment a stimulus (e.g. lit tile) was presented. */
-    public void stimulus() { stimulusAt.set(Instant.now()); }
+    /**
+     * Marks the moment a stimulus (e.g. lit tile) was presented.
+     */
+    public void stimulus() {
+        stimulusAt.set(Instant.now());
+    }
 
-    /** Called by the engine for every tile event; records reaction if a stimulus is pending. */
+    /**
+     * Called by the engine for every tile event; records reaction if a stimulus is pending.
+     */
     public void record(TileEvent event) {
         Instant s = stimulusAt.getAndSet(null);
         if (s == null) return;
@@ -50,13 +56,15 @@ public final class ReactionSpeedTracker {
         return OptionalDouble.of(totalNanos.sum() / (double) n / 1_000_000.0);
     }
 
-    public long reactionCount() { return count.get(); }
+    public long reactionCount() {
+        return count.get();
+    }
 
     public void reset() {
         stimulusAt.set(null);
         totalNanos.reset();
         count.set(0L);
-        lastNanos   = -1L;
-        bestNanos   = Long.MAX_VALUE;
+        lastNanos = -1L;
+        bestNanos = Long.MAX_VALUE;
     }
 }

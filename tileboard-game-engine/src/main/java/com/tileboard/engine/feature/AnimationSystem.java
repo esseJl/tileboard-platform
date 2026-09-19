@@ -5,6 +5,7 @@ import com.tileboard.serial.board.Board;
 import com.tileboard.serial.board.Position;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
@@ -12,6 +13,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -28,6 +30,7 @@ public final class AnimationSystem {
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
     private final AtomicReference<CompletableFuture<Void>> currentAnimation = new AtomicReference<>();
     private final Random rng = new Random();
+    private final AtomicLong generation = new AtomicLong(0);
     private volatile Thread runningThread;
 
 
@@ -80,7 +83,6 @@ public final class AnimationSystem {
     }
 
     /**
-     * انیمیشن باخت - محو شدن تدریجی به قرمز
      * Lose animation - gradual fade to red
      */
     public CompletableFuture<Void> playLoseAnimation() {
@@ -120,9 +122,8 @@ public final class AnimationSystem {
     }
 
     public void cancelCurrent() {
+        generation.incrementAndGet();       // invalidate current generation
         cancelRequested.set(true);
-        CompletableFuture<Void> prev = currentAnimation.getAndSet(null);
-        if (prev != null) prev.cancel(false); // signal completion for .thenRun() chains
         Thread t = runningThread;
         if (t != null) t.interrupt();
     }
@@ -137,8 +138,6 @@ public final class AnimationSystem {
             Thread.currentThread().interrupt();
         }
     }
-
-    // ─── شمارش معکوس / Countdown ───────────────────────────────────────
 
     private void playSimpleCountdown(long digitDurationMs) {
         TileColor[] colors = {TileColor.RED, TileColor.YELLOW, TileColor.GREEN};
@@ -305,8 +304,8 @@ public final class AnimationSystem {
 
     private void playFireworks() {
         for (int firework = 0; firework < 3; firework++) {
-            int centerRow = 1 + (int) (Math.random() * (height - 2));
-            int centerCol = 1 + (int) (Math.random() * (width - 2));
+            int centerRow = 1 + rng.nextInt(Math.max(1, height - 2));
+            int centerCol = 1 + rng.nextInt(Math.max(1, width - 2));
             Position center = new Position(centerRow, centerCol);
 
             TileColor color = TileColor.values()[1 + (int) (Math.random() * 6)];
@@ -372,27 +371,24 @@ public final class AnimationSystem {
     }
 
     private void playCrumble() {
-        List<Position> positions = new ArrayList<>();
-        for (int row = 0; row < height; row++) {
-            for (int col = 0; col < width; col++) {
-                positions.add(new Position(row, col));
-            }
-        }
-
         Board<TileColor> board = new Board<>(width, height, TileColor.YELLOW);
         boardPublisher.accept(board);
         sleep(300);
 
-        java.util.Collections.shuffle(positions);
+        List<Position> positions = new ArrayList<>();
+        for (int row = 0; row < height; row++)
+            for (int col = 0; col < width; col++)
+                positions.add(new Position(row, col));
+
+        Collections.shuffle(positions, rng);          // FIXED: pass rng
 
         for (Position pos : positions) {
             board.set(pos.row(), pos.col(), TileColor.RED);
-            if (Math.random() < 0.2) {
+            if (rng.nextDouble() < 0.2) {             // FIXED: use field rng
                 boardPublisher.accept(board.copy());
                 sleep(50);
             }
         }
-
         boardPublisher.accept(board);
         sleep(500);
         clearBoard();
@@ -406,8 +402,6 @@ public final class AnimationSystem {
             sleep(200);
         }
     }
-
-    // ─── انیمیشن‌های آماده‌به‌کار / Standby Animations ─────────────────
 
     private void playBreathing() {
         TileColor[] breathColors = {TileColor.BLUE, TileColor.LIGHT_BLUE};
@@ -537,9 +531,10 @@ public final class AnimationSystem {
      * Submits an animation body, handling cooperative cancellation.
      */
     private CompletableFuture<Void> submit(Runnable body) {
+        cancelRequested.set(false);         // reset BEFORE submitting
+        long myGeneration = generation.get();
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             runningThread = Thread.currentThread();
-            cancelRequested.set(false);
             try {
                 body.run();
             } catch (AnimationCancelledException ignored) {

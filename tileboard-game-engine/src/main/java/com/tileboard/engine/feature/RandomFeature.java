@@ -10,9 +10,9 @@ import java.util.*;
  */
 public final class RandomFeature {
 
-    private final int     width;
-    private final int     height;
-    private final Random  rng;
+    private final int width;
+    private final int height;
+    private final Random rng;
 
     public RandomFeature(int width, int height) {
         this(width, height, new Random());
@@ -23,9 +23,9 @@ public final class RandomFeature {
     }
 
     private RandomFeature(int width, int height, Random rng) {
-        this.width  = width;
+        this.width = width;
         this.height = height;
-        this.rng    = rng;
+        this.rng = rng;
     }
 
     public Position randomPosition() {
@@ -56,5 +56,7 @@ public final class RandomFeature {
         return rng.nextDouble() < probability;
     }
 
-    public void reseed(long seed) { rng.setSeed(seed); }
+    public void reseed(long seed) {
+        rng.setSeed(seed);
+    }
 }

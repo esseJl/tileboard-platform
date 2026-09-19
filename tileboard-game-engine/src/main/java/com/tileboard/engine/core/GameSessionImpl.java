@@ -1,8 +1,8 @@
 package com.tileboard.engine.core;
 
+import com.tileboard.engine.event.GameEvent;
 import com.tileboard.engine.event.GameEventBus;
 import com.tileboard.engine.event.GameEventType;
-import com.tileboard.engine.event.GameEventBusImpl;
 import com.tileboard.engine.exception.GameSessionException;
 import com.tileboard.engine.feature.*;
 import com.tileboard.engine.feature.neighbor.Adjacency;
@@ -381,9 +381,13 @@ public final class GameSessionImpl implements GameSession, GameContext {
         } catch (RuntimeException e) {
             log.warn("onStop threw in session {}", sessionId, e);
         }
-        fillBoard(TileColor.OFF);
+        try {
+            fillBoard(TileColor.OFF);
+        } catch (RuntimeException e) {
+            log.warn("Could not clear board on session end (gateway may be disconnected): {}", e.getMessage());
+        }
 
-        eventBus.publish(com.tileboard.engine.event.GameEvent.of(
+        eventBus.publish(GameEvent.of(
                 finalStatus == GameStatus.FINISHED ? GameEventType.SESSION_FINISHED : GameEventType.SESSION_STOPPED,
                 sessionId, game.descriptor().gameId(), snapshotForSse()));
 

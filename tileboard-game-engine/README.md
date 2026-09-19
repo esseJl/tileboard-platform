@@ -13,8 +13,8 @@ This README is three documents in one:
 1. **[Quick Start & Tutorials](#4-quick-start)** — how to build games with plain Java and with Spring Boot.
 2. **[Core Architecture Deep Dive](#6-core-architecture-deep-dive)** — how the engine actually works, class by class,
    thread by thread.
-3. **[Design Philosophy](#3-design-philosophy)** — *why* the code looks the way it does, which trade-offs were
-   taken deliberately, and which rules every contributor (and every game author) should follow.
+3. **[Design Philosophy](#3-design-philosophy)** — *why* the code looks the way it does, which trade-offs were taken
+   deliberately, and which rules every contributor (and every game author) should follow.
 
 ---
 
@@ -43,16 +43,16 @@ This README is three documents in one:
 
 - A **game runtime**: session lifecycle, per-session state, tick loop, touch routing, win/loss handling.
 - A **feature toolbox**: scoring, health/lives, levels, combos, timers, touch history & analytics, board utilities,
-  neighbour lookup, pattern matching, seeded randomness, wave effects, memory-game support, reaction-speed
-  measurement, graph algorithms (BFS / connected components) and a full animation system.
+  neighbour lookup, pattern matching, seeded randomness, wave effects, memory-game support, reaction-speed measurement,
+  graph algorithms (BFS / connected components) and a full animation system.
 - An **event source**: everything meaningful is published on an in-process `GameEventBus`, which can be bridged to
   Server-Sent Events for a live web dashboard.
 - An **optional Spring Boot starter**: one auto-configuration class, three beans, zero required configuration.
 
 ### It is NOT
 
-- **Not** a serial/transport library. It never opens a port, never picks a baud rate, never performs a handshake.
-  It receives an already-open `TileGatewayClient` from the application.
+- **Not** a serial/transport library. It never opens a port, never picks a baud rate, never performs a handshake. It
+  receives an already-open `TileGatewayClient` from the application.
 - **Not** a rendering engine for screens. The "renderer" is a grid of physical tiles; the only output primitive is
   "send this `Board<TileColor>` to the hardware".
 - **Not** a Spring library at its core. `com.tileboard.engine.core`, `.feature`, `.event`, `.model`, `.codec` and
@@ -85,37 +85,37 @@ This README is three documents in one:
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-The **only** seam between the two lower layers is `GatewayConnectedEvent` / `GatewayDisconnectedEvent`.
-That single design decision is responsible for most of the rest of the architecture — see
+The **only** seam between the two lower layers is `GatewayConnectedEvent` / `GatewayDisconnectedEvent`. That single
+design decision is responsible for most of the rest of the architecture — see
 [§3.3 "The engine is a passenger, not a driver"](#33-the-engine-is-a-passenger-not-a-driver).
 
 ---
 
 ## 2. Feature matrix
 
-| Area | Class | Thread-safe | Blocking? | Notes |
-|---|---|---|---|---|
-| Session runtime | `GameSessionImpl` | ✅ | no | Implements both `GameSession` and `GameContext` |
-| Game catalogue | `DefaultGameRegistry` | ✅ (`ConcurrentHashMap`) | no | Instance *or* factory registration |
-| Engine | `GameEngineImpl` | ✅ | no | Owns the DATA_IN frame router |
-| Scores | `ScoreSystem` | ✅ (`AtomicInteger`) | no | Lazily creates unknown player ids at `0` |
-| Health / lives | `HealthSystem` | ✅ | no | Clamped to `[0, maxHealth]`, configurable default |
-| Levels & difficulty | `LevelSystem` | ✅ | no | `IntUnaryOperator` speed scaler |
-| Combos | `ComboTracker` | ✅ | no | Auto-resets after a 2 s (configurable) gap |
-| Timers | `GameTimer` | ✅ (`volatile`) | no | Countdown fires exactly once, on tick |
-| Touch log | `TouchHistory` | ✅ (`CopyOnWriteArrayList`) | no | Unbounded — see [§13.4](#134-known-limitations--gotchas) |
-| Touch analytics | `TouchAnalyzer` | ✅ | no | Stateless queries over the live history |
-| Board utilities | `BoardFeature` | ✅ (immutable) | no | find / count / distance / bounds |
-| Neighbours | `NeighborFinder` | ✅ (immutable) | no | 4-way, 8-way, diagonal-only + flood fill |
-| Patterns | `PatternMatcher` | ✅ (stateless) | no | tail / exact / contains / cyclic |
-| Randomness | `RandomFeature` | ⚠️ (`java.util.Random`) | no | Seeded & re-seedable for replays |
-| Wave effects | `WaveGenerator` | ✅ | **yes** | Blocking `Thread.sleep` loops — run off-thread |
-| Memory game | `MemoryFeature` | ✅ (`synchronizedList`) | no | Over-input fails fast instead of crashing |
-| Reaction speed | `ReactionSpeedTracker` | ✅ (`LongAdder`/atomics) | no | Fed automatically by the engine |
-| Graph | `GraphFeature` | ✅ (immutable) | no | BFS shortest path, connected components |
-| Animations | `AnimationSystem` | ✅ | no (async) | Own daemon thread, cooperative cancellation |
-| Events | `GameEventBusImpl` | ✅ (`CopyOnWriteArrayList`) | no | Listeners run on a dedicated thread |
-| SSE | `GameEventSseEmitter` | ✅ | no | One emitter per HTTP client |
+| Area                | Class                  | Thread-safe                 | Blocking?  | Notes                                                    |
+|---------------------|------------------------|-----------------------------|------------|----------------------------------------------------------|
+| Session runtime     | `GameSessionImpl`      | ✅                          | no         | Implements both `GameSession` and `GameContext`          |
+| Game catalogue      | `DefaultGameRegistry`  | ✅ (`ConcurrentHashMap`)    | no         | Instance *or* factory registration                       |
+| Engine              | `GameEngineImpl`       | ✅                          | no         | Owns the DATA_IN frame router                            |
+| Scores              | `ScoreSystem`          | ✅ (`AtomicInteger`)        | no         | Lazily creates unknown player ids at `0`                 |
+| Health / lives      | `HealthSystem`         | ✅                          | no         | Clamped to `[0, maxHealth]`, configurable default        |
+| Levels & difficulty | `LevelSystem`          | ✅                          | no         | `IntUnaryOperator` speed scaler                          |
+| Combos              | `ComboTracker`         | ✅                          | no         | Auto-resets after a 2 s (configurable) gap               |
+| Timers              | `GameTimer`            | ✅ (`volatile`)             | no         | Countdown fires exactly once, on tick                    |
+| Touch log           | `TouchHistory`         | ✅ (`CopyOnWriteArrayList`) | no         | Unbounded — see [§13.4](#134-known-limitations--gotchas) |
+| Touch analytics     | `TouchAnalyzer`        | ✅                          | no         | Stateless queries over the live history                  |
+| Board utilities     | `BoardFeature`         | ✅ (immutable)              | no         | find / count / distance / bounds                         |
+| Neighbours          | `NeighborFinder`       | ✅ (immutable)              | no         | 4-way, 8-way, diagonal-only + flood fill                 |
+| Patterns            | `PatternMatcher`       | ✅ (stateless)              | no         | tail / exact / contains / cyclic                         |
+| Randomness          | `RandomFeature`        | ⚠️ (`java.util.Random`)     | no         | Seeded & re-seedable for replays                         |
+| Wave effects        | `WaveGenerator`        | ✅                          | **yes**    | Blocking `Thread.sleep` loops — run off-thread           |
+| Memory game         | `MemoryFeature`        | ✅ (`synchronizedList`)     | no         | Over-input fails fast instead of crashing                |
+| Reaction speed      | `ReactionSpeedTracker` | ✅ (`LongAdder`/atomics)    | no         | Fed automatically by the engine                          |
+| Graph               | `GraphFeature`         | ✅ (immutable)              | no         | BFS shortest path, connected components                  |
+| Animations          | `AnimationSystem`      | ✅                          | no (async) | Own daemon thread, cooperative cancellation              |
+| Events              | `GameEventBusImpl`     | ✅ (`CopyOnWriteArrayList`) | no         | Listeners run on a dedicated thread                      |
+| SSE                 | `GameEventSseEmitter`  | ✅                          | no         | One emitter per HTTP client                              |
 
 ---
 
@@ -129,8 +129,8 @@ Every Spring import in this project lives in exactly two packages: `com.tileboar
 `com.tileboard.engine.sse`. Nothing in `.core`, `.feature`, `.event`, `.model`, `.codec` or `.exception` mentions
 Spring. Consequences:
 
-- The engine can be unit-tested with JUnit alone — no `ApplicationContext`, no `@SpringBootTest`, no mocks of
-  Spring infrastructure.
+- The engine can be unit-tested with JUnit alone — no `ApplicationContext`, no `@SpringBootTest`, no mocks of Spring
+  infrastructure.
 - It can be embedded in a plain `main()`, a JavaFX kiosk app, an Android-side JVM, a Quarkus or Micronaut service.
 - The Spring layer is `optional=true` in the POM, so consumers that don't use it don't drag `spring-web` in.
 
@@ -138,31 +138,41 @@ Spring. Consequences:
 
 ### 3.2 The `GameContext` is the whole API surface a game author sees
 
-A `Game` implementation receives exactly one object — `GameContext ctx` — and everything it can possibly do is a
-method on that object:
+A `Game` implementation receives exactly one object — `GameContext ctx` — and everything it can possibly do is a method
+on that object:
 
 ```java
-ctx.scores().add(playerId, 10);
-ctx.setTile(row, col, TileColor.GREEN);
-ctx.animations().playCountdown();
-ctx.winSession(List.of(winner));
+ctx.scores().
+
+add(playerId, 10);
+ctx.
+
+setTile(row, col, TileColor.GREEN);
+ctx.
+
+animations().
+
+playCountdown();
+ctx.
+
+winSession(List.of(winner));
 ```
 
-This is a deliberate **service-locator / "fat context"** choice. The alternative — injecting 17 collaborators into
-every game constructor — would make each game a 60-line wiring exercise and would break the `GameFactory` contract
-(a factory must be able to create a game with *no* arguments). The trade-off we accepted:
+This is a deliberate **service-locator / "fat context"** choice. The alternative — injecting 17 collaborators into every
+game constructor — would make each game a 60-line wiring exercise and would break the `GameFactory` contract (a factory
+must be able to create a game with *no* arguments). The trade-off we accepted:
 
-- ✅ Games are trivially constructible (`MyGame::new`) and trivially testable (implement `GameContext` once in a
-  test double, reuse it for every game test).
-- ✅ New features become available to *all* existing games the moment they are added to the context — no game needs
-  a constructor change.
-- ⚠️ The interface is wide (30+ methods). We mitigate this with grouping and naming, not with splitting: session
-  info, board I/O, features, event bus, session control.
-- ⚠️ A game can call anything, including `stopSession()`. That is intentional — games are trusted first-party code,
-  not plugins from untrusted sources.
+- ✅ Games are trivially constructible (`MyGame::new`) and trivially testable (implement `GameContext` once in a test
+  double, reuse it for every game test).
+- ✅ New features become available to *all* existing games the moment they are added to the context — no game needs a
+  constructor change.
+- ⚠️ The interface is wide (30+ methods). We mitigate this with grouping and naming, not with splitting: session info,
+  board I/O, features, event bus, session control.
+- ⚠️ A game can call anything, including `stopSession()`. That is intentional — games are trusted first-party code, not
+  plugins from untrusted sources.
 
-**Rule:** a new capability for game authors = a new method on `GameContext` + a new field in `GameSessionImpl`.
-Never a new constructor parameter on `Game`.
+**Rule:** a new capability for game authors = a new method on `GameContext` + a new field in `GameSessionImpl`. Never a
+new constructor parameter on `Game`.
 
 ### 3.3 The engine is a passenger, not a driver
 
@@ -180,35 +190,35 @@ Why this matters more than it sounds:
 3. **The same REST endpoints the app already has become the game engine's power switch.** Connect the board via
    `/api/v1/ports/connect` → engine comes up. Disconnect → engine goes down. No extra endpoints, no extra config.
 
-**Rule:** anything hardware-specific (port names, baud rates, geometry discovery, handshakes, device ids) belongs to
-the application. The engine only knows "there is a gateway, and it is *w×h*".
+**Rule:** anything hardware-specific (port names, baud rates, geometry discovery, handshakes, device ids) belongs to the
+application. The engine only knows "there is a gateway, and it is *w×h*".
 
 ### 3.4 One session = one thread of control (+ one animation thread)
 
-Each `GameSessionImpl` owns a **single-threaded `ScheduledExecutorService`** named `tileboard-tick-<sessionId>`,
-and each `AnimationSystem` owns a **single-threaded executor** named `tileboard-animation`.
+Each `GameSessionImpl` owns a **single-threaded `ScheduledExecutorService`** named `tileboard-tick-<sessionId>`, and
+each `AnimationSystem` owns a **single-threaded executor** named `tileboard-animation`.
 
 - A game's `onTick` never runs concurrently with itself → game authors can keep plain `int`/`boolean` fields for
   tick-driven state without locking.
 - Animations never interleave with each other → a countdown cannot be painted over by a win animation.
 - Both are **daemon** threads, so a forgotten session can never keep the JVM alive.
-- Both are shut down in `finishSession` (`cancelTick()` + `animationSystem.shutdown()`), so a session that ends
-  leaks nothing.
+- Both are shut down in `finishSession` (`cancelTick()` + `animationSystem.shutdown()`), so a session that ends leaks
+  nothing.
 
 **Rule:** never create a thread inside a `Game`. Ask the context for a feature, or use `animations()`.
 
 ### 3.5 Defensive copies and immutability at every boundary
 
 - `GameSessionImpl` stores `List.copyOf(players)`.
-- `GameResult` copies its winner list and score map in its compact constructor, so a result can never change after
-  the session ended.
+- `GameResult` copies its winner list and score map in its compact constructor, so a result can never change after the
+  session ended.
 - `GameEvent` copies its payload map — an event published to N listeners cannot be mutated by listener #1.
 - `MemoryFeature.setTarget` copies the sequence; `target()` returns the immutable copy.
 - `TouchSequence` validates `positions.size() == timestamps.size()` and then copies both.
 - `GameState.snapshot()` returns an unmodifiable copy, safe to hand to Jackson on another thread.
 
-**Rule:** if a value crosses a thread boundary or an API boundary, copy it. Records with compact constructors are
-the idiomatic way to do that here.
+**Rule:** if a value crosses a thread boundary or an API boundary, copy it. Records with compact constructors are the
+idiomatic way to do that here.
 
 ### 3.6 Fail loudly at construction, fail softly at runtime
 
@@ -216,12 +226,12 @@ Two different failure policies, applied consistently:
 
 - **Construction / configuration errors are fatal.** `GameDescriptor` rejects `requiredWidth <= 0`,
   `minPlayers < 1`, `maxPlayers < minPlayers`; `EngineFrameRouter` rejects non-positive geometry; `Player`,
-  `GameResult`, `GameEvent`, `TouchSequence` reject `null`. These are programmer errors and must explode
-  immediately, with a message naming the offending field.
-- **Runtime errors from *game code* are contained.** An exception escaping `onTileEvent` or `onTick` is caught,
-  logged, and handed to `game.onError(ctx, e)`. The default `onError` stops the session; a game may override it to
-  recover. If `onError` *itself* throws, the session is force-stopped. The serial reader thread and every other
-  session keep running.
+  `GameResult`, `GameEvent`, `TouchSequence` reject `null`. These are programmer errors and must explode immediately,
+  with a message naming the offending field.
+- **Runtime errors from *game code* are contained.** An exception escaping `onTileEvent` or `onTick` is caught, logged,
+  and handed to `game.onError(ctx, e)`. The default `onError` stops the session; a game may override it to recover. If
+  `onError` *itself* throws, the session is force-stopped. The serial reader thread and every other session keep
+  running.
 - **Malformed hardware input is discarded, not fatal.** `EngineFrameRouter` drops a `DATA_IN` payload whose length
   doesn't equal `width*height` and logs a warning. A flaky cable must not take down the JVM.
 
@@ -236,7 +246,7 @@ publishes `GameEvent`s on the `GameEventBus`, and *adapters* subscribe:
 - `GameEngineImpl`'s own cleanup subscription → removes finished sessions from `activeSessions`
 - your code → persistence, analytics, a Discord webhook, anything
 
-The bus dispatches on a dedicated single-threaded executor, so `publish()` is O(1) enqueue and can never block the
+The bus dispatches on a dedicated single-threaded executor, so `publish()` is O (1) enqueue and can never block the
 serial reader or the tick loop. A listener that throws is logged and skipped; the remaining listeners still run.
 
 **Rule:** if a new subsystem needs to *react* to something, add an event type and a subscriber — not a callback
@@ -247,23 +257,27 @@ parameter.
 Every tile change funnels through `GameSessionImpl`'s `boardWriteLock`:
 
 ```java
-synchronized (boardWriteLock) {
-    boardBuffer.set(row, col, color);                 // mutate the shared buffer
-    gateway.sendBoard(DATA_OUT, SET, boardBuffer, colorCodec);   // one atomic wire write
+synchronized (boardWriteLock){
+        boardBuffer.
+
+set(row, col, color);                 // mutate the shared buffer
+    gateway.
+
+sendBoard(DATA_OUT, SET, boardBuffer, colorCodec);   // one atomic wire write
 }
 ```
 
-Because the tick thread, the touch-callback thread and the animation thread can all want to write at the same time,
-this lock guarantees the board on the wire is always a *consistent* snapshot and never a half-updated mix. The
-shared `boardBuffer` is also what makes `setTile(r, c, color)` possible without the game tracking the whole board.
+Because the tick thread, the touch-callback thread and the animation thread can all want to write at the same time, this
+lock guarantees the board on the wire is always a *consistent* snapshot and never a half-updated mix. The shared
+`boardBuffer` is also what makes `setTile(r, c, color)` possible without the game tracking the whole board.
 
 **Rule:** never call `gateway.sendBoard(...)` from game code. Use `ctx.setTile` / `ctx.fillBoard` /
 `ctx.publishBoard`.
 
 ### 3.9 Cancellation must be *cooperative and interrupting*
 
-`AnimationSystem.cancelCurrent()` is the reference implementation of that sentence, and its Javadoc documents the
-bug it fixed:
+`AnimationSystem.cancelCurrent()` is the reference implementation of that sentence, and its Javadoc documents the bug it
+fixed:
 
 > `CompletableFuture.cancel(true)` **never interrupts** the thread running the task, no matter what you pass as
 > `mayInterruptIfRunning`. A "cancelled" countdown therefore kept sleeping and painting for another three seconds,
@@ -273,13 +287,16 @@ The correct pattern, which the code now follows, is *both* mechanisms:
 
 ```java
 cancelRequested.set(true);   // 1. flag: noticed by the next sleep() that isn't currently blocked
+
 Thread t = runningThread;
-if (t != null) t.interrupt(); // 2. interrupt: wakes a sleep() that IS currently blocked
+if(t !=null)t.
+
+interrupt(); // 2. interrupt: wakes a sleep() that IS currently blocked
 ```
 
-and the worker clears its own state on exit (`runningThread = null; Thread.interrupted();`) so the next task
-submitted to the same pooled thread does not inherit a stale interrupt flag. Cancellation is signalled internally by
-a private `AnimationCancelledException` with **stack traces disabled**
+and the worker clears its own state on exit (`runningThread = null; Thread.interrupted();`) so the next task submitted
+to the same pooled thread does not inherit a stale interrupt flag. Cancellation is signalled internally by a private
+`AnimationCancelledException` with **stack traces disabled**
 (`super(null, null, false, false)`) — it is control flow, not an error, and it must be cheap because it can fire
 hundreds of times per second.
 
@@ -287,10 +304,10 @@ hundreds of times per second.
 
 ### 3.10 Small, final, single-responsibility classes
 
-Every feature class is `final`, has a private or trivial constructor, no inheritance hierarchy, no annotations, and
-no dependency on any other feature class except where explicitly wired (`TouchAnalyzer` → `TouchHistory`). There is
-exactly one interface hierarchy in the whole engine (`Game extends GameLifecycle`) and one exception hierarchy.
-If you cannot explain a class in one sentence, it is two classes.
+Every feature class is `final`, has a private or trivial constructor, no inheritance hierarchy, no annotations, and no
+dependency on any other feature class except where explicitly wired (`TouchAnalyzer` → `TouchHistory`). There is exactly
+one interface hierarchy in the whole engine (`Game extends GameLifecycle`) and one exception hierarchy. If you cannot
+explain a class in one sentence, it is two classes.
 
 ---
 
@@ -299,6 +316,7 @@ If you cannot explain a class in one sentence, it is two classes.
 ### 4.1 Add the dependency
 
 ```xml
+
 <dependency>
     <groupId>com.tileboard</groupId>
     <artifactId>tileboard-game-engine</artifactId>
@@ -391,8 +409,8 @@ public final class WhackAMoleGame implements Game {
 }
 ```
 
-Note what is *absent*: no threads, no locks, no serial code, no `Board` bookkeeping, no score map, no combo
-timestamp logic. All of it is a method call on `ctx`.
+Note what is *absent*: no threads, no locks, no serial code, no `Board` bookkeeping, no score map, no combo timestamp
+logic. All of it is a method call on `ctx`.
 
 ### 4.3 Run it without Spring
 
@@ -400,8 +418,8 @@ timestamp logic. All of it is a method call on `ctx`.
 public static void main(String[] args) {
     TileGatewayClient gateway = /* built by YOUR application: port, baud, handshake */;
 
-    GameEventBus  eventBus = new GameEventBusImpl();
-    GameRegistry  registry = new DefaultGameRegistry();
+    GameEventBus eventBus = new GameEventBusImpl();
+    GameRegistry registry = new DefaultGameRegistry();
     registry.register(new WhackAMoleGame());
 
     GameEngine engine = new GameEngineImpl(
@@ -431,19 +449,27 @@ public static void main(String[] args) {
 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`, so **putting the jar on the
 classpath is the entire installation**. It creates three beans, each `@ConditionalOnMissingBean`:
 
-| Bean | Type | Purpose |
-|---|---|---|
-| `gameEventBus` | `GameEventBus` | Shared bus for all sessions |
-| `gameRegistry` | `GameRegistry` | Auto-populated from **every `Game` bean** in the context |
-| `gameEngineManager` | `GameEngineManager` | Binds/unbinds the engine on gateway connect/disconnect |
+| Bean                | Type                | Purpose                                                  |
+|---------------------|---------------------|----------------------------------------------------------|
+| `gameEventBus`      | `GameEventBus`      | Shared bus for all sessions                              |
+| `gameRegistry`      | `GameRegistry`      | Auto-populated from **every `Game` bean** in the context |
+| `gameEngineManager` | `GameEngineManager` | Binds/unbinds the engine on gateway connect/disconnect   |
 
 Declare your game as a bean and it is registered for free:
 
 ```java
+
 @Configuration
 public class GamesConfig {
-    @Bean WhackAMoleGame whackAMole() { return new WhackAMoleGame(); }
-    @Bean SimonSaysGame  simonSays()  { return new SimonSaysGame();  }
+    @Bean
+    WhackAMoleGame whackAMole() {
+        return new WhackAMoleGame();
+    }
+
+    @Bean
+    SimonSaysGame simonSays() {
+        return new SimonSaysGame();
+    }
 }
 ```
 
@@ -462,6 +488,7 @@ Registered game 'Whack-a-Mole' (whack-a-mole)
 Your `SerialConnectionManager` (or whatever owns the port) publishes two records:
 
 ```java
+
 @Service
 public class SerialConnectionService {
 
@@ -492,6 +519,7 @@ Both handlers are `synchronized`, so a rapid disconnect/connect pair can never l
 ### 5.3 A complete controller
 
 ```java
+
 @RestController
 @RequestMapping("/api/v1/games")
 public class GameController {
@@ -554,6 +582,7 @@ public class GameController {
 Map `EngineNotReadyException` to a clean HTTP status:
 
 ```java
+
 @RestControllerAdvice
 public class EngineExceptionHandler {
 
@@ -659,14 +688,14 @@ Key implementation properties:
 - **Idempotent termination.** `finishSession` uses `compareAndSet` from both `RUNNING` and `PAUSED`. A game calling
   `winSession()` twice, or `winSession()` followed by an engine `stop()`, produces exactly one `GameResult` and one
   event.
-- **The result is computed before `onStop`.** So `onStop` can read `result.winners()` and `result.duration()` and
-  still change the board (e.g. play a victory pattern). It cannot change the *scores* recorded in the result —
-  those were snapshotted.
-- **`onStart` runs on the caller's thread**, not the tick thread. This is documented on `GameLifecycle`: an
-  exception in `onStart` propagates as a logged error + force-stopped session, but `startGame` still returns the
-  session id (the session simply ends up `STOPPED`). Check `status()` after starting if that matters to you.
-- **The tick starts before `start()`.** `runTick` guards on `status == RUNNING`, so the first few ticks are no-ops.
-  This ordering avoids a race where a tick could fire before the session was inserted into `activeSessions`.
+- **The result is computed before `onStop`.** So `onStop` can read `result.winners()` and `result.duration()` and still
+  change the board (e.g. play a victory pattern). It cannot change the *scores* recorded in the result — those were
+  snapshotted.
+- **`onStart` runs on the caller's thread**, not the tick thread. This is documented on `GameLifecycle`: an exception in
+  `onStart` propagates as a logged error + force-stopped session, but `startGame` still returns the session id (the
+  session simply ends up `STOPPED`). Check `status()` after starting if that matters to you.
+- **The tick starts before `start()`.** `runTick` guards on `status == RUNNING`, so the first few ticks are no-ops. This
+  ordering avoids a race where a tick could fire before the session was inserted into `activeSessions`.
 
 ### 6.3 The frame router: hardware → `TileEvent`
 
@@ -688,12 +717,12 @@ public void onFrame(Frame frame) {
 
 Design notes:
 
-- It decodes into `Board<Boolean>` (**touched / not touched**), not into colours. Input and output use different
-  codecs on purpose: `TileCodec.booleanState()` inbound, `ColorTileCodec` outbound.
-- It is constructed with the **actual connected board's** dimensions (from `GatewayConnectedEvent`), while each
-  session uses its **game's** `requiredWidth/Height`. `routeTouchFrame` reconciles the two by bounds-checking every
-  position against the session's own geometry — so an 8×8 game running on a 16×16 board only receives touches in
-  its own top-left 8×8 region.
+- It decodes into `Board<Boolean>` (**touched / not touched**), not into colours. Input and output use different codecs
+  on purpose: `TileCodec.booleanState()` inbound, `ColorTileCodec` outbound.
+- It is constructed with the **actual connected board's** dimensions (from `GatewayConnectedEvent`), while each session
+  uses its **game's** `requiredWidth/Height`. `routeTouchFrame` reconciles the two by bounds-checking every position
+  against the session's own geometry — so an 8×8 game running on a 16×16 board only receives touches in its own top-left
+  8×8 region.
 - Decode failures are caught (`RuntimeException`) and logged. The reader thread survives.
 
 ### 6.4 The colour codec
@@ -702,18 +731,23 @@ Design notes:
 
 ```java
 TileCodec.of(
-    color -> (byte) color.wireCode(),               // encode
-    wire  -> TileColor.fromWireCode(wire & 0xFF));  // decode, unknown → OFF
+        color ->(byte)color.
+
+wireCode(),               // encode
+
+wire  ->TileColor.
+
+fromWireCode(wire &0xFF));  // decode, unknown → OFF
 ```
 
-`TileColor` is an enum with an explicit `wireCode` (OFF=0, RED=1, GREEN=2, BLUE=3, PINK=4, LIGHT_BLUE=5,
-YELLOW=6, WHITE=7). Decoding is total: an unknown byte becomes `OFF` rather than throwing, because a corrupted
-frame should darken a tile, not crash a session.
+`TileColor` is an enum with an explicit `wireCode` (OFF=0, RED=1, GREEN=2, BLUE=3, PINK=4, LIGHT_BLUE=5, YELLOW=6,
+WHITE=7). Decoding is total: an unknown byte becomes `OFF` rather than throwing, because a corrupted frame should darken
+a tile, not crash a session.
 
-**Swapping the palette** (e.g. for hardware with RGB LEDs) means: add enum constants with new wire codes, or write
-your own `TileCodec<YourColor>` and your own session implementation. The engine has no hard-coded colour logic
-anywhere — features like `RandomFeature.randomColor()` derive the pool from `TileColor.values()` minus `OFF` minus
-the exclusions you pass.
+**Swapping the palette** (e.g. for hardware with RGB LEDs) means: add enum constants with new wire codes, or write your
+own `TileCodec<YourColor>` and your own session implementation. The engine has no hard-coded colour logic anywhere —
+features like `RandomFeature.randomColor()` derive the pool from `TileColor.values()` minus `OFF` minus the exclusions
+you pass.
 
 ### 6.5 The registry
 
@@ -723,14 +757,15 @@ Two registration modes:
 
 ```java
 registry.register(game);                                  // singleton: factory returns the same instance
-registry.register(descriptor, MyGame::new);               // per-session: factory creates a fresh instance
+registry.
+
+register(descriptor, MyGame::new);               // per-session: factory creates a fresh instance
 ```
 
 `register(Game)` is implemented as `register(game.descriptor(), () -> game)`. **This is a trap worth knowing:** a
 singleton `Game` shared by two concurrent sessions will share its *instance fields*. Stateless games (all state in
-`ctx.state()` / features) are fine; stateful ones must be registered with a factory. The `WhackAMoleGame` above
-keeps a `Position current` field and is therefore **only safe as a factory registration** in a multi-session
-deployment.
+`ctx.state()` / features) are fine; stateful ones must be registered with a factory. The `WhackAMoleGame` above keeps a
+`Position current` field and is therefore **only safe as a factory registration** in a multi-session deployment.
 
 `listAll()` sorts by `displayName`, so the catalogue is stable across restarts and map ordering.
 
@@ -739,7 +774,8 @@ deployment.
 `GameEventBusImpl` keeps a `CopyOnWriteArrayList<Subscription>`, where
 
 ```java
-record Subscription(GameEventListener listener, GameEventType filterType, String filterSessionId) {}
+record Subscription(GameEventListener listener, GameEventType filterType, String filterSessionId) {
+}
 ```
 
 - `subscribe(listener)` → both filters `null` (everything)
@@ -751,35 +787,60 @@ record Subscription(GameEventListener listener, GameEventType filterType, String
 (`tileboard-eventbus`, daemon):
 
 ```java
-executor.execute(() -> {
-    for (Subscription sub : subscriptions)
-        if (matches(sub, event))
-            try { sub.listener().onEvent(event); }
-            catch (RuntimeException e) { log.warn("Event listener threw while handling {}", event.type(), e); }
-});
+executor.execute(() ->{
+        for(
+Subscription sub :subscriptions)
+        if(
+
+matches(sub, event))
+        try{sub.
+
+listener().
+
+onEvent(event); }
+        catch(
+RuntimeException e){log.
+
+warn("Event listener threw while handling {}",event.type(),e);}
+        });
 ```
 
 Properties you get for free:
 
 - **Ordering:** all events are delivered in publish order (single thread).
 - **Isolation:** a throwing listener cannot break another listener, the tick loop, or the serial reader.
-- **Back-pressure:** none, deliberately. An unbounded queue means a slow SSE client can grow it. In practice the
-  tick interval bounds the event rate (≈10 events/s/session at 100 ms), so this is fine; if you add high-frequency
-  custom events, consider a bounded executor via the `GameEventBusImpl(Executor)` constructor.
-- **Unsubscription is a `Runnable`** — `() -> subscriptions.remove(sub)`. Records give identity-based `equals`, and
-  the same `Subscription` instance is removed, so double-unsubscribe is harmless.
+- **Back-pressure:** none, deliberately. An unbounded queue means a slow SSE client can grow it. In practice the tick
+  interval bounds the event rate (≈10 events/s/session at 100 ms), so this is fine; if you add high-frequency custom
+  events, consider a bounded executor via the `GameEventBusImpl(Executor)` constructor.
+- **Unsubscription is a `Runnable`** — `() -> subscriptions.remove(sub)`. Records give identity-based `equals`, and the
+  same `Subscription` instance is removed, so double-unsubscribe is harmless.
 
 **Self-unsubscribing cleanup.** `GameEngineImpl.startGame` uses the `Runnable[] unsubscribeRef = new Runnable[1]`
 trick to let a subscription remove itself:
 
 ```java
 Runnable[] ref = new Runnable[1];
-ref[0] = eventBus.subscribe(event -> {
-    if (event.sessionId().equals(sessionId) && (event.type() == SESSION_FINISHED || event.type() == SESSION_STOPPED)) {
-        activeSessions.remove(sessionId);
-        ref[0].run();                       // unsubscribe from inside the callback
+ref[0]=eventBus.
+
+subscribe(event ->{
+        if(event.
+
+sessionId().
+
+equals(sessionId) &&(event.
+
+type() ==SESSION_FINISHED ||event.
+
+type() ==SESSION_STOPPED)){
+        activeSessions.
+
+remove(sessionId);
+
+ref[0].
+
+run();                       // unsubscribe from inside the callback
     }
-});
+            });
 ```
 
 This is the standard Java workaround for "a lambda that needs to reference itself". It is safe here because the
@@ -790,8 +851,11 @@ This is the standard Java workaround for "a lambda that needs to reference itsel
 
 ```java
 private final Map<String, Object> store = new HashMap<>();
+
 public synchronized <T> void put(String key, T value)
+
 public synchronized <T> Optional<T> get(String key, Class<T> type)
+
 public synchronized <T> T getOrDefault(String key, Class<T> type, T defaultValue)
 ```
 
@@ -799,9 +863,9 @@ Why a `HashMap` + `synchronized` instead of `ConcurrentHashMap`? Because the cla
 (`snapshot()` must be a consistent copy) and the `Class.cast` check must be atomic with the read. All access goes
 through synchronized methods, so the plain map is correct and cheaper than a concurrent one under contention.
 
-`Optional<T> get(key, type)` uses `type.cast(v)`, which throws `ClassCastException` — not `Optional.empty()` — when
-the stored value has the wrong type. That is intentional: a key collision between two features is a bug, and it
-should surface loudly at the call site rather than silently looking like "absent".
+`Optional<T> get(key, type)` uses `type.cast(v)`, which throws `ClassCastException` — not `Optional.empty()` — when the
+stored value has the wrong type. That is intentional: a key collision between two features is a bug, and it should
+surface loudly at the call site rather than silently looking like "absent".
 
 Use well-known, namespaced keys: `ctx.state().put("mole.position", pos)`.
 
@@ -829,8 +893,8 @@ What that buys you:
 
 - **Pre-emption.** Calling `playWinAnimation()` while a countdown is running cancels the countdown *immediately*
   (flag + interrupt) and queues the win animation on the same single thread. No overlapping paints.
-- **Clean interrupts.** The flag is cleared by the *new* task, and the interrupt status is cleared on exit, so a
-  pooled thread never starts a task already-interrupted.
+- **Clean interrupts.** The flag is cleared by the *new* task, and the interrupt status is cleared on exit, so a pooled
+  thread never starts a task already-interrupted.
 - **No stack-trace cost.** `AnimationCancelledException` is constructed with
   `super(null, null, /*suppression*/ false, /*writableStackTrace*/ false)`.
 - **Bounded shutdown.** `shutdown()` = `cancelCurrent()` + `shutdownNow()` + `awaitTermination(1s)` (restoring the
@@ -839,12 +903,12 @@ What that buys you:
 
 Available animations:
 
-| Group | Method | Variants |
-|---|---|---|
-| Countdown | `playCountdown()`, `playCountdown(digitMs)` | Auto-selects a 5×3 digit renderer when the board is ≥3 wide and ≥5 tall, otherwise full-board colour flashes (red→yellow→green), then a 3× green start flash |
-| Win | `playWinAnimation(type)` | `RADIAL_BURST` (Chebyshev rings, colour per radius, 500 ms hold), `RAINBOW_SWEEP` (two column sweeps), `SPARKLE` (15 cycles of random dots), `FIREWORKS` (3 random centres, expanding rings) |
-| Lose | `playLoseAnimation(type)` | `FADE_TO_RED` (progressive random red, then full red), `DESCENDING_CURTAIN` (row by row), `CRUMBLE` (shuffled per-tile decay), `PULSE_RED` (4 red pulses) |
-| Standby | `playStandbyAnimation(type)` | `BREATHING` (corners → border, 20 cycles, blue/light-blue), `CORNER_PULSE` (rotating corner + 3×3 ring), `WAVE_BORDER` (mod-3 travelling border), `RANDOM_TWINKLE` (50 frames of white dots) |
+| Group     | Method                                      | Variants                                                                                                                                                                                     |
+|-----------|---------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Countdown | `playCountdown()`, `playCountdown(digitMs)` | Auto-selects a 5×3 digit renderer when the board is ≥3 wide and ≥5 tall, otherwise full-board colour flashes (red→yellow→green), then a 3× green start flash                                 |
+| Win       | `playWinAnimation(type)`                    | `RADIAL_BURST` (Chebyshev rings, colour per radius, 500 ms hold), `RAINBOW_SWEEP` (two column sweeps), `SPARKLE` (15 cycles of random dots), `FIREWORKS` (3 random centres, expanding rings) |
+| Lose      | `playLoseAnimation(type)`                   | `FADE_TO_RED` (progressive random red, then full red), `DESCENDING_CURTAIN` (row by row), `CRUMBLE` (shuffled per-tile decay), `PULSE_RED` (4 red pulses)                                    |
+| Standby   | `playStandbyAnimation(type)`                | `BREATHING` (corners → border, 20 cycles, blue/light-blue), `CORNER_PULSE` (rotating corner + 3×3 ring), `WAVE_BORDER` (mod-3 travelling border), `RANDOM_TWINKLE` (50 frames of white dots) |
 
 Every method returns `CompletableFuture<Void>` so a game can chain: `ctx.animations().playCountdown().thenRun(...)`
 — but note the continuation runs on the animation thread, which is single-threaded and shared with subsequent
@@ -852,10 +916,10 @@ animations. Keep continuations short.
 
 Rendering details worth knowing:
 
-- Digits are 5×3 bitmaps centred with `(height - ph) / 2`, `(width - pw) / 2`; out-of-range cells are skipped, so
-  small boards degrade instead of throwing.
-- `playRadialBurst` computes `maxRadius` from the centre to the farthest corner (Chebyshev) + 2 so the ring always
-  exits the board.
+- Digits are 5×3 bitmaps centred with `(height - ph) / 2`, `(width - pw) / 2`; out-of-range cells are skipped, so small
+  boards degrade instead of throwing.
+- `playRadialBurst` computes `maxRadius` from the centre to the farthest corner (Chebyshev) + 2 so the ring always exits
+  the board.
 - Animations construct a **new `Board` per frame** and hand it to `publishBoard`, which copies it into the session's
   buffer under the write lock. They never mutate the session buffer directly.
 
@@ -863,12 +927,12 @@ Rendering details worth knowing:
 
 They look similar and are not interchangeable:
 
-| | `WaveGenerator` | `AnimationSystem` |
-|---|---|---|
-| Threading | **Runs on the calling thread** (blocking `Thread.sleep`) | Own single daemon thread, async |
-| Cancellation | None (only responds to interrupt by restoring the flag) | Cooperative flag + real interrupt |
-| Effects | `sweepDown`, `ripple`, `blink` — composable primitives | Full choreographed sequences |
-| Use when | You are already on a background thread and want a simple effect | You want fire-and-forget from `onTileEvent` / `onTick` |
+|              | `WaveGenerator`                                                 | `AnimationSystem`                                      |
+|--------------|-----------------------------------------------------------------|--------------------------------------------------------|
+| Threading    | **Runs on the calling thread** (blocking `Thread.sleep`)        | Own single daemon thread, async                        |
+| Cancellation | None (only responds to interrupt by restoring the flag)         | Cooperative flag + real interrupt                      |
+| Effects      | `sweepDown`, `ripple`, `blink` — composable primitives          | Full choreographed sequences                           |
+| Use when     | You are already on a background thread and want a simple effect | You want fire-and-forget from `onTileEvent` / `onTick` |
 
 Calling `ctx.waves().blink(...)` from `onTick` will freeze the tick loop. That is documented behaviour, not a bug.
 
@@ -883,8 +947,8 @@ RuntimeException
 ```
 
 `EngineNotReadyException` is the engine-layer mirror of the application's `GatewayNotConnectedException` /
-`PortsNotAssignedException`, thrown only by `GameEngineManager.require()`. The message tells the operator exactly
-what to do: *"Assign and connect the serial ports first."*
+`PortsNotAssignedException`, thrown only by `GameEngineManager.require()`. The message tells the operator exactly what
+to do: *"Assign and connect the serial ports first."*
 
 ---
 
@@ -897,40 +961,100 @@ concurrent games.
 
 ```java
 int newScore = ctx.scores().add(playerId, 10);
-ctx.scores().subtract(playerId, 5);
-ctx.scores().set(playerId, 0);
-ctx.scores().reset(playerId);  ctx.scores().resetAll();
+ctx.
+
+scores().
+
+subtract(playerId, 5);
+ctx.
+
+scores().
+
+set(playerId, 0);
+ctx.
+
+scores().
+
+reset(playerId);  ctx.
+
+scores().
+
+resetAll();
+
 Optional<String> leader = ctx.scores().leader();
-Map<String,Integer> all = ctx.scores().allScores();   // LinkedHashMap snapshot, unmodifiable
+Map<String, Integer> all = ctx.scores().allScores();   // LinkedHashMap snapshot, unmodifiable
 ```
 
-Constructed with the session's player list; unknown ids are created lazily at `0` (so a spectator or a typo'd id
-never NPEs). `allScores()` is what lands in `GameResult.scoreByPlayerId`.
+Constructed with the session's player list; unknown ids are created lazily at `0` (so a spectator or a typo'd id never
+NPEs). `allScores()` is what lands in `GameResult.scoreByPlayerId`.
 
 ### 7.2 `health()` — `HealthSystem`
 
 ```java
 boolean stillAlive = ctx.health().damage(playerId);       // −1
-ctx.health().damage(playerId, 3);                         // −n, clamped at 0
-ctx.health().heal(playerId, 2);                           // clamped at max
-ctx.health().current(playerId);  ctx.health().max(playerId);
-ctx.health().isAlive(playerId);  ctx.health().allDead();
-ctx.health().resetAll(3);
+ctx.
+
+health().
+
+damage(playerId, 3);                         // −n, clamped at 0
+ctx.
+
+health().
+
+heal(playerId, 2);                           // clamped at max
+ctx.
+
+health().
+
+current(playerId);  ctx.
+
+health().
+
+max(playerId);
+ctx.
+
+health().
+
+isAlive(playerId);  ctx.
+
+health().
+
+allDead();
+ctx.
+
+health().
+
+resetAll(3);
 ```
 
 Two constructors: `new HealthSystem(players)` defaults `maxHealth = 3`; `new HealthSystem(players, 5)` sets it. The
-`defaultMaxHealth` is **stored** and used by the lazy `getOrCreate` path — an earlier revision dropped it and
-silently fell back to a hard-coded `3` for late joiners.
+`defaultMaxHealth` is **stored** and used by the lazy `getOrCreate` path — an earlier revision dropped it and silently
+fell back to a hard-coded `3` for late joiners.
 
 ### 7.3 `levels()` — `LevelSystem`
 
 ```java
-ctx.levels().currentLevel();               // starts at 1
+ctx.levels().
+
+currentLevel();               // starts at 1
+
 int next = ctx.levels().advance();
-ctx.levels().setLevel(5);                  // throws IllegalArgumentException if < 1
-ctx.levels().setSpeedScaler(lvl -> 500 - lvl * 20);
+ctx.
+
+levels().
+
+setLevel(5);                  // throws IllegalArgumentException if < 1
+ctx.
+
+levels().
+
+setSpeedScaler(lvl ->500-lvl *20);
 int tickMs = ctx.levels().currentSpeed();  // default: max(50, 1000 - (lvl-1)*100)
-ctx.levels().reset();
+ctx.
+
+levels().
+
+reset();
 ```
 
 The engine does **not** re-schedule the tick executor when the level changes — `currentSpeed()` is a value your game
@@ -939,11 +1063,27 @@ reads and uses (e.g. as the delay between moles). This keeps the tick period sta
 ### 7.4 `combos()` — `ComboTracker`
 
 ```java
-ctx.combos().setComboTimeout(1500);
+ctx.combos().
+
+setComboTimeout(1500);
+
 int chain = ctx.combos().hit();            // auto-resets if the gap exceeded the timeout
-ctx.combos().current();  ctx.combos().max();
+ctx.
+
+combos().
+
+current();  ctx.
+
+combos().
+
+max();
+
 int mult = ctx.combos().multiplier(5);     // 1 + combo/5  → combo 5 = ×2, combo 10 = ×3
-ctx.combos().reset();
+ctx.
+
+combos().
+
+reset();
 ```
 
 Timeout defaults to **2000 ms**. `multiplier(threshold)` guards against `threshold <= 0` with `Math.max(1, …)`.
@@ -951,12 +1091,44 @@ Timeout defaults to **2000 ms**. `multiplier(threshold)` guards against `thresho
 ### 7.5 `timer()` — `GameTimer`
 
 ```java
-ctx.timer().start();                                     // called automatically by start()
-ctx.timer().elapsed();                                   // Duration; frozen after stop()
-ctx.timer().startCountdown(Duration.ofSeconds(30), () -> ctx.loseSession());
-ctx.timer().remaining();  ctx.timer().isExpired();
-ctx.timer().checkExpiry();                               // ← call this in onTick()
-ctx.timer().stop();  ctx.timer().reset();
+ctx.timer().
+
+start();                                     // called automatically by start()
+ctx.
+
+timer().
+
+elapsed();                                   // Duration; frozen after stop()
+ctx.
+
+timer().
+
+startCountdown(Duration.ofSeconds(30), ()->ctx.
+
+loseSession());
+        ctx.
+
+timer().
+
+remaining();  ctx.
+
+timer().
+
+isExpired();
+ctx.
+
+timer().
+
+checkExpiry();                               // ← call this in onTick()
+ctx.
+
+timer().
+
+stop();  ctx.
+
+timer().
+
+reset();
 ```
 
 `checkExpiry()` nulls the callback before running it, so it fires **exactly once** even under concurrent ticks. The
@@ -965,23 +1137,43 @@ engine does not call it for you — a countdown only expires if your `onTick` ch
 ### 7.6 `touchHistory()` / `touchAnalyzer()`
 
 ```java
-ctx.touchHistory().totalTouches();
-Optional<TileEvent>  last  = ctx.touchHistory().last();
-Optional<Position>   lastP = ctx.touchHistory().lastTouchedPosition();
-List<Position>       order = ctx.touchHistory().positionOrder();
-Set<Position>        seen  = ctx.touchHistory().distinctPositions();
-TouchSequence        seq   = ctx.touchHistory().sequence();     // immutable snapshot
-ctx.touchHistory().reset();
+ctx.touchHistory().
 
-ctx.touchAnalyzer().averageInterTouchGap();       // Duration
-ctx.touchAnalyzer().matchesSequence(pattern);     // tail match
-ctx.touchAnalyzer().allUnique();
+totalTouches();
+
+Optional<TileEvent> last = ctx.touchHistory().last();
+Optional<Position> lastP = ctx.touchHistory().lastTouchedPosition();
+List<Position> order = ctx.touchHistory().positionOrder();
+Set<Position> seen = ctx.touchHistory().distinctPositions();
+TouchSequence seq = ctx.touchHistory().sequence();     // immutable snapshot
+ctx.
+
+touchHistory().
+
+reset();
+
+ctx.
+
+touchAnalyzer().
+
+averageInterTouchGap();       // Duration
+ctx.
+
+touchAnalyzer().
+
+matchesSequence(pattern);     // tail match
+ctx.
+
+touchAnalyzer().
+
+allUnique();
+
 Optional<Duration> rt = ctx.touchAnalyzer().lastReactionTime();
 ```
 
-`TouchHistory` is fed by the engine (`handleTileEvent` records *before* calling `game.onTileEvent`), so your game
-sees its own touch already in the history. It is a `CopyOnWriteArrayList` — cheap reads, expensive writes; fine for
-human touch rates, wrong for a 1 kHz sensor stream.
+`TouchHistory` is fed by the engine (`handleTileEvent` records *before* calling `game.onTileEvent`), so your game sees
+its own touch already in the history. It is a `CopyOnWriteArrayList` — cheap reads, expensive writes; fine for human
+touch rates, wrong for a 1 kHz sensor stream.
 
 `TouchSequence.gapBetween(i)` throws `IndexOutOfBoundsException` outside `[0, size()-1]`; `gaps()` and
 `averageGap()` handle the `< 2 touches` case by returning empty / `Duration.ZERO`.
@@ -990,13 +1182,33 @@ human touch rates, wrong for a 1 kHz sensor stream.
 
 ```java
 List<Position> reds = ctx.board().findByColor(board, TileColor.RED);
-List<Position> lit  = ctx.board().find(board, c -> c != TileColor.OFF);
-ctx.board().allMatch(board, c -> c == TileColor.OFF);
-ctx.board().noneMatch(board, c -> c == TileColor.RED);
+List<Position> lit = ctx.board().find(board, c -> c != TileColor.OFF);
+ctx.
+
+board().
+
+allMatch(board, c ->c ==TileColor.OFF);
+        ctx.
+
+board().
+
+noneMatch(board, c ->c ==TileColor.RED);
 long n = ctx.board().countByColor(board, TileColor.GREEN);
-ctx.board().isValid(pos);
-ctx.board().manhattanDistance(a, b);
-ctx.board().chebyshevDistance(a, b);
+ctx.
+
+board().
+
+isValid(pos);
+ctx.
+
+board().
+
+manhattanDistance(a, b);
+ctx.
+
+board().
+
+chebyshevDistance(a, b);
 ```
 
 Constructed with the session's `w`/`h`; `allMatch` is implemented as "no tile matches the negated predicate", so it
@@ -1013,20 +1225,34 @@ The session default is `Adjacency.FOUR_WAY`. Construct your own for other modes:
 
 ```java
 NeighborFinder eight = new NeighborFinder(w, h, Adjacency.EIGHT_WAY);
-NeighborFinder diag  = new NeighborFinder(w, h, Adjacency.DIAGONAL_ONLY);
+NeighborFinder diag = new NeighborFinder(w, h, Adjacency.DIAGONAL_ONLY);
 ```
 
 Direction tables are `static final int[][]`, bounds-checked per candidate. `connectedRegion` is an iterative BFS
-(`ArrayDeque` + `HashSet`) — no recursion, no stack overflow on large boards. Note the start position is included in
-the result even if `passable.test(start)` is false; guard that yourself if it matters.
+(`ArrayDeque` + `HashSet`) — no recursion, no stack overflow on large boards. Note the start position is included in the
+result even if `passable.test(start)` is false; guard that yourself if it matters.
 
 ### 7.9 `patterns()` — `PatternMatcher`
 
 ```java
-ctx.patterns().tailMatches(actual, pattern);       // last N touches, in order
-ctx.patterns().exactMatch(actual, pattern);
-ctx.patterns().containsSequence(actual, pattern);  // contiguous sub-sequence
-ctx.patterns().cyclicMatch(actual, pattern);       // rotation-invariant, for circular boards
+ctx.patterns().
+
+tailMatches(actual, pattern);       // last N touches, in order
+ctx.
+
+patterns().
+
+exactMatch(actual, pattern);
+ctx.
+
+patterns().
+
+containsSequence(actual, pattern);  // contiguous sub-sequence
+ctx.
+
+patterns().
+
+cyclicMatch(actual, pattern);       // rotation-invariant, for circular boards
 ```
 
 Stateless and pure — an empty pattern matches everything (`true`) by definition.
@@ -1034,28 +1260,66 @@ Stateless and pure — an empty pattern matches everything (`true`) by definitio
 ### 7.10 `random()` — `RandomFeature`
 
 ```java
-Position p   = ctx.random().randomPosition();
+Position p = ctx.random().randomPosition();
 List<Position> ps = ctx.random().randomPositions(5);   // distinct, shuffled, ≤ w*h
-TileColor c  = ctx.random().randomColor(TileColor.RED); // excludes OFF and whatever you list
-T item       = ctx.random().pick(list);                 // NoSuchElementException on empty
-boolean yes  = ctx.random().chance(0.3);
-ctx.random().reseed(42L);
+TileColor c = ctx.random().randomColor(TileColor.RED); // excludes OFF and whatever you list
+T item = ctx.random().pick(list);                 // NoSuchElementException on empty
+boolean yes = ctx.random().chance(0.3);
+ctx.
+
+random().
+
+reseed(42L);
 ```
 
 The default session instance uses `new Random()` (non-reproducible). For deterministic replays or tests, construct
-`new RandomFeature(w, h, seed)` and put it in `GameState`, or `reseed()` at session start. `randomColor()` will
-throw if you exclude every colour — don't do that.
+`new RandomFeature(w, h, seed)` and put it in `GameState`, or `reseed()` at session start. `randomColor()` will throw if
+you exclude every colour — don't do that.
 
 ### 7.11 `memory()` — `MemoryFeature`
 
 ```java
-ctx.memory().setTarget(List.of(p1, p2, p3));   // copies + clears player input
-ctx.memory().addInput(pos);
-ctx.memory().isCorrectSoFar();   // prefix match; false (not exception) on over-input
-ctx.memory().isComplete();       // inputLength >= targetLength
-ctx.memory().isFullyCorrect();
-ctx.memory().targetLength();  ctx.memory().inputLength();
-ctx.memory().target();  ctx.memory().resetInput();
+ctx.memory().
+
+setTarget(List.of(p1, p2, p3));   // copies + clears player input
+        ctx.
+
+memory().
+
+addInput(pos);
+ctx.
+
+memory().
+
+isCorrectSoFar();   // prefix match; false (not exception) on over-input
+ctx.
+
+memory().
+
+isComplete();       // inputLength >= targetLength
+ctx.
+
+memory().
+
+isFullyCorrect();
+ctx.
+
+memory().
+
+targetLength();  ctx.
+
+memory().
+
+inputLength();
+ctx.
+
+memory().
+
+target();  ctx.
+
+memory().
+
+resetInput();
 ```
 
 `targetSequence` is `volatile` and `playerInput` is a `synchronizedList`; every multi-step read takes a
@@ -1064,18 +1328,37 @@ ctx.memory().target();  ctx.memory().resetInput();
 ### 7.12 `reactionSpeed()` — `ReactionSpeedTracker`
 
 ```java
-ctx.reactionSpeed().stimulus();                       // mark "the tile just lit up"
+ctx.reactionSpeed().
+
+stimulus();                       // mark "the tile just lit up"
 // ... the engine calls record(event) automatically for the next touch ...
-ctx.reactionSpeed().lastReaction();                   // Duration
-ctx.reactionSpeed().bestReaction();
+ctx.
+
+reactionSpeed().
+
+lastReaction();                   // Duration
+ctx.
+
+reactionSpeed().
+
+bestReaction();
+
 OptionalDouble avgMs = ctx.reactionSpeed().averageReactionMillis();
-ctx.reactionSpeed().reactionCount();
-ctx.reactionSpeed().reset();
+ctx.
+
+reactionSpeed().
+
+reactionCount();
+ctx.
+
+reactionSpeed().
+
+reset();
 ```
 
 `record` uses `getAndSet(null)`, so one stimulus yields exactly one measurement. Negative durations (clock skew,
-out-of-order frames) are clamped to `0`. `bestReaction()` returns `Duration.ZERO` when nothing has been measured —
-check `reactionCount()` before interpreting it.
+out-of-order frames) are clamped to `0`. `bestReaction()` returns `Duration.ZERO` when nothing has been measured — check
+`reactionCount()` before interpreting it.
 
 ### 7.13 `graph()` — `GraphFeature`
 
@@ -1084,16 +1367,26 @@ List<Position> path = ctx.graph().shortestPath(from, to, passable);   // empty i
 List<List<Position>> comps = ctx.graph().connectedComponents(passable);
 ```
 
-BFS over 4-neighbours with a `parent` map, path reconstructed head-first. `shortestPath` returns `List.of()` if
-either endpoint is impassable. Ideal for maze generation validation, "is the board still solvable?" checks and
-flood-fill puzzles.
+BFS over 4-neighbours with a `parent` map, path reconstructed head-first. `shortestPath` returns `List.of()` if either
+endpoint is impassable. Ideal for maze generation validation, "is the board still solvable?" checks and flood-fill
+puzzles.
 
 ### 7.14 `waves()` — `WaveGenerator`
 
 ```java
-ctx.waves().sweepDown(TileColor.BLUE, 80);
-ctx.waves().ripple(new Position(3, 3), TileColor.PINK, 100);
-ctx.waves().blink(TileColor.WHITE, TileColor.OFF, 3, 200);
+ctx.waves().
+
+sweepDown(TileColor.BLUE, 80);
+ctx.
+
+waves().
+
+ripple(new Position(3, 3),TileColor.PINK,100);
+        ctx.
+
+waves().
+
+blink(TileColor.WHITE, TileColor.OFF, 3,200);
 ```
 
 Blocking; each step publishes a `board.copy()`. Run from a game-managed background thread or from an animation
@@ -1113,26 +1406,34 @@ Your scratchpad. See [§6.7](#67-gamestate-the-type-erased-bag).
 
 ### 8.1 Event types
 
-| `GameEventType` | Published by | Payload |
-|---|---|---|
-| `SESSION_STARTED` | `GameSessionImpl.start()` | `{}` |
-| `TICK` | `runTick()` | `{scores, level, status, elapsed}` |
-| `BOARD_UPDATED` | `publishBoard()` | `{boardSnapshot: "sent"}` |
-| `SESSION_FINISHED` | `finishSession(FINISHED, …)` | `{scores, level, status, elapsed}` |
-| `SESSION_STOPPED` | `finishSession(STOPPED, …)` | same |
-| `TILE_TOUCHED`, `SCORE_CHANGED`, `LEVEL_UP`, `HEALTH_CHANGED`, `COMBO_HIT`, `TIMER_EXPIRED`, `CUSTOM` | **your game** | whatever you pass |
+| `GameEventType`                                                                                       | Published by                 | Payload                            |
+|-------------------------------------------------------------------------------------------------------|------------------------------|------------------------------------|
+| `SESSION_STARTED`                                                                                     | `GameSessionImpl.start()`    | `{}`                               |
+| `TICK`                                                                                                | `runTick()`                  | `{scores, level, status, elapsed}` |
+| `BOARD_UPDATED`                                                                                       | `publishBoard()`             | `{boardSnapshot: "sent"}`          |
+| `SESSION_FINISHED`                                                                                    | `finishSession(FINISHED, …)` | `{scores, level, status, elapsed}` |
+| `SESSION_STOPPED`                                                                                     | `finishSession(STOPPED, …)`  | same                               |
+| `TILE_TOUCHED`, `SCORE_CHANGED`, `LEVEL_UP`, `HEALTH_CHANGED`, `COMBO_HIT`, `TIMER_EXPIRED`, `CUSTOM` | **your game**                | whatever you pass                  |
 
-The engine publishes lifecycle/board/tick events; the *semantic* events (score changed, level up, combo hit) are
-yours to publish, because only the game knows what they mean:
+The engine publishes lifecycle/board/tick events; the *semantic* events (score changed, level up, combo hit) are yours
+to publish, because only the game knows what they mean:
 
 ```java
-ctx.eventBus().publish(GameEvent.of(
-        GameEventType.SCORE_CHANGED, ctx.sessionId(), ctx.gameId(),
-        Map.of("playerId", id, "score", ctx.scores().get(id), "delta", 10)));
+ctx.eventBus().
+
+publish(GameEvent.of(
+        GameEventType.SCORE_CHANGED, ctx.sessionId(),ctx.
+
+gameId(),
+        Map.
+
+of("playerId",id, "score",ctx.scores().
+
+get(id), "delta",10)));
 ```
 
-`GameEvent.of(...)` fills in a UUID id and `Instant.now()`. The record's compact constructor copies the payload map,
-so you may reuse a mutable builder map afterwards.
+`GameEvent.of(...)` fills in a UUID id and `Instant.now()`. The record's compact constructor copies the payload map, so
+you may reuse a mutable builder map afterwards.
 
 ### 8.2 SSE bridge
 
@@ -1140,8 +1441,12 @@ so you may reuse a mutable builder map afterwards.
 
 ```java
 GameEventSseEmitter.forSession(sessionId, bus);   // one session
-GameEventSseEmitter.forEventType(type, bus);      // one event type, all sessions
-GameEventSseEmitter.global(bus);                  // everything
+GameEventSseEmitter.
+
+forEventType(type, bus);      // one event type, all sessions
+GameEventSseEmitter.
+
+global(bus);                  // everything
 ```
 
 Each returns an `SseEmitter(Long.MAX_VALUE)` and:
@@ -1150,8 +1455,8 @@ Each returns an `SseEmitter(Long.MAX_VALUE)` and:
 2. stores the unsubscribe `Runnable` in a one-element array so the *listener itself* can unsubscribe on I/O failure;
 3. registers `onCompletion`, `onTimeout` and `onError` handlers that all unsubscribe.
 
-That triple registration is the leak fix: without `onCompletion`/`onTimeout`, a client that simply closes the tab
-would leave its subscription (and its emitter) alive for the lifetime of the JVM.
+That triple registration is the leak fix: without `onCompletion`/`onTimeout`, a client that simply closes the tab would
+leave its subscription (and its emitter) alive for the lifetime of the JVM.
 
 On the wire, each event is sent with an SSE `id` (the event UUID, so browsers can resume with `Last-Event-ID`), a
 `name` (the raw `GameEventType`), and a JSON `data` body of type `SseGameEvent`:
@@ -1161,20 +1466,23 @@ On the wire, each event is sent with an SSE `id` (the event UUID, so browsers ca
   "sessionId": "5f0c…",
   "gameId": "whack-a-mole",
   "type": "SCORE_UPDATE",
-  "data": { "playerId": "p1", "score": 42 },
+  "data": {
+    "playerId": "p1",
+    "score": 42
+  },
   "timestamp": "2026-09-18T12:34:56.789Z"
 }
 ```
 
 `GameEventType` → `SseGameEventType` mapping:
 
-| Engine event | SSE type |
-|---|---|
-| `TICK` | `TICK` |
-| `BOARD_UPDATED` | `BOARD_UPDATE` |
-| `SCORE_CHANGED` | `SCORE_UPDATE` |
-| `SESSION_STARTED` / `SESSION_FINISHED` / `SESSION_STOPPED` | `SESSION_LIFECYCLE` |
-| everything else (`TILE_TOUCHED`, `LEVEL_UP`, `COMBO_HIT`, `CUSTOM`, …) | `GAME_STATE` |
+| Engine event                                                           | SSE type            |
+|------------------------------------------------------------------------|---------------------|
+| `TICK`                                                                 | `TICK`              |
+| `BOARD_UPDATED`                                                        | `BOARD_UPDATE`      |
+| `SCORE_CHANGED`                                                        | `SCORE_UPDATE`      |
+| `SESSION_STARTED` / `SESSION_FINISHED` / `SESSION_STOPPED`             | `SESSION_LIFECYCLE` |
+| everything else (`TILE_TOUCHED`, `LEVEL_UP`, `COMBO_HIT`, `CUSTOM`, …) | `GAME_STATE`        |
 
 Serialisation uses a **static, shared `ObjectMapper`** with `JavaTimeModule` registered and
 `WRITE_DATES_AS_TIMESTAMPS` disabled — hence ISO-8601 timestamps, and hence the `jackson-datatype-jsr310`
@@ -1184,9 +1492,9 @@ Client side:
 
 ```js
 const es = new EventSource('/api/v1/games/sessions/' + sessionId + '/events');
-es.addEventListener('SCORE_UPDATE',       e => renderScores(JSON.parse(e.data).data));
-es.addEventListener('SESSION_LIFECYCLE',  e => onEnd(JSON.parse(e.data)));
-es.addEventListener('TICK',               e => renderTimer(JSON.parse(e.data).data.elapsed));
+es.addEventListener('SCORE_UPDATE', e => renderScores(JSON.parse(e.data).data));
+es.addEventListener('SESSION_LIFECYCLE', e => onEnd(JSON.parse(e.data)));
+es.addEventListener('TICK', e => renderTimer(JSON.parse(e.data).data.elapsed));
 ```
 
 ---
@@ -1195,45 +1503,45 @@ es.addEventListener('TICK',               e => renderTimer(JSON.parse(e.data).da
 
 Four threads can touch your game. Know which is which.
 
-| Thread | Name | Runs | Guarantees |
-|---|---|---|---|
-| Caller of `startGame` | yours | `onStart` | Runs once, before any tick or touch is delivered |
-| Gateway callback thread | the protocol library's | `onTileEvent`, `onError` | Never concurrent with itself for one session *if* the gateway serialises its callbacks |
-| Tick thread | `tileboard-tick-<sessionId>` | `onTick`, `onError` | `scheduleAtFixedRate` on a single-thread executor → never concurrent with itself |
-| Animation thread | `tileboard-animation` | animation bodies + your `thenRun` continuations | Single-thread executor → animations never overlap |
-| Event bus thread | `tileboard-eventbus` | your listeners (incl. SSE writes) | Single-thread executor → strictly ordered |
+| Thread                  | Name                         | Runs                                            | Guarantees                                                                             |
+|-------------------------|------------------------------|-------------------------------------------------|----------------------------------------------------------------------------------------|
+| Caller of `startGame`   | yours                        | `onStart`                                       | Runs once, before any tick or touch is delivered                                       |
+| Gateway callback thread | the protocol library's       | `onTileEvent`, `onError`                        | Never concurrent with itself for one session *if* the gateway serialises its callbacks |
+| Tick thread             | `tileboard-tick-<sessionId>` | `onTick`, `onError`                             | `scheduleAtFixedRate` on a single-thread executor → never concurrent with itself       |
+| Animation thread        | `tileboard-animation`        | animation bodies + your `thenRun` continuations | Single-thread executor → animations never overlap                                      |
+| Event bus thread        | `tileboard-eventbus`         | your listeners (incl. SSE writes)               | Single-thread executor → strictly ordered                                              |
 
 ⚠️ **`onTileEvent` and `onTick` can run concurrently with each other.** They live on different threads. Therefore:
 
 - Everything the *engine* gives you (`scores()`, `health()`, `combos()`, `levels()`, `timer()`, `touchHistory()`,
   `memory()`, `state()`, `boardBuffer` writes) is thread-safe by construction.
 - Anything **you** keep in a field of your `Game` class is *not*. Either
-  - keep it in `ctx.state()` (synchronized), or
-  - use atomics, or
-  - accept that a stale read is harmless for your use case (a visual-only `Position` field usually is), or
-  - register the game with a **factory** so each session owns its own instance and only the tick/touch race remains.
+    - keep it in `ctx.state()` (synchronized), or
+    - use atomics, or
+    - accept that a stale read is harmless for your use case (a visual-only `Position` field usually is), or
+    - register the game with a **factory** so each session owns its own instance and only the tick/touch race remains.
 
 ### Memory-visibility summary
 
-| Mechanism | Where |
-|---|---|
-| `AtomicReference<GameStatus>` + CAS | session lifecycle transitions, idempotent termination |
-| `volatile GameResult result` | published after the CAS, read via `Optional.ofNullable` |
-| `synchronized (boardWriteLock)` | every hardware write, buffer + wire as one unit |
-| `ConcurrentHashMap` | `activeSessions`, registry entries, scores, health |
-| `AtomicInteger` / `AtomicLong` / `LongAdder` | score, health, combo, level, reaction stats |
-| `CopyOnWriteArrayList` | touch history, event-bus subscriptions |
-| `synchronized` methods over a plain `HashMap` | `GameState` |
-| `volatile` + explicit `Thread.interrupt()` | `AnimationSystem` cancellation |
-| `List.copyOf` / `Map.copyOf` in record compact constructors | every immutable value type |
+| Mechanism                                                   | Where                                                   |
+|-------------------------------------------------------------|---------------------------------------------------------|
+| `AtomicReference<GameStatus>` + CAS                         | session lifecycle transitions, idempotent termination   |
+| `volatile GameResult result`                                | published after the CAS, read via `Optional.ofNullable` |
+| `synchronized (boardWriteLock)`                             | every hardware write, buffer + wire as one unit         |
+| `ConcurrentHashMap`                                         | `activeSessions`, registry entries, scores, health      |
+| `AtomicInteger` / `AtomicLong` / `LongAdder`                | score, health, combo, level, reaction stats             |
+| `CopyOnWriteArrayList`                                      | touch history, event-bus subscriptions                  |
+| `synchronized` methods over a plain `HashMap`               | `GameState`                                             |
+| `volatile` + explicit `Thread.interrupt()`                  | `AnimationSystem` cancellation                          |
+| `List.copyOf` / `Map.copyOf` in record compact constructors | every immutable value type                              |
 
 ### The one lock you must not hold
 
 `publishBoard`, `setTile` and `fillBoard` hold `boardWriteLock` while calling `gateway.sendBoard(...)`. If your
-transport blocks (a full UART buffer, a stuck USB device), the tick thread and the animation thread will queue up
-behind it. Never call a blocking transport operation from inside a game callback that also holds another lock, and
-never add your own `synchronized` block around a `ctx.setTile(...)` call — you would create a lock-ordering hazard
-against the engine's own lock.
+transport blocks (a full UART buffer, a stuck USB device), the tick thread and the animation thread will queue up behind
+it. Never call a blocking transport operation from inside a game callback that also holds another lock, and never add
+your own `synchronized` block around a `ctx.setTile(...)` call — you would create a lock-ordering hazard against the
+engine's own lock.
 
 ---
 
@@ -1248,13 +1556,15 @@ public final class TerritoryGame implements Game {
 
     private static final int TILES_TO_WIN = 20;
 
-    @Override public GameDescriptor descriptor() {
+    @Override
+    public GameDescriptor descriptor() {
         return GameDescriptor.builder("territory", "Territory")
                 .category("STRATEGY").description("Claim tiles on your half of the board.")
                 .boardSize(8, 8).players(2, 2).build();
     }
 
-    @Override public void onStart(GameContext ctx) {
+    @Override
+    public void onStart(GameContext ctx) {
         // Left half = BLUE (player 0), right half = RED (player 1)
         Board<TileColor> b = ctx.newBoard();
         for (int r = 0; r < ctx.boardHeight(); r++)
@@ -1269,7 +1579,8 @@ public final class TerritoryGame implements Game {
                 Map.of("mode", "territory", "tilesToWin", TILES_TO_WIN)));
     }
 
-    @Override public void onTileEvent(GameContext ctx, TileEvent event) {
+    @Override
+    public void onTileEvent(GameContext ctx, TileEvent event) {
         Player toucher = closestPlayer(ctx, event.position());
         TileColor mine = ctx.state()
                 .get("territory.zoneOf", Map.class)
@@ -1282,9 +1593,9 @@ public final class TerritoryGame implements Game {
 
         ctx.eventBus().publish(GameEvent.of(GameEventType.TILE_TOUCHED, ctx.sessionId(), ctx.gameId(),
                 Map.of("playerId", toucher.id(),
-                       "row", event.position().row(),
-                       "col", event.position().col(),
-                       "score", ctx.scores().get(toucher.id()))));
+                        "row", event.position().row(),
+                        "col", event.position().col(),
+                        "score", ctx.scores().get(toucher.id()))));
 
         if (ctx.scores().get(toucher.id()) >= TILES_TO_WIN) {
             ctx.animations().playWinAnimation(WinAnimationType.RADIAL_BURST);
@@ -1305,41 +1616,48 @@ publishing a `CUSTOM` event with a typed payload, ending with a specific winner.
 
 ### 10.2 Tutorial B — "Simon Says" (sequences, memory, tick-driven playback)
 
-The interesting problem here is *playback*: the sequence must be shown one tile at a time with gaps. The naive
-solution spawns a thread and calls `Thread.sleep` — which violates [§3.4](#34-one-session--one-thread-of-control--one-animation-thread).
-The idiomatic engine solution is a **tick-driven state machine**: all state lives in `GameState`, and `onTick`
+The interesting problem here is *playback*: the sequence must be shown one tile at a time with gaps. The naive solution
+spawns a thread and calls `Thread.sleep` — which
+violates [§3.4](#34-one-session--one-thread-of-control--one-animation-thread). The idiomatic engine solution is a
+**tick-driven state machine**: all state lives in `GameState`, and `onTick`
 advances it. No threads, no locks, trivially testable.
 
 ```java
 public final class SimonSaysGame implements Game {
 
-    private static final String SEQ   = "simon.sequence";     // List<Position>
-    private static final String STEP  = "simon.step";         // Integer, see the three states below
+    private static final String SEQ = "simon.sequence";     // List<Position>
+    private static final String STEP = "simon.step";         // Integer, see the three states below
     private static final String TICKS = "simon.ticksInStep";  // Integer: sub-tick counter
-    private static final int    PLAY_NEXT = -1;               // grow the sequence and play it back
-    private static final int    WAIT      = -2;               // playback done, waiting for the player
-    private static final int    ON_TICKS  = 4;                // 4 × 100 ms lit
-    private static final int    OFF_TICKS = 2;                // 2 × 100 ms dark
+    private static final int PLAY_NEXT = -1;               // grow the sequence and play it back
+    private static final int WAIT = -2;               // playback done, waiting for the player
+    private static final int ON_TICKS = 4;                // 4 × 100 ms lit
+    private static final int OFF_TICKS = 2;                // 2 × 100 ms dark
     // STEP >= 0 means "currently playing back position STEP"
 
-    @Override public GameDescriptor descriptor() {
+    @Override
+    public GameDescriptor descriptor() {
         return GameDescriptor.builder("simon", "Simon Says")
                 .category("MEMORY").description("Repeat the growing sequence.")
                 .boardSize(4, 4).players(1, 1).build();
     }
 
-    @Override public void onStart(GameContext ctx) {
+    @Override
+    public void onStart(GameContext ctx) {
         ctx.state().put(SEQ, List.of());
         ctx.state().put(STEP, PLAY_NEXT);
         ctx.state().put(TICKS, 0);
         ctx.animations().playCountdown(600);      // async — onStart returns immediately
     }
 
-    @Override public void onTick(GameContext ctx) {
+    @Override
+    public void onTick(GameContext ctx) {
         if (!ctx.state().containsKey(SEQ)) return;   // defensive: onStart always sets it
         int step = step(ctx);
-        if (step == WAIT)      return;               // the player's turn — nothing to do
-        if (step == PLAY_NEXT) { nextRound(ctx); return; }
+        if (step == WAIT) return;               // the player's turn — nothing to do
+        if (step == PLAY_NEXT) {
+            nextRound(ctx);
+            return;
+        }
         advancePlayback(ctx);
     }
 
@@ -1362,8 +1680,8 @@ public final class SimonSaysGame implements Game {
         int ticks = ctx.state().get(TICKS, Integer.class).orElse(0) + 1;
         ctx.state().put(TICKS, ticks);
 
-        boolean lit   = ticks <= ON_TICKS;
-        int     limit = lit ? ON_TICKS : ON_TICKS + OFF_TICKS;
+        boolean lit = ticks <= ON_TICKS;
+        int limit = lit ? ON_TICKS : ON_TICKS + OFF_TICKS;
         light(ctx, seq.get(step(ctx)), lit);
 
         if (ticks < limit) return;                // stay in the current sub-phase
@@ -1386,7 +1704,8 @@ public final class SimonSaysGame implements Game {
         return ctx.state().get(STEP, Integer.class).orElse(PLAY_NEXT);
     }
 
-    @Override public void onTileEvent(GameContext ctx, TileEvent event) {
+    @Override
+    public void onTileEvent(GameContext ctx, TileEvent event) {
         if (step(ctx) != WAIT) return;            // ignore everything outside the player's turn
 
         ctx.memory().addInput(event.position());
@@ -1434,16 +1753,16 @@ Backend (see [§5.3](#53-a-complete-controller) for the full controller). The da
 <!doctype html>
 <div id="log"></div>
 <script>
-  const sid = new URLSearchParams(location.search).get('session');
-  const es  = new EventSource(`/api/v1/games/sessions/${sid}/events`);
-  for (const type of ['SESSION_LIFECYCLE','SCORE_UPDATE','BOARD_UPDATE','TICK','GAME_STATE']) {
-    es.addEventListener(type, e => {
-      const evt = JSON.parse(e.data);
-      document.getElementById('log').insertAdjacentHTML('afterbegin',
-        `<div><b>${evt.type}</b> ${evt.timestamp} <code>${JSON.stringify(evt.data)}</code></div>`);
-    });
-  }
-  es.onerror = () => document.getElementById('log').insertAdjacentHTML('afterbegin', '<i>stream closed</i>');
+    const sid = new URLSearchParams(location.search).get('session');
+    const es = new EventSource(`/api/v1/games/sessions/${sid}/events`);
+    for (const type of ['SESSION_LIFECYCLE', 'SCORE_UPDATE', 'BOARD_UPDATE', 'TICK', 'GAME_STATE']) {
+        es.addEventListener(type, e => {
+            const evt = JSON.parse(e.data);
+            document.getElementById('log').insertAdjacentHTML('afterbegin',
+                    `<div><b>${evt.type}</b> ${evt.timestamp} <code>${JSON.stringify(evt.data)}</code></div>`);
+        });
+    }
+    es.onerror = () => document.getElementById('log').insertAdjacentHTML('afterbegin', '<i>stream closed</i>');
 </script>
 ```
 
@@ -1460,24 +1779,28 @@ class WhackAMoleGameTest {
     private FakeContext ctx;      // implements GameContext, records every call
     private WhackAMoleGame game = new WhackAMoleGame();
 
-    @BeforeEach void setup() {
+    @BeforeEach
+    void setup() {
         ctx = new FakeContext(game.descriptor(), List.of(Player.solo("Alice")));
         game.onStart(ctx);
     }
 
-    @Test void hittingTheMoleScores() {
+    @Test
+    void hittingTheMoleScores() {
         Position mole = ctx.lastLitTile();               // read from the fake's board log
         game.onTileEvent(ctx, TileEvent.touch(mole, ctx.sessionId()));
         assertEquals(10, ctx.scores().get("Alice"));
     }
 
-    @Test void missingTheMoleCostsHealth() {
+    @Test
+    void missingTheMoleCostsHealth() {
         Position wrong = ctx.firstUnlitTile();
         game.onTileEvent(ctx, TileEvent.touch(wrong, ctx.sessionId()));
         assertEquals(2, ctx.health().current("Alice"));  // default max 3
     }
 
-    @Test void threeMissesEndsTheSession() {
+    @Test
+    void threeMissesEndsTheSession() {
         for (int i = 0; i < 3; i++)
             game.onTileEvent(ctx, TileEvent.touch(ctx.firstUnlitTile(), ctx.sessionId()));
         assertEquals(GameStatus.FINISHED, ctx.status());
@@ -1487,13 +1810,13 @@ class WhackAMoleGameTest {
 
 No gateway is needed at all: `FakeContext` implements `GameContext` and simply records the `setTile` /
 `publishBoard` / `fillBoard` calls instead of writing to hardware. It can reuse the **real** feature classes
-(`new ScoreSystem(players)`, `new HealthSystem(players)`, …) because they have no dependencies of their own —
-you only fake the board output and the session-control methods. That is the
-practical payoff of [§3.1](#31-framework-free-core-spring-as-a-thin-shell) and
+(`new ScoreSystem(players)`, `new HealthSystem(players)`, …) because they have no dependencies of their own — you only
+fake the board output and the session-control methods. That is the practical payoff
+of [§3.1](#31-framework-free-core-spring-as-a-thin-shell) and
 [§3.2](#32-the-gamecontext-is-the-whole-api-surface-a-game-author-sees).
 
-To test the *engine* itself, use `GameEventBusImpl(Runnable::run)` — the second constructor takes an `Executor`, and
-a direct executor makes event assertions synchronous instead of racy:
+To test the *engine* itself, use `GameEventBusImpl(Runnable::run)` — the second constructor takes an `Executor`, and a
+direct executor makes event assertions synchronous instead of racy:
 
 ```java
 GameEventBus bus = new GameEventBusImpl(Runnable::run);   // inline dispatch in tests
@@ -1503,8 +1826,8 @@ GameEventBus bus = new GameEventBusImpl(Runnable::run);   // inline dispatch in 
 
 ## 11. Configuration reference
 
-| Property | Type | Default | Effect |
-|---|---|---|---|
+| Property                         | Type       | Default | Effect                                                                                                                                                              |
+|----------------------------------|------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `tileboard.engine.tick-interval` | `Duration` | `100ms` | Period of `onTick()` for every running session. `0` disables ticking entirely (no `TICK` events, `GameTimer.checkExpiry()` never runs unless you call it yourself). |
 
 That is the complete list. Board geometry comes from `GatewayConnectedEvent`; game geometry comes from each
@@ -1513,11 +1836,23 @@ That is the complete list. Board geometry comes from `GatewayConnectedEvent`; ga
 Per-session knobs you set in code instead:
 
 ```java
-ctx.combos().setComboTimeout(1500);
-ctx.levels().setSpeedScaler(lvl -> 800 - lvl * 50);
-new HealthSystem(players, 5);                     // custom max health
-new NeighborFinder(w, h, Adjacency.EIGHT_WAY);    // custom adjacency
-new RandomFeature(w, h, 1234L);                   // deterministic RNG
+ctx.combos().
+
+setComboTimeout(1500);
+ctx.
+
+levels().
+
+setSpeedScaler(lvl ->800-lvl *50);
+        new
+
+HealthSystem(players, 5);                     // custom max health
+new
+
+NeighborFinder(w, h, Adjacency.EIGHT_WAY);    // custom adjacency
+new
+
+RandomFeature(w, h, 1234L);                   // deterministic RNG
 ```
 
 ---
@@ -1546,13 +1881,17 @@ Do **not** add a parameter to `Game` or `GameFactory` — that breaks every exis
 ### Swap the transport
 
 Implement/obtain a `TileGatewayClient` for your transport (TCP, MQTT, a simulator) and publish
-`GatewayConnectedEvent` with it. Nothing in the engine changes. For a **software simulator**, this is the fastest
-path to hardware-free development:
+`GatewayConnectedEvent` with it. Nothing in the engine changes. For a **software simulator**, this is the fastest path
+to hardware-free development:
 
 ```java
 TileGatewayClient sim = new InMemoryGatewayClient(8, 8);   // your code
-publisher.publishEvent(new GatewayConnectedEvent(sim, 8, 8));
-sim.injectTouch(new Position(3, 4));                       // → TileEvent in every session
+publisher.
+
+publishEvent(new GatewayConnectedEvent(sim, 8,8));
+        sim.
+
+injectTouch(new Position(3, 4));                       // → TileEvent in every session
 ```
 
 ### Replace a default bean
@@ -1560,10 +1899,14 @@ sim.injectTouch(new Position(3, 4));                       // → TileEvent in e
 Every auto-configured bean is `@ConditionalOnMissingBean`:
 
 ```java
-@Bean GameEventBus gameEventBus() {
+
+@Bean
+GameEventBus gameEventBus() {
     return new GameEventBusImpl(myBoundedExecutor);          // e.g. back-pressure
 }
-@Bean GameRegistry gameRegistry() {
+
+@Bean
+GameRegistry gameRegistry() {
     GameRegistry r = new DefaultGameRegistry();
     r.register(new WhackAMoleGame().descriptor(), WhackAMoleGame::new);   // factory registration
     return r;
@@ -1587,23 +1930,23 @@ mvn dependency:tree       # check what the optional Spring layer pulls in
 
 ### 13.2 Dependency map
 
-| Dependency | Scope | Used by | Required at runtime? |
-|---|---|---|---|
-| `tileboard-serial-protocol` | compile | everything | ✅ yes |
-| `slf4j-api` | compile | logging across all packages | ✅ yes (bring your own binding) |
-| `jackson-databind` | compile | SSE payload serialisation | ✅ for `.sse` |
-| `jackson-datatype-jsr310` | compile | ISO-8601 `Instant` in SSE payloads | ✅ for `.sse` |
-| `spring-boot-autoconfigure` | compile, **optional** | `.spring` auto-config | only if you use Spring Boot |
-| `spring-boot-configuration-processor` | compile, **optional** | `application.yml` metadata for `TileboardEngineProperties` | no (build-time only) |
-| `spring-web` | compile, **optional** | `SseEmitter` | only for SSE |
-| `spring-webmvc` | **compile** ⚠️ | servlet MVC integration | only for SSE |
-| `junit-jupiter` | test | unit tests | no |
-| `slf4j-simple` | test | log output during tests | no |
+| Dependency                            | Scope                 | Used by                                                    | Required at runtime?            |
+|---------------------------------------|-----------------------|------------------------------------------------------------|---------------------------------|
+| `tileboard-serial-protocol`           | compile               | everything                                                 | ✅ yes                          |
+| `slf4j-api`                           | compile               | logging across all packages                                | ✅ yes (bring your own binding) |
+| `jackson-databind`                    | compile               | SSE payload serialisation                                  | ✅ for `.sse`                   |
+| `jackson-datatype-jsr310`             | compile               | ISO-8601 `Instant` in SSE payloads                         | ✅ for `.sse`                   |
+| `spring-boot-autoconfigure`           | compile, **optional** | `.spring` auto-config                                      | only if you use Spring Boot     |
+| `spring-boot-configuration-processor` | compile, **optional** | `application.yml` metadata for `TileboardEngineProperties` | no (build-time only)            |
+| `spring-web`                          | compile, **optional** | `SseEmitter`                                               | only for SSE                    |
+| `spring-webmvc`                       | **compile** ⚠️        | servlet MVC integration                                    | only for SSE                    |
+| `junit-jupiter`                       | test                  | unit tests                                                 | no                              |
+| `slf4j-simple`                        | test                  | log output during tests                                    | no                              |
 
 ### 13.3 Two POM issues to fix before your first build
 
-1. **`jackson-datatype-jsr310:2.22.1` does not exist on Maven Central** (the 2.x line tops out at 2.21.x, and
-   Jackson 3 moved the artifact to the `tools.jackson.datatype` group). Pin it to the same version as
+1. **`jackson-datatype-jsr310:2.22.1` does not exist on Maven Central** (the 2.x line tops out at 2.21.x, and Jackson 3
+   moved the artifact to the `tools.jackson.datatype` group). Pin it to the same version as
    `jackson-databind` via the existing `${jackson.version}` property:
 
    ```xml
@@ -1618,8 +1961,8 @@ mvn dependency:tree       # check what the optional Spring layer pulls in
    `NoSuchMethodError` at runtime even when the build succeeds.
 
 2. **`spring-webmvc` is declared with `<scope>compile</scope>`**, which contradicts the "Spring is optional" design
-   ([§3.1](#31-framework-free-core-spring-as-a-thin-shell)) — every consumer, including non-Spring ones, would
-   inherit Spring MVC transitively. Mark it optional (and align its version with `spring-web`, currently
+   ([§3.1](#31-framework-free-core-spring-as-a-thin-shell)) — every consumer, including non-Spring ones, would inherit
+   Spring MVC transitively. Mark it optional (and align its version with `spring-web`, currently
    `6.1.11` vs `6.1.13`):
 
    ```xml
@@ -1635,22 +1978,22 @@ mvn dependency:tree       # check what the optional Spring layer pulls in
 
 ### 13.4 Known limitations & gotchas
 
-| # | Behaviour | Why / what to do |
-|---|---|---|
-| 1 | **One thread pair per session.** Each session creates a tick executor and an animation executor. | Fine for a handful of concurrent boards; for hundreds, share a `ScheduledExecutorService` across sessions. |
-| 2 | **`TouchHistory` is unbounded.** | A 10-minute session at 10 touches/s ≈ 6 000 entries. Call `ctx.touchHistory().reset()` between rounds, or add a bounded variant. |
-| 3 | **`onTick` and `onTileEvent` can overlap.** | See [§9](#9-threading-model--concurrency-contract). Keep game fields atomic or in `GameState`. |
-| 4 | **Singleton game registration shares state across sessions.** | `registry.register(game)` stores `() -> game`. Use `registry.register(descriptor, MyGame::new)` for stateful games. |
-| 5 | **`onStart` runs on the HTTP/caller thread.** | Keep it fast (< a few ms). Long intro sequences belong in `animations().playCountdown()`, which is async. |
-| 6 | **`WaveGenerator` blocks the calling thread.** | Never call it from `onTick`. |
-| 7 | **The engine does not call `GameTimer.checkExpiry()`.** | Your `onTick` must, or countdowns never fire. |
-| 8 | **`setTile` / `fillBoard` do not emit `BOARD_UPDATED`.** | Only `publishBoard` does. Publish a `CUSTOM` event yourself if a dashboard needs per-tile updates. |
-| 9 | **Session cleanup is asynchronous.** `activeSessions` is pruned by an event-bus subscriber. | A session that just finished can still appear in `activeSessions()` for a few milliseconds; its `status()` is already terminal, so filter on that. In the rare case where `onStart` throws, `forceStop()` publishes `SESSION_STOPPED` *before* the cleanup subscription is registered — the session then stays in the map with status `STOPPED`. Prune on status if this matters. |
-| 10 | **`publishBoard` sends the board you passed, but copies it into the session buffer.** | So `ctx.setTile(...)` afterwards is consistent with what the hardware last received. Prefer one style per game to avoid confusion. |
-| 11 | **Geometry mismatch is silently (warned) dropped.** | If `DATA_IN` payloads are discarded, check that `GatewayConnectedEvent(w, h)` matches the physical board, and that each `GameDescriptor.boardSize(w, h)` is ≤ the board. |
-| 12 | **`RandomFeature` uses `java.util.Random`.** | Not cryptographic, and `chance()`/`pick()` are individually atomic but not jointly so. Fine for games; do not use for anything security-relevant. |
-| 13 | **No PAUSED transition is implemented by the engine.** | `GameStatus.PAUSED` exists and `finishSession` accepts it, but nothing sets it. Implement pause in your game via a `GameState` flag checked in `onTick`/`onTileEvent`. |
-| 14 | **`GameEventSseEmitter` has no heartbeat.** | Proxies with idle timeouts may drop a silent stream. Schedule a periodic `CUSTOM` event, or a comment ping, if you deploy behind one. |
+| #  | Behaviour                                                                                        | Why / what to do                                                                                                                                                                                                                                                                                                                                                                  |
+|----|--------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1  | **One thread pair per session.** Each session creates a tick executor and an animation executor. | Fine for a handful of concurrent boards; for hundreds, share a `ScheduledExecutorService` across sessions.                                                                                                                                                                                                                                                                        |
+| 2  | **`TouchHistory` is unbounded.**                                                                 | A 10-minute session at 10 touches/s ≈ 6 000 entries. Call `ctx.touchHistory().reset()` between rounds, or add a bounded variant.                                                                                                                                                                                                                                                  |
+| 3  | **`onTick` and `onTileEvent` can overlap.**                                                      | See [§9](#9-threading-model--concurrency-contract). Keep game fields atomic or in `GameState`.                                                                                                                                                                                                                                                                                    |
+| 4  | **Singleton game registration shares state across sessions.**                                    | `registry.register(game)` stores `() -> game`. Use `registry.register(descriptor, MyGame::new)` for stateful games.                                                                                                                                                                                                                                                               |
+| 5  | **`onStart` runs on the HTTP/caller thread.**                                                    | Keep it fast (< a few ms). Long intro sequences belong in `animations().playCountdown()`, which is async.                                                                                                                                                                                                                                                                         |
+| 6  | **`WaveGenerator` blocks the calling thread.**                                                   | Never call it from `onTick`.                                                                                                                                                                                                                                                                                                                                                      |
+| 7  | **The engine does not call `GameTimer.checkExpiry()`.**                                          | Your `onTick` must, or countdowns never fire.                                                                                                                                                                                                                                                                                                                                     |
+| 8  | **`setTile` / `fillBoard` do not emit `BOARD_UPDATED`.**                                         | Only `publishBoard` does. Publish a `CUSTOM` event yourself if a dashboard needs per-tile updates.                                                                                                                                                                                                                                                                                |
+| 9  | **Session cleanup is asynchronous.** `activeSessions` is pruned by an event-bus subscriber.      | A session that just finished can still appear in `activeSessions()` for a few milliseconds; its `status()` is already terminal, so filter on that. In the rare case where `onStart` throws, `forceStop()` publishes `SESSION_STOPPED` *before* the cleanup subscription is registered — the session then stays in the map with status `STOPPED`. Prune on status if this matters. |
+| 10 | **`publishBoard` sends the board you passed, but copies it into the session buffer.**            | So `ctx.setTile(...)` afterwards is consistent with what the hardware last received. Prefer one style per game to avoid confusion.                                                                                                                                                                                                                                                |
+| 11 | **Geometry mismatch is silently (warned) dropped.**                                              | If `DATA_IN` payloads are discarded, check that `GatewayConnectedEvent(w, h)` matches the physical board, and that each `GameDescriptor.boardSize(w, h)` is ≤ the board.                                                                                                                                                                                                          |
+| 12 | **`RandomFeature` uses `java.util.Random`.**                                                     | Not cryptographic, and `chance()`/`pick()` are individually atomic but not jointly so. Fine for games; do not use for anything security-relevant.                                                                                                                                                                                                                                 |
+| 13 | **No PAUSED transition is implemented by the engine.**                                           | `GameStatus.PAUSED` exists and `finishSession` accepts it, but nothing sets it. Implement pause in your game via a `GameState` flag checked in `onTick`/`onTileEvent`.                                                                                                                                                                                                            |
+| 14 | **`GameEventSseEmitter` has no heartbeat.**                                                      | Proxies with idle timeouts may drop a silent stream. Schedule a periodic `CUSTOM` event, or a comment ping, if you deploy behind one.                                                                                                                                                                                                                                             |
 
 ---
 
@@ -1659,46 +2002,113 @@ mvn dependency:tree       # check what the optional Spring layer pulls in
 ```java
 // ── Registration ────────────────────────────────────────────────────────
 GameRegistry registry = new DefaultGameRegistry();
-registry.register(new MyGame());                       // singleton
-registry.register(descriptor, MyGame::new);            // per-session
-registry.find("id"); registry.listAll(); registry.isRegistered("id"); registry.instantiate("id");
+registry.
+
+register(new MyGame());                       // singleton
+        registry.
+
+register(descriptor, MyGame::new);            // per-session
+registry.
+
+find("id"); registry.
+
+listAll(); registry.
+
+isRegistered("id"); registry.
+
+instantiate("id");
 
 // ── Engine ──────────────────────────────────────────────────────────────
 GameEngine engine = new GameEngineImpl(registry, gateway, eventBus, Duration.ofMillis(100), 8, 8);
 String sid = engine.startGame("id", List.of(Player.solo("Alice")));
-engine.activeSession(sid);  engine.activeSessions();  engine.stopGame(sid);  engine.registry();
+engine.
+
+activeSession(sid);  engine.
+
+activeSessions();  engine.
+
+stopGame(sid);  engine.
+
+registry();
 
 // ── Spring ──────────────────────────────────────────────────────────────
-publisher.publishEvent(new GatewayConnectedEvent(client, 8, 8));
-publisher.publishEvent(new GatewayDisconnectedEvent());
+publisher.
+
+publishEvent(new GatewayConnectedEvent(client, 8,8));
+        publisher.
+
+publishEvent(new GatewayDisconnectedEvent());
 GameEngine e = engineManager.require();                // throws EngineNotReadyException
 Optional<GameEngine> maybe = engineManager.current();
 
 // ── Game authoring ──────────────────────────────────────────────────────
 class MyGame implements Game {
-    public GameDescriptor descriptor() { return GameDescriptor.builder("id", "Name")
-            .category("ARCADE").description("…").boardSize(8,8).players(1,4).build(); }
-    public void onStart(GameContext ctx)                       { … }   // required
-    public void onTileEvent(GameContext ctx, TileEvent event)  { … }   // required
-    public void onTick(GameContext ctx)                        { … }   // default no-op
-    public void onStop(GameContext ctx, GameResult result)     { … }   // default no-op
-    public void onError(GameContext ctx, Throwable error)      { ctx.stopSession(); }  // default
+    public GameDescriptor descriptor() {
+        return GameDescriptor.builder("id", "Name")
+                .category("ARCADE").description("…").boardSize(8, 8).players(1, 4).build();
+    }
+
+    public void onStart(GameContext ctx) { …}   // required
+
+    public void onTileEvent(GameContext ctx, TileEvent event) { …}   // required
+
+    public void onTick(GameContext ctx) { …}   // default no-op
+
+    public void onStop(GameContext ctx, GameResult result) { …}   // default no-op
+
+    public void onError(GameContext ctx, Throwable error) {
+        ctx.stopSession();
+    }  // default
 }
 
 // ── Board output ────────────────────────────────────────────────────────
-Board<TileColor> b = ctx.newBoard(); b.set(r, c, TileColor.RED); ctx.publishBoard(b);
-ctx.setTile(r, c, TileColor.GREEN);  ctx.fillBoard(TileColor.OFF);
+Board<TileColor> b = ctx.newBoard(); b.
+
+set(r, c, TileColor.RED); ctx.
+
+publishBoard(b);
+ctx.
+
+setTile(r, c, TileColor.GREEN);  ctx.
+
+fillBoard(TileColor.OFF);
 
 // ── Input ───────────────────────────────────────────────────────────────
-event.position(); event.type(); event.occurredAt(); event.sessionId();
-TileEvent.touch(pos, sid);  TileEvent.release(pos, sid);
+event.
+
+position(); event.
+
+type(); event.
+
+occurredAt(); event.
+
+sessionId();
+TileEvent.
+
+touch(pos, sid);  TileEvent.
+
+release(pos, sid);
 
 // ── Ending a session ────────────────────────────────────────────────────
-ctx.winSession(List.of(player));  ctx.loseSession();  ctx.stopSession();
-ctx.status();                     session.result();   // Optional<GameResult>
+ctx.
+
+winSession(List.of(player));ctx.
+
+loseSession();  ctx.
+
+stopSession();
+ctx.
+
+status();                     session.
+
+result();   // Optional<GameResult>
 
 // ── Events & SSE ────────────────────────────────────────────────────────
-ctx.eventBus().publish(GameEvent.of(GameEventType.CUSTOM, sid, gid, Map.of("k", 1)));
+ctx.
+
+eventBus().
+
+publish(GameEvent.of(GameEventType.CUSTOM, sid, gid, Map.of("k", 1)));
 Runnable off = bus.subscribe(listener);
 Runnable off2 = bus.subscribeSession(sid, listener);
 Runnable off3 = bus.subscribe(GameEventType.TICK, listener);
@@ -1706,42 +2116,56 @@ SseEmitter em = GameEventSseEmitter.forSession(sid, bus);
 SseEmitter em2 = GameEventSseEmitter.global(bus);
 
 // ── Values ──────────────────────────────────────────────────────────────
-Player.of("Alice", PlayerRole.PLAYER_ONE);  Player.solo("Alice");
-new Team("Red", List.of(p1, p2));
+Player.
+
+of("Alice",PlayerRole.PLAYER_ONE);  Player.
+
+solo("Alice");
+new
+
+Team("Red",List.of(p1, p2));
+
 GameResult(sid, gid, status, winners, scores, duration, finishedAt);
-TouchSequence(positions, timestamps).gaps(); .averageGap(); .gapBetween(i);
+
+TouchSequence(positions, timestamps).
+
+gaps(); .
+
+averageGap(); .
+
+gapBetween(i);
 ```
 
 ---
 
 ## Appendix A — Package index
 
-| Package | Contents | Spring? |
-|---|---|---|
-| `com.tileboard.engine.core` | `Game`, `GameLifecycle`, `GameDescriptor`, `GameFactory`, `GameRegistry`, `DefaultGameRegistry`, `GameEngine`, `GameEngineImpl`, `GameSession`, `GameSessionImpl`, `GameContext`, `GameState`, `GameStatus`, `GameResult` | ❌ |
-| `com.tileboard.engine.feature` | `AnimationSystem`, `ScoreSystem`, `HealthSystem`, `LevelSystem`, `ComboTracker`, `GameTimer`, `TouchHistory`, `TouchAnalyzer`, `BoardFeature`, `PatternMatcher`, `RandomFeature`, `WaveGenerator`, `MemoryFeature`, `ReactionSpeedTracker`, `GraphFeature` | ❌ |
-| `com.tileboard.engine.feature.neighbor` | `NeighborFinder`, `Adjacency` | ❌ |
-| `com.tileboard.engine.event` | `GameEvent`, `GameEventType`, `GameEventBus`, `GameEventBusImpl`, `GameEventListener` | ❌ |
-| `com.tileboard.engine.model` | `Player`, `PlayerRole`, `Team`, `TileColor`, `TileEvent`, `TileEventType`, `TouchSequence` | ❌ |
-| `com.tileboard.engine.codec` | `ColorTileCodec`, `EngineFrameRouter` | ❌ |
-| `com.tileboard.engine.exception` | `GameEngineException`, `GameNotFoundException`, `GameSessionException`, `EngineNotReadyException` | ❌ |
-| `com.tileboard.engine.spring` | `TileboardEngineAutoConfiguration`, `TileboardEngineProperties`, `GameEngineManager`, `GatewayConnectedEvent`, `GatewayDisconnectedEvent` | ✅ |
-| `com.tileboard.engine.sse` | `GameEventSseEmitter`, `SseGameEvent`, `SseGameEventType` | ✅ |
+| Package                                 | Contents                                                                                                                                                                                                                                                   | Spring? |
+|-----------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| `com.tileboard.engine.core`             | `Game`, `GameLifecycle`, `GameDescriptor`, `GameFactory`, `GameRegistry`, `DefaultGameRegistry`, `GameEngine`, `GameEngineImpl`, `GameSession`, `GameSessionImpl`, `GameContext`, `GameState`, `GameStatus`, `GameResult`                                  | ❌      |
+| `com.tileboard.engine.feature`          | `AnimationSystem`, `ScoreSystem`, `HealthSystem`, `LevelSystem`, `ComboTracker`, `GameTimer`, `TouchHistory`, `TouchAnalyzer`, `BoardFeature`, `PatternMatcher`, `RandomFeature`, `WaveGenerator`, `MemoryFeature`, `ReactionSpeedTracker`, `GraphFeature` | ❌      |
+| `com.tileboard.engine.feature.neighbor` | `NeighborFinder`, `Adjacency`                                                                                                                                                                                                                              | ❌      |
+| `com.tileboard.engine.event`            | `GameEvent`, `GameEventType`, `GameEventBus`, `GameEventBusImpl`, `GameEventListener`                                                                                                                                                                      | ❌      |
+| `com.tileboard.engine.model`            | `Player`, `PlayerRole`, `Team`, `TileColor`, `TileEvent`, `TileEventType`, `TouchSequence`                                                                                                                                                                 | ❌      |
+| `com.tileboard.engine.codec`            | `ColorTileCodec`, `EngineFrameRouter`                                                                                                                                                                                                                      | ❌      |
+| `com.tileboard.engine.exception`        | `GameEngineException`, `GameNotFoundException`, `GameSessionException`, `EngineNotReadyException`                                                                                                                                                          | ❌      |
+| `com.tileboard.engine.spring`           | `TileboardEngineAutoConfiguration`, `TileboardEngineProperties`, `GameEngineManager`, `GatewayConnectedEvent`, `GatewayDisconnectedEvent`                                                                                                                  | ✅      |
+| `com.tileboard.engine.sse`              | `GameEventSseEmitter`, `SseGameEvent`, `SseGameEventType`                                                                                                                                                                                                  | ✅      |
 
 ## Appendix B — Glossary
 
-| Term | Meaning in this codebase |
-|---|---|
-| **Gateway** | An open `TileGatewayClient` — the transport to one physical board. |
-| **Session** | One running instance of one game, with its own state, features, threads and board buffer. |
-| **Tick** | One `onTick()` invocation; period = `tileboard.engine.tick-interval`. |
-| **Frame** | A protocol-level packet. `DATA_IN` = board → engine (touches), `DATA_OUT` = engine → board (colours). |
-| **Board buffer** | `GameSessionImpl`'s `Board<TileColor>` mirror of what the hardware last received. |
-| **Feature** | A stateful helper owned by a session and reachable from `GameContext`. |
-| **Descriptor** | Immutable metadata identifying a game type and its board/player requirements. |
-| **Wire code** | The single byte representing a colour on the serial protocol. |
+| Term             | Meaning in this codebase                                                                              |
+|------------------|-------------------------------------------------------------------------------------------------------|
+| **Gateway**      | An open `TileGatewayClient` — the transport to one physical board.                                    |
+| **Session**      | One running instance of one game, with its own state, features, threads and board buffer.             |
+| **Tick**         | One `onTick()` invocation; period = `tileboard.engine.tick-interval`.                                 |
+| **Frame**        | A protocol-level packet. `DATA_IN` = board → engine (touches), `DATA_OUT` = engine → board (colours). |
+| **Board buffer** | `GameSessionImpl`'s `Board<TileColor>` mirror of what the hardware last received.                     |
+| **Feature**      | A stateful helper owned by a session and reachable from `GameContext`.                                |
+| **Descriptor**   | Immutable metadata identifying a game type and its board/player requirements.                         |
+| **Wire code**    | The single byte representing a colour on the serial protocol.                                         |
 
 ---
 
-*Licence and versioning: `1.0.0`, Java 17. When you change engine internals, update §6 and §13.4 in the same
-commit — this README is part of the deliverable, not an afterthought.*
+*Licence and versioning: `1.0.0`, Java 17. When you change engine internals, update §6 and §13.4 in the same commit —
+this README is part of the deliverable, not an afterthought.*

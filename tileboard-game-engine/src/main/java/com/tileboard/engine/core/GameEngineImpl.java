@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -36,15 +37,10 @@ public final class GameEngineImpl implements GameEngine {
                 t.setDaemon(true);
                 return t;
             });
+    AtomicBoolean cleaned = new AtomicBoolean(false);
 
-    public GameEngineImpl(
-            GameRegistry registry,
-            TileGatewayClient gateway,
-            GameEventBus eventBus,
-            Duration tickInterval,
-            int boardWidth,
-            int boardHeight
-    ) {
+    public GameEngineImpl(GameRegistry registry, TileGatewayClient gateway,
+                          GameEventBus eventBus, Duration tickInterval, int boardWidth, int boardHeight) {
         this.registry = Objects.requireNonNull(registry);
         this.gateway = Objects.requireNonNull(gateway);
         this.eventBus = Objects.requireNonNull(eventBus);
@@ -87,32 +83,30 @@ public final class GameEngineImpl implements GameEngine {
 
         activeSessions.put(sessionId, session);
 
-        AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
-        AtomicReference<ScheduledFuture<?>> reaperRef = new AtomicReference<>();
-
-        Runnable cleanup = () -> {
+        ScheduledFuture<?> reaper = sessionReaper.schedule(() -> {
+            if (activeSessions.containsKey(sessionId)) {
+                log.warn("Session {} TTL exceeded, forcing cleanup", sessionId);
+                session.stop();
+            }
             activeSessions.remove(sessionId);
-            ScheduledFuture<?> reaper = reaperRef.get();
-            if (reaper != null) reaper.cancel(false);
-            Runnable unsubscribe = unsubscribeRef.get();
-            if (unsubscribe != null) unsubscribe.run();
+        }, 24, TimeUnit.HOURS);
+
+        Runnable[] unsubscribeRef = new Runnable[1];
+        Runnable cleanup = () -> {
+            if (!cleaned.compareAndSet(false, true)) return;
+            activeSessions.remove(sessionId);
+            reaper.cancel(false);
+            if (unsubscribeRef[0] != null) unsubscribeRef[0].run();
         };
 
-        unsubscribeRef.set(eventBus.subscribe(event -> {
+        unsubscribeRef[0] = eventBus.subscribe(event -> {
             if (event.sessionId().equals(sessionId) &&
                     (event.type() == GameEventType.SESSION_FINISHED ||
                             event.type() == GameEventType.SESSION_STOPPED)) {
                 cleanup.run();
             }
-        }));
+        });
 
-        reaperRef.set(sessionReaper.schedule(() -> {
-            if (activeSessions.containsKey(sessionId)) {
-                log.warn("Session {} TTL exceeded, forcing cleanup", sessionId);
-                session.stop();
-            }
-            cleanup.run();
-        }, 24, TimeUnit.HOURS));
 
         session.start();
         return sessionId;
@@ -134,22 +128,8 @@ public final class GameEngineImpl implements GameEngine {
         return List.copyOf(activeSessions.values());
     }
 
-    // ── Internal: fan-out touch events to all running sessions ────────────
-
     @Override
     public GameRegistry registry() {
         return registry;
-    }
-
-    private void routeTouchFrame(Board<Boolean> touchBoard) {
-        activeSessions.forEach((id, session) -> {
-            int w = session.boardWidth();
-            int h = session.boardHeight();
-            for (Position pos : touchBoard.positionsWhere(Boolean.TRUE::equals)) {
-                if (pos.row() < h && pos.col() < w) {
-                    session.handleTileEvent(TileEvent.touch(pos, id));
-                }
-            }
-        });
     }
 }

@@ -11,13 +11,9 @@ import java.util.List;
  */
 public final class NeighborFinder {
 
-    private final int       width;
-    private final int       height;
-    private final Adjacency adjacency;
-
     // Direction arrays: {dRow, dCol}
-    private static final int[][] FOUR  = {{-1,0},{1,0},{0,-1},{0,1}};
-    private static final int[][] DIAG  = {{-1,-1},{-1,1},{1,-1},{1,1}};
+    private static final int[][] FOUR = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+    private static final int[][] DIAG = {{-1, -1}, {-1, 1}, {1, -1}, {1, 1}};
     private static final int[][] EIGHT;
 
     static {
@@ -26,9 +22,13 @@ public final class NeighborFinder {
         System.arraycopy(DIAG, 0, EIGHT, 4, 4);
     }
 
+    private final int width;
+    private final int height;
+    private final Adjacency adjacency;
+
     public NeighborFinder(int width, int height, Adjacency adjacency) {
-        this.width     = width;
-        this.height    = height;
+        this.width = width;
+        this.height = height;
         this.adjacency = adjacency;
     }
 
@@ -38,8 +38,8 @@ public final class NeighborFinder {
 
     public List<Position> of(int row, int col) {
         int[][] dirs = switch (adjacency) {
-            case FOUR_WAY      -> FOUR;
-            case EIGHT_WAY     -> EIGHT;
+            case FOUR_WAY -> FOUR;
+            case EIGHT_WAY -> EIGHT;
             case DIAGONAL_ONLY -> DIAG;
         };
         List<Position> result = new ArrayList<>(dirs.length);
@@ -52,14 +52,16 @@ public final class NeighborFinder {
         return result;
     }
 
-    /** All positions reachable from {@code start} via BFS (flood-fill). */
+    /**
+     * All positions reachable from {@code start} via BFS (flood-fill).
+     */
     public List<Position> connectedRegion(
             Position start,
             java.util.function.Predicate<Position> passable) {
 
-        List<Position>       visited = new ArrayList<>();
-        java.util.ArrayDeque<Position> queue   = new java.util.ArrayDeque<>();
-        java.util.Set<Position>        seen    = new java.util.HashSet<>();
+        List<Position> visited = new ArrayList<>();
+        java.util.ArrayDeque<Position> queue = new java.util.ArrayDeque<>();
+        java.util.Set<Position> seen = new java.util.HashSet<>();
 
         queue.add(start);
         seen.add(start);
