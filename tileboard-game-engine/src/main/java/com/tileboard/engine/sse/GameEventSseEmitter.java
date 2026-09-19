@@ -13,6 +13,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 
 /**
@@ -39,32 +40,38 @@ public final class GameEventSseEmitter {
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    /** Creates an emitter that streams all events for {@code sessionId}. */
+    private GameEventSseEmitter() {
+    }
+
+    /**
+     * Creates an emitter that streams all events for {@code sessionId}.
+     */
     public static SseEmitter forSession(String sessionId, GameEventBus bus) {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
-        Runnable[] unsubscribeRef = new Runnable[1];
+        AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
 
+        // Subscribe first — bus is async so push() won't be called immediately
         Runnable unsubscribe = bus.subscribeSession(sessionId, event ->
                 push(emitter, event, unsubscribeRef));
 
-        unsubscribeRef[0] = unsubscribe;
+        unsubscribeRef.set(unsubscribe);  // guaranteed visible before any event fires
 
         emitter.onCompletion(unsubscribe);
         emitter.onTimeout(unsubscribe);
-        emitter.onError(ex -> { unsubscribe.run(); });
-
+        emitter.onError(ex -> unsubscribe.run());
         return emitter;
     }
 
-    /** Creates an emitter that streams all events of a given type across all sessions. */
+    /**
+     * Creates an emitter that streams all events of a given type across all sessions.
+     */
     public static SseEmitter forEventType(GameEventType type, GameEventBus bus) {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
-        Runnable[] unsubscribeRef = new Runnable[1];
-
+        AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
         Runnable unsubscribe = bus.subscribe(type, event ->
                 push(emitter, event, unsubscribeRef));
 
-        unsubscribeRef[0] = unsubscribe;
+        unsubscribeRef.set(unsubscribe);
         emitter.onCompletion(unsubscribe);
         emitter.onTimeout(unsubscribe);
         emitter.onError(ex -> unsubscribe.run());
@@ -72,15 +79,17 @@ public final class GameEventSseEmitter {
         return emitter;
     }
 
-    /** Creates an emitter that streams every engine event (global feed). */
+    /**
+     * Creates an emitter that streams every engine event (global feed).
+     */
     public static SseEmitter global(GameEventBus bus) {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
-        Runnable[] unsubscribeRef = new Runnable[1];
+        AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
 
         Runnable unsubscribe = bus.subscribe(event ->
                 push(emitter, event, unsubscribeRef));
 
-        unsubscribeRef[0] = unsubscribe;
+        unsubscribeRef.set(unsubscribe);
         emitter.onCompletion(unsubscribe);
         emitter.onTimeout(unsubscribe);
         emitter.onError(ex -> unsubscribe.run());
@@ -88,7 +97,7 @@ public final class GameEventSseEmitter {
         return emitter;
     }
 
-    private static void push(SseEmitter emitter, GameEvent event, Runnable[] unsubscribeRef) {
+    private static void push(SseEmitter emitter, GameEvent event, AtomicReference<Runnable> unsubscribeRef) {
         try {
             SseGameEvent dto = toDto(event);
             String json = MAPPER.writeValueAsString(dto);
@@ -97,25 +106,23 @@ public final class GameEventSseEmitter {
                     .name(dto.type().name())
                     .data(json));
         } catch (IOException e) {
-            log.debug("SSE client disconnected, removing subscription: {}", e.getMessage());
-            if (unsubscribeRef[0] != null) unsubscribeRef[0].run();
+            Runnable unsub = unsubscribeRef.get();
+            if (unsub != null) unsub.run();
             emitter.completeWithError(e);
         }
     }
 
     private static SseGameEvent toDto(GameEvent event) {
         SseGameEventType sseType = switch (event.type()) {
-            case TICK            -> SseGameEventType.TICK;
-            case BOARD_UPDATED   -> SseGameEventType.BOARD_UPDATE;
-            case SCORE_CHANGED   -> SseGameEventType.SCORE_UPDATE;
+            case TICK -> SseGameEventType.TICK;
+            case BOARD_UPDATED -> SseGameEventType.BOARD_UPDATE;
+            case SCORE_CHANGED -> SseGameEventType.SCORE_UPDATE;
             case SESSION_STARTED,
                  SESSION_FINISHED,
                  SESSION_STOPPED -> SseGameEventType.SESSION_LIFECYCLE;
-            default              -> SseGameEventType.GAME_STATE;
+            default -> SseGameEventType.GAME_STATE;
         };
         return new SseGameEvent(
                 event.sessionId(), event.gameId(), sseType, event.payload(), event.occurredAt());
     }
-
-    private GameEventSseEmitter() {}
 }
