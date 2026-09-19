@@ -81,8 +81,10 @@ public class GameEngineManager {
         log.info("Game engine unbound{}", sessions.isEmpty() ? "" : " (" + sessions.size() + " active session(s) stopped)");
     }
 
-    /** The currently bound engine, if the gateway is connected. Empty otherwise. */
-    public Optional<GameEngine> current() {
+    /**
+     * The currently bound engine, if the gateway is connected. Empty otherwise.
+     */
+    public synchronized Optional<GameEngine> current() {
         return Optional.ofNullable(engine);
     }
 
@@ -91,11 +93,9 @@ public class GameEngineManager {
      *
      * @throws EngineNotReadyException if no gateway is connected yet
      */
-    public GameEngine require() {
-        GameEngine current = engine;
-        if (current == null) {
-            throw new EngineNotReadyException();
-        }
-        return current;
+    public synchronized GameEngine require() {
+        GameEngine snapshot = engine;
+        if (snapshot == null) throw new EngineNotReadyException();
+        return snapshot;
     }
 }

@@ -25,7 +25,9 @@ public final class TouchHistory {
         history.add(event);
     }
 
-    public int totalTouches() { return history.size(); }
+    public int totalTouches() {
+        return history.size();
+    }
 
     public Optional<TileEvent> last() {
         if (history.isEmpty()) return Optional.empty();
@@ -36,24 +38,38 @@ public final class TouchHistory {
         return last().map(TileEvent::position);
     }
 
-    /** Snapshot of the current touch sequence (positions + timestamps). */
+    /**
+     * Snapshot of the current touch sequence (positions + timestamps).
+     */
     public TouchSequence sequence() {
-        List<Position> pos = new ArrayList<>();
-        List<Instant>  ts  = new ArrayList<>();
-        history.forEach(e -> { pos.add(e.position()); ts.add(e.occurredAt()); });
+        Object[] snapshot = history.toArray();
+        List<Position> pos = new ArrayList<>(snapshot.length);
+        List<Instant> ts = new ArrayList<>(snapshot.length);
+        for (Object o : snapshot) {
+            TileEvent e = (TileEvent) o;
+            pos.add(e.position());
+            ts.add(e.occurredAt());
+        }
         return new TouchSequence(pos, ts);
     }
 
-    /** All positions touched, in order, since the session started or last {@link #reset()}. */
+    /**
+     * All positions touched, in order, since the session started or last {@link #reset()}.
+     */
     public List<Position> positionOrder() {
-        return history.stream().map(TileEvent::position).toList();
+        return Arrays.stream(history.toArray())
+                .map(o -> ((TileEvent) o).position()).toList();
     }
 
-    /** The set of distinct positions that have been touched at least once. */
+    /**
+     * The set of distinct positions that have been touched at least once.
+     */
     public Set<Position> distinctPositions() {
         return history.stream().map(TileEvent::position)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
-    public void reset() { history.clear(); }
+    public void reset() {
+        history.clear();
+    }
 }

@@ -73,13 +73,18 @@ public class TileboardEngineAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public GameRegistry gameRegistry(@Autowired(required = false) List<Game> games) {
+    public GameRegistry gameRegistry(
+            @Autowired(required = false) List<Game> games) {
         GameRegistry registry = new DefaultGameRegistry();
-        if (games != null) {
+        if (games == null || games.isEmpty()) {
+            log.warn("No Game beans found in context — registry is empty. "
+                    + "Register at least one @Bean implementing Game.");
+        } else {
             games.forEach(game -> {
                 registry.register(game);
                 log.info("Auto-registered game: '{}' ({})",
-                        game.descriptor().displayName(), game.descriptor().gameId());
+                        game.descriptor().displayName(),
+                        game.descriptor().gameId());
             });
         }
         return registry;

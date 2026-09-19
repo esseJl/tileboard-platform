@@ -11,37 +11,61 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class MemoryFeature {
 
-    private volatile List<Position>  targetSequence = List.of();
-    private final    List<Position>  playerInput    = Collections.synchronizedList(new ArrayList<>());
+    private final List<Position> playerInput = Collections.synchronizedList(new ArrayList<>());
+    private volatile List<Position> targetSequence = List.of();
 
     public void setTarget(List<Position> sequence) {
         this.targetSequence = List.copyOf(sequence);
         playerInput.clear();
     }
 
-    public void addInput(Position position) { playerInput.add(position); }
+    public void addInput(Position position) {
+        playerInput.add(position);
+    }
 
-    public boolean isComplete() { return playerInput.size() >= targetSequence.size(); }
+    public boolean isComplete() {
+        return playerInput.size() >= targetSequence.size();
+    }
 
-    /** {@code true} if the player's input so far matches the target prefix. */
+    /**
+     * {@code true} if the player's input so far matches the target prefix.
+     */
     public boolean isCorrectSoFar() {
-        List<Position> input = List.copyOf(playerInput);
-        if (input.size() > targetSequence.size()) return false; // player over-input: fail fast, no crash
-        for (int i = 0; i < input.size(); i++) {
-            if (!input.get(i).equals(targetSequence.get(i))) return false;
-        }
-        return true;
+        return MemoryEvaluator.isCorrectSoFar(targetSequence, List.copyOf(playerInput));
+    }
+
+    public int targetLength() {
+        return targetSequence.size();
+    }
+
+    public int inputLength() {
+        return playerInput.size();
+    }
+
+    public void resetInput() {
+        playerInput.clear();
+    }
+
+    public List<Position> target() {
+        return targetSequence;
     }
 
     public boolean isFullyCorrect() {
-        return isComplete() && List.copyOf(playerInput).equals(targetSequence);
+        return MemoryEvaluator.isFullyCorrect(targetSequence, List.copyOf(playerInput));
     }
 
-    public int targetLength() { return targetSequence.size(); }
+    public static final class MemoryEvaluator {
+        public static boolean isCorrectSoFar(
+                List<Position> target, List<Position> input) {
+            if (input.size() > target.size()) return false;
+            for (int i = 0; i < input.size(); i++) {
+                if (!input.get(i).equals(target.get(i))) return false;
+            }
+            return true;
+        }
 
-    public int inputLength()  { return playerInput.size(); }
-
-    public void resetInput()  { playerInput.clear(); }
-
-    public List<Position> target() { return targetSequence; }
+        public static boolean isFullyCorrect(List<Position> target, List<Position> input) {
+            return input.size() == target.size() && isCorrectSoFar(target, input);
+        }
+    }
 }

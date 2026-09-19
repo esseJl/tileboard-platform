@@ -5,6 +5,9 @@ import com.tileboard.serial.board.Board;
 import com.tileboard.serial.board.Position;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.function.Consumer;
 
 /**
@@ -17,27 +20,40 @@ import java.util.function.Consumer;
  */
 public final class WaveGenerator {
 
-    private final int                    width;
-    private final int                    height;
+    private final int width;
+    private final int height;
     private final Consumer<Board<TileColor>> boardPublisher;
+    private final ScheduledExecutorService scheduler;
 
     public WaveGenerator(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
-        this.width          = width;
-        this.height         = height;
+        this.width = width;
+        this.height = height;
         this.boardPublisher = boardPublisher;
+        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "tileboard-wave");
+            t.setDaemon(true);
+            return t;
+        });
     }
 
     /**
      * Sweeps a color row by row from top to bottom, with {@code delayMs}
      * between each row. Blocking – run on a background thread if needed.
      */
-    public void sweepDown(TileColor color, long delayMs) {
-        Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-        for (int row = 0; row < height; row++) {
-            for (int col = 0; col < width; col++) board.set(row, col, color);
-            boardPublisher.accept(board.copy());
-            sleep(delayMs);
-        }
+    public CompletableFuture<Void> sweepDown(TileColor color, long delayMs) {
+        return CompletableFuture.runAsync(() -> {
+            Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
+            for (int row = 0; row < height && !Thread.currentThread().isInterrupted(); row++) {
+                for (int col = 0; col < width; col++) board.set(row, col, color);
+                boardPublisher.accept(board.copy());
+                try {
+                    Thread.sleep(delayMs);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
+        }, scheduler);
     }
 
     /**
@@ -47,7 +63,7 @@ public final class WaveGenerator {
     public void ripple(Position center, TileColor color, long delayMs) {
         int maxRadius = Math.max(
                 Math.max(center.row(), height - 1 - center.row()),
-                Math.max(center.col(), width  - 1 - center.col())
+                Math.max(center.col(), width - 1 - center.col())
         );
         Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
         for (int radius = 0; radius <= maxRadius; radius++) {
@@ -61,9 +77,11 @@ public final class WaveGenerator {
         }
     }
 
-    /** Blinks the entire board between {@code on} and {@code off} for {@code times} cycles. */
+    /**
+     * Blinks the entire board between {@code on} and {@code off} for {@code times} cycles.
+     */
     public void blink(TileColor on, TileColor off, int times, long intervalMs) {
-        Board<TileColor> onBoard  = new Board<>(width, height, on);
+        Board<TileColor> onBoard = new Board<>(width, height, on);
         Board<TileColor> offBoard = new Board<>(width, height, off);
         for (int i = 0; i < times; i++) {
             boardPublisher.accept(onBoard.copy());
@@ -75,6 +93,10 @@ public final class WaveGenerator {
 
     private void sleep(long ms) {
         if (ms <= 0) return;
-        try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

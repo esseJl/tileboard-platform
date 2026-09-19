@@ -13,23 +13,21 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class DefaultGameRegistry implements GameRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(DefaultGameRegistry.class);
-
-    // descriptor + factory stored together
-    private record Entry(GameDescriptor descriptor, GameFactory factory) {}
-
     private final Map<String, Entry> entries = new ConcurrentHashMap<>();
 
     @Override
     public void register(Game game) {
         Objects.requireNonNull(game, "game");
-        register(game.descriptor(), () -> game);
-        log.info("Registered game '{}' ({})", game.descriptor().displayName(), game.descriptor().gameId());
+        GameDescriptor d = game.descriptor();
+        entries.put(d.gameId(), new Entry(d, () -> game));
+        // Single, informative log line
+        log.info("Registered singleton game '{}' ({})", d.displayName(), d.gameId());
     }
 
     @Override
     public void register(GameDescriptor descriptor, GameFactory factory) {
         Objects.requireNonNull(descriptor, "descriptor");
-        Objects.requireNonNull(factory,    "factory");
+        Objects.requireNonNull(factory, "factory");
         entries.put(descriptor.gameId(), new Entry(descriptor, factory));
         log.info("Registered game factory for '{}'", descriptor.gameId());
     }
@@ -57,5 +55,9 @@ public final class DefaultGameRegistry implements GameRegistry {
     @Override
     public boolean isRegistered(String gameId) {
         return entries.containsKey(gameId);
+    }
+
+    // descriptor + factory stored together
+    private record Entry(GameDescriptor descriptor, GameFactory factory) {
     }
 }

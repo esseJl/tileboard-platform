@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
@@ -16,23 +17,20 @@ import java.util.concurrent.Executors;
 public final class GameEventBusImpl implements GameEventBus {
 
     private static final Logger log = LoggerFactory.getLogger(GameEventBusImpl.class);
-
-    private record Subscription(GameEventListener listener,
-                                GameEventType filterType,
-                                String filterSessionId) {}
-
     private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>();
-    private final Executor executor;
+    private final ExecutorService executor;
 
     public GameEventBusImpl() {
-        this(Executors.newSingleThreadExecutor(r -> {
+        executor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "tileboard-eventbus");
             t.setDaemon(true);
+            t.setUncaughtExceptionHandler((thread, ex) ->
+                    log.error("Event-bus thread died unexpectedly — bus is now dead!", ex));
             return t;
-        }));
+        });
     }
 
-    public GameEventBusImpl(Executor executor) {
+    public GameEventBusImpl(ExecutorService executor) {
         this.executor = Objects.requireNonNull(executor);
     }
 
@@ -44,8 +42,8 @@ public final class GameEventBusImpl implements GameEventBus {
                 if (matches(sub, event)) {
                     try {
                         sub.listener().onEvent(event);
-                    } catch (RuntimeException e) {
-                        log.warn("Event listener threw while handling {}", event.type(), e);
+                    } catch (Throwable t) {
+                        log.warn("Event listener threw while handling {}", event.type(), t);
                     }
                 }
             }
@@ -77,5 +75,10 @@ public final class GameEventBusImpl implements GameEventBus {
         if (sub.filterType() != null && sub.filterType() != event.type()) return false;
         if (sub.filterSessionId() != null && !sub.filterSessionId().equals(event.sessionId())) return false;
         return true;
+    }
+
+    private record Subscription(GameEventListener listener,
+                                GameEventType filterType,
+                                String filterSessionId) {
     }
 }

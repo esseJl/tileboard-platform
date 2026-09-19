@@ -8,7 +8,7 @@ public interface SessionControl {
     String sessionId();
 
     GameStatus status();
-
+    
     List<Player> players();
 
     GameDescriptor descriptor();

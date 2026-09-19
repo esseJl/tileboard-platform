@@ -6,11 +6,13 @@ import com.tileboard.serial.board.Position;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -23,11 +25,9 @@ public final class AnimationSystem {
     private final int height;
     private final Consumer<Board<TileColor>> boardPublisher;
     private final ExecutorService animationExecutor;
-    private volatile CompletableFuture<Void> currentAnimation;
     private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
-    /** The thread currently executing an animation body, if any. Used so
-     *  {@link #cancelCurrent()} can actually interrupt a blocking {@link #sleep(long)}
-     *  instead of only flipping a flag nobody re-checks until the next sleep call. */
+    private final AtomicReference<CompletableFuture<Void>> currentAnimation = new AtomicReference<>();
+    private final Random rng = new Random();
     private volatile Thread runningThread;
 
 
@@ -119,36 +119,15 @@ public final class AnimationSystem {
         });
     }
 
-    /**
-     * لغو انیمیشن در حال اجرا
-     * Cancel currently running animation.
-     *
-     * <p><strong>Bug fix:</strong> the previous implementation only called
-     * {@code currentAnimation.cancel(true)}. {@link CompletableFuture#cancel}
-     * never interrupts the thread actually running the task regardless of the
-     * {@code mayInterruptIfRunning} argument, so a running animation's
-     * {@code sleep()} loop was never woken up and kept running to completion,
-     * racing with whatever animation was queued next. We now (1) flip the
-     * cooperative flag so a {@code sleep()} call that is *not* currently
-     * blocked notices immediately, and (2) explicitly interrupt the actual
-     * worker thread so a {@code sleep()} call that *is* currently blocked is
-     * woken up right away.
-     */
     public void cancelCurrent() {
         cancelRequested.set(true);
+        CompletableFuture<Void> prev = currentAnimation.getAndSet(null);
+        if (prev != null) prev.cancel(false); // signal completion for .thenRun() chains
         Thread t = runningThread;
-        if (t != null) {
-            t.interrupt();
-        }
+        if (t != null) t.interrupt();
     }
 
-    /**
-     * Releases the background animation thread. Must be called exactly once
-     * when the owning {@link com.tileboard.engine.core.GameSession} ends,
-     * otherwise the dedicated single-thread executor created in the
-     * constructor leaks for the lifetime of the JVM (it never stopped itself
-     * before this fix).
-     */
+
     public void shutdown() {
         cancelCurrent();
         animationExecutor.shutdownNow();
@@ -219,21 +198,21 @@ public final class AnimationSystem {
 
     private boolean[][] getDigitPattern(int digit) {
         return switch (digit) {
-            case 1 -> new boolean[][] {
+            case 1 -> new boolean[][]{
                     {false, true, false},
                     {true, true, false},
                     {false, true, false},
                     {false, true, false},
                     {true, true, true}
             };
-            case 2 -> new boolean[][] {
+            case 2 -> new boolean[][]{
                     {true, true, true},
                     {false, false, true},
                     {true, true, true},
                     {true, false, false},
                     {true, true, true}
             };
-            case 3 -> new boolean[][] {
+            case 3 -> new boolean[][]{
                     {true, true, true},
                     {false, false, true},
                     {true, true, true},
@@ -244,7 +223,6 @@ public final class AnimationSystem {
         };
     }
 
-    // ─── انیمیشن‌های برد / Win Animations ──────────────────────────────
 
     private void playRadialBurst() {
         Position center = new Position(height / 2, width / 2);
@@ -263,7 +241,6 @@ public final class AnimationSystem {
             sleep(100);
         }
 
-        // نگه داشتن فریم نهایی / Hold final frame
         sleep(500);
         clearBoard();
     }
@@ -314,9 +291,9 @@ public final class AnimationSystem {
 
             int sparks = 5 + (cycle % 5);
             for (int i = 0; i < sparks; i++) {
-                int row = (int) (Math.random() * height);
-                int col = (int) (Math.random() * width);
-                TileColor color = colors[(int) (Math.random() * colors.length)];
+                int row = rng.nextInt(height);
+                int col = rng.nextInt(width);
+                TileColor color = colors[rng.nextInt(colors.length)];
                 board.set(row, col, color);
             }
 
@@ -357,7 +334,6 @@ public final class AnimationSystem {
         clearBoard();
     }
 
-    // ─── انیمیشن‌های باخت / Lose Animations ────────────────────────────
 
     private void playFadeToRed() {
         Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
@@ -503,14 +479,12 @@ public final class AnimationSystem {
             Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
             TileColor color = TileColor.LIGHT_BLUE;
 
-            // بالا / Top
             for (int col = 0; col < width; col++) {
                 if ((col + offset) % 3 == 0) {
                     board.set(0, col, color);
                 }
             }
 
-            // پایین / Bottom
             if (height > 1) {
                 for (int col = 0; col < width; col++) {
                     if ((col + offset + 1) % 3 == 0) {
@@ -519,14 +493,12 @@ public final class AnimationSystem {
                 }
             }
 
-            // چپ / Left
             for (int row = 0; row < height; row++) {
                 if ((row + offset) % 3 == 0) {
                     board.set(row, 0, color);
                 }
             }
 
-            // راست / Right
             if (width > 1) {
                 for (int row = 0; row < height; row++) {
                     if ((row + offset + 1) % 3 == 0) {
@@ -546,8 +518,8 @@ public final class AnimationSystem {
 
             int twinkles = 2 + (int) (Math.random() * 3);
             for (int i = 0; i < twinkles; i++) {
-                int row = (int) (Math.random() * height);
-                int col = (int) (Math.random() * width);
+                int row = rng.nextInt(height);
+                int col = rng.nextInt(width);
                 board.set(row, col, TileColor.WHITE);
             }
 
@@ -556,37 +528,28 @@ public final class AnimationSystem {
         }
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────
 
     private void clearBoard() {
         boardPublisher.accept(new Board<>(width, height, TileColor.OFF));
     }
 
-
-
-    /** Thrown internally to unwind a superseded animation cooperatively. Never leaves this class. */
-    private static final class AnimationCancelledException extends RuntimeException {
-        AnimationCancelledException() { super(null, null, false, false); } // no stacktrace, cheap
-    }
-
-
-    /** Submits an animation body, handling cooperative cancellation. */
-    private CompletableFuture<Void> submit(Runnable animationBody) {
-        currentAnimation = CompletableFuture.runAsync(() -> {
+    /**
+     * Submits an animation body, handling cooperative cancellation.
+     */
+    private CompletableFuture<Void> submit(Runnable body) {
+        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
             runningThread = Thread.currentThread();
-            cancelRequested.set(false); // this animation now owns the executor thread
+            cancelRequested.set(false);
             try {
-                animationBody.run();
+                body.run();
             } catch (AnimationCancelledException ignored) {
-                // pre-empted by a newer play*() call; stop silently, board is left to the new animation
             } finally {
                 runningThread = null;
-                // Clear any pending interrupt flag left over from a cancellation so the
-                // next animation submitted to this thread doesn't inherit it.
                 Thread.interrupted();
             }
         }, animationExecutor);
-        return currentAnimation;
+        currentAnimation.set(future);
+        return future;
     }
 
     private void sleep(long ms) {
@@ -621,5 +584,14 @@ public final class AnimationSystem {
         CORNER_PULSE,
         WAVE_BORDER,
         RANDOM_TWINKLE
+    }
+
+    /**
+     * Thrown internally to unwind a superseded animation cooperatively. Never leaves this class.
+     */
+    private static final class AnimationCancelledException extends RuntimeException {
+        AnimationCancelledException() {
+            super(null, null, false, false);
+        } // no stacktrace, cheap
     }
 }

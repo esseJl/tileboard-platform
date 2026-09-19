@@ -6,6 +6,7 @@ import com.tileboard.engine.feature.neighbor.NeighborFinder;
 import com.tileboard.engine.model.Player;
 import com.tileboard.engine.model.TileColor;
 import com.tileboard.serial.board.Board;
+import org.springframework.lang.NonNull;
 
 import java.util.List;
 
@@ -20,5 +21,4 @@ import java.util.List;
 public interface GameContext extends BoardContext, SessionControl, FeatureProvider {
 
     GameEventBus eventBus();
-
 }

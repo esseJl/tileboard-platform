@@ -72,13 +72,8 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private ScheduledFuture<?> tickFuture;
 
     public GameSessionImpl(
-            String sessionId,
-            Game game,
-            List<Player> players,
-            TileGatewayClient gateway,
-            Duration tickInterval,
-            GameEventBus sharedEventBus
-    ) {
+            String sessionId, Game game, List<Player> players,
+            TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus) {
         this.sessionId = Objects.requireNonNull(sessionId);
         this.game = Objects.requireNonNull(game);
         this.players = List.copyOf(Objects.requireNonNull(players));
@@ -107,16 +102,19 @@ public final class GameSessionImpl implements GameSession, GameContext {
         this.graphFeature = new GraphFeature(w, h);
         this.animationSystem = new AnimationSystem(w, h, this::publishBoard);
 
-        this.tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "tileboard-tick-" + sessionId);
-            t.setDaemon(true);
-            return t;
-        });
 
         if (tickInterval != null && !tickInterval.isZero()) {
+            this.tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "tileboard-tick-" + sessionId);
+                t.setDaemon(true);
+                return t;
+            });
             long millis = tickInterval.toMillis();
             this.tickFuture = tickExecutor.scheduleAtFixedRate(
                     this::runTick, millis, millis, TimeUnit.MILLISECONDS);
+        } else {
+            this.tickExecutor = null;
+            this.tickFuture = null;
         }
     }
 
@@ -130,7 +128,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         try {
             game.onStart(this);
             eventBus.publish(com.tileboard.engine.event.GameEvent.of(
-                    GameEventType.SESSION_STARTED, sessionId, game.descriptor().gameId(), Map.of()));
+                    GameEventType.SESSION_STARTED, sessionId, game.descriptor().gameId(), snapshotForSse()));
             log.info("Session {} started for game '{}'", sessionId, game.descriptor().gameId());
         } catch (RuntimeException e) {
             log.error("onStart threw in session {}", sessionId, e);
@@ -214,8 +212,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
             gateway.sendBoard(Command.DATA_OUT, CommandType.SET, board, colorCodec);
         }
         eventBus.publish(com.tileboard.engine.event.GameEvent.of(
-                GameEventType.BOARD_UPDATED, sessionId, game.descriptor().gameId(),
-                Map.of("boardSnapshot", "sent")));
+                GameEventType.BOARD_UPDATED, sessionId, game.descriptor().gameId(), snapshotForSse()));
     }
 
     @Override
@@ -399,23 +396,24 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
     private void cancelTick() {
         if (tickFuture != null) tickFuture.cancel(false);
-        tickExecutor.shutdown();
-        try {
-            if (!tickExecutor.awaitTermination(500, TimeUnit.MILLISECONDS)) {
+        if (tickExecutor != null) {
+            tickExecutor.shutdown();
+            try {
+                if (!tickExecutor.awaitTermination(500, TimeUnit.MILLISECONDS))
+                    tickExecutor.shutdownNow();
+            } catch (InterruptedException e) {
                 tickExecutor.shutdownNow();
+                Thread.currentThread().interrupt();
             }
-        } catch (InterruptedException e) {
-            tickExecutor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 
-    private Map<String, Object> snapshotForSse() {
-        Map<String, Object> snap = new HashMap<>();
-        snap.put("scores", scoreSystem.allScores());
-        snap.put("level", levelSystem.currentLevel());
-        snap.put("status", status.get().name());
-        snap.put("elapsed", gameTimer.elapsed().toSeconds());
-        return Collections.unmodifiableMap(snap);
+    private SessionSnapshot snapshotForSse() {
+        return new SessionSnapshot(
+                scoreSystem.allScores(),
+                levelSystem.currentLevel(),
+                status.get().name(),
+                gameTimer.elapsed().toSeconds()
+        );
     }
 }
