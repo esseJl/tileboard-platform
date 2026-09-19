@@ -268,13 +268,13 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
         if (!status.compareAndSet(GameStatus.RUNNING, finalStatus) &&
                 !status.compareAndSet(GameStatus.PAUSED,  finalStatus)) {
-            return; // already finished or stopped
+            return;
         }
-        gameTimer.stop();
-        cancelTick();
-        animationSystem.shutdown();
 
-        result = new GameResult(
+        gameTimer.stop();
+
+        // ✅ Set result BEFORE shutting down animation system
+        GameResult finalResult = new GameResult(
                 sessionId,
                 game.descriptor().gameId(),
                 finalStatus,
@@ -283,9 +283,13 @@ public final class GameSessionImpl implements GameSession, GameContext {
                 gameTimer.elapsed(),
                 Instant.now()
         );
+        this.result = finalResult; // ✅ volatile write visible immediately
+
+        cancelTick();
+        animationSystem.shutdown();
 
         try {
-            game.onStop(this, result);
+            game.onStop(this, finalResult);
         } catch (RuntimeException e) {
             log.warn("onStop threw in session {}", sessionId, e);
         }

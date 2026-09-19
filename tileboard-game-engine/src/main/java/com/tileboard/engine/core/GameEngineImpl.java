@@ -2,6 +2,8 @@ package com.tileboard.engine.core;
 
 import com.tileboard.engine.codec.EngineFrameRouter;
 import com.tileboard.engine.event.GameEventBus;
+import com.tileboard.engine.event.GameEventType;
+import com.tileboard.engine.exception.GameSessionException;
 import com.tileboard.engine.model.Player;
 import com.tileboard.engine.model.TileEvent;
 import com.tileboard.serial.board.Board;
@@ -13,6 +15,10 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Thread-safe implementation of {@link GameEngine}.
@@ -54,20 +60,32 @@ public final class GameEngineImpl implements GameEngine {
                 sessionId, game, players, gateway, tickInterval, eventBus);
 
         activeSessions.put(sessionId, session);
-        session.start();
 
-        // Cleanup when the session finishes — unsubscribe must be captured and invoked,
-        // otherwise the listener leaks on the shared event bus for the engine's lifetime.
-        Runnable[] unsubscribeRef = new Runnable[1];
-        unsubscribeRef[0] = eventBus.subscribe(event -> {
+        // ✅ Store unsubscribe in session's cleanup
+        AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
+        Runnable unsubscribe = eventBus.subscribe(event -> {
             if (event.sessionId().equals(sessionId) &&
-                    (event.type() == com.tileboard.engine.event.GameEventType.SESSION_FINISHED ||
-                            event.type() == com.tileboard.engine.event.GameEventType.SESSION_STOPPED)) {
+                    (event.type() == GameEventType.SESSION_FINISHED ||
+                            event.type() == GameEventType.SESSION_STOPPED)) {
                 activeSessions.remove(sessionId);
-                unsubscribeRef[0].run();
+                Runnable cleanup = unsubscribeRef.get();
+                if (cleanup != null) cleanup.run();
             }
         });
+        unsubscribeRef.set(unsubscribe);
 
+        // ✅ Add safety timeout cleanup
+        ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
+        cleanupExecutor.schedule(() -> {
+            if (activeSessions.containsKey(sessionId)) {
+                log.warn("Session {} never finished, forcing cleanup", sessionId);
+                session.stop();
+                unsubscribe.run();
+            }
+            cleanupExecutor.shutdown();
+        }, 24, TimeUnit.HOURS);
+
+        session.start();
         return sessionId;
     }
 
@@ -102,5 +120,38 @@ public final class GameEngineImpl implements GameEngine {
                 }
             }
         });
+    }
+
+    private static void validatePlayers(
+            GameDescriptor descriptor,
+            List<Player> players
+    ) {
+        int count = players.size();
+
+        if (count < descriptor.minPlayers() ||
+                count > descriptor.maxPlayers()) {
+
+            throw new GameSessionException(
+                    "Game '%s' requires %d..%d players, but got %d"
+                            .formatted(
+                                    descriptor.gameId(),
+                                    descriptor.minPlayers(),
+                                    descriptor.maxPlayers(),
+                                    count
+                            )
+            );
+        }
+
+        Set<String> ids = new HashSet<>();
+
+        for (Player player : players) {
+            Objects.requireNonNull(player, "players contains null");
+
+            if (!ids.add(player.id())) {
+                throw new GameSessionException(
+                        "Duplicate player id: " + player.id()
+                );
+            }
+        }
     }
 }
