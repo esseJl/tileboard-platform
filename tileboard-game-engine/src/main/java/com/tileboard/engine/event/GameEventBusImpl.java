@@ -4,17 +4,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Objects;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 /**
  * Thread-safe, non-blocking {@link GameEventBus} implementation. Listeners
  * run on a dedicated single-thread executor so publishing never blocks the
  * serial reader or the game loop.
  */
-public final class GameEventBusImpl implements GameEventBus {
+public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(GameEventBusImpl.class);
     private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>();
@@ -75,6 +72,18 @@ public final class GameEventBusImpl implements GameEventBus {
         if (sub.filterType() != null && sub.filterType() != event.type()) return false;
         if (sub.filterSessionId() != null && !sub.filterSessionId().equals(event.sessionId())) return false;
         return true;
+    }
+
+    @Override
+    public void close() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(2, TimeUnit.SECONDS))
+                executor.shutdownNow();
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     private record Subscription(GameEventListener listener,

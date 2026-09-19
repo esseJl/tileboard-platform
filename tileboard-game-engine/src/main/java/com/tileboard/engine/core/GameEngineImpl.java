@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Thread-safe implementation of {@link GameEngine}.
  */
-public final class GameEngineImpl implements GameEngine {
+public final class GameEngineImpl implements GameEngine, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(GameEngineImpl.class);
 
@@ -37,7 +37,7 @@ public final class GameEngineImpl implements GameEngine {
                 t.setDaemon(true);
                 return t;
             });
-    AtomicBoolean cleaned = new AtomicBoolean(false);
+
 
     public GameEngineImpl(GameRegistry registry, TileGatewayClient gateway,
                           GameEventBus eventBus, Duration tickInterval, int boardWidth, int boardHeight) {
@@ -84,14 +84,15 @@ public final class GameEngineImpl implements GameEngine {
         activeSessions.put(sessionId, session);
 
         ScheduledFuture<?> reaper = sessionReaper.schedule(() -> {
-            if (activeSessions.containsKey(sessionId)) {
+            GameSessionImpl s = activeSessions.remove(sessionId);
+            if (s != null) {
                 log.warn("Session {} TTL exceeded, forcing cleanup", sessionId);
-                session.stop();
+                s.stop();
             }
-            activeSessions.remove(sessionId);
-        }, 24, TimeUnit.HOURS);
+        }, 1, TimeUnit.HOURS);
 
         Runnable[] unsubscribeRef = new Runnable[1];
+        AtomicBoolean cleaned = new AtomicBoolean(false);
         Runnable cleanup = () -> {
             if (!cleaned.compareAndSet(false, true)) return;
             activeSessions.remove(sessionId);
@@ -99,15 +100,13 @@ public final class GameEngineImpl implements GameEngine {
             if (unsubscribeRef[0] != null) unsubscribeRef[0].run();
         };
 
-        unsubscribeRef[0] = eventBus.subscribe(event -> {
+        Runnable unsubscribe = eventBus.subscribe(event -> {
             if (event.sessionId().equals(sessionId) &&
-                    (event.type() == GameEventType.SESSION_FINISHED ||
-                            event.type() == GameEventType.SESSION_STOPPED)) {
+                    (event.type() == GameEventType.SESSION_FINISHED || event.type() == GameEventType.SESSION_STOPPED)) {
                 cleanup.run();
             }
         });
-
-
+        unsubscribeRef[0] = unsubscribe;
         session.start();
         return sessionId;
     }
@@ -131,5 +130,18 @@ public final class GameEngineImpl implements GameEngine {
     @Override
     public GameRegistry registry() {
         return registry;
+    }
+
+    @Override
+    public void close() {
+        activeSessions.values().forEach(GameSession::stop);
+        sessionReaper.shutdown();
+        try {
+            if (!sessionReaper.awaitTermination(5, TimeUnit.SECONDS))
+                sessionReaper.shutdownNow();
+        } catch (InterruptedException e) {
+            sessionReaper.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 }

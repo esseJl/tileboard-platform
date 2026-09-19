@@ -118,7 +118,6 @@ public final class GameSessionImpl implements GameSession, GameContext {
         }
     }
 
-    // ── Package-private start (called by engine after construction) ───────
 
     void start() {
         if (!status.compareAndSet(GameStatus.IDLE, GameStatus.RUNNING)) {
@@ -362,12 +361,15 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
-        if (!status.compareAndSet(GameStatus.RUNNING, finalStatus) &&
-                !status.compareAndSet(GameStatus.PAUSED, finalStatus)) {
-            return;
-        }
+        GameStatus prev;
+        do {
+            prev = status.get();
+            if (prev != GameStatus.RUNNING && prev != GameStatus.PAUSED) return;
+        } while (!status.compareAndSet(prev, finalStatus));
+
         gameTimer.stop();
         cancelTick();
+        waveGenerator.close();
         animationSystem.shutdown();
 
         GameResult finalResult = new GameResult(

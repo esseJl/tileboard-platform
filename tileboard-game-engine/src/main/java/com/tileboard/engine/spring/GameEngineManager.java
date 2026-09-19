@@ -72,9 +72,7 @@ public class GameEngineManager {
     }
 
     private void shutdownCurrentEngine() {
-        if (engine == null) {
-            return;
-        }
+        if (engine != null) engine.close();
         List<GameSession> sessions = engine.activeSessions();
         sessions.forEach(GameSession::stop);
         engine = null;

@@ -18,7 +18,7 @@ import java.util.function.Consumer;
  * <p>Every step sends a board snapshot via {@code boardPublisher} —
  * typically {@link com.tileboard.engine.core.GameContext#publishBoard}.
  */
-public final class WaveGenerator {
+public final class WaveGenerator implements AutoCloseable {
 
     private final int width;
     private final int height;
@@ -98,5 +98,10 @@ public final class WaveGenerator {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    @Override
+    public void close() {
+        scheduler.shutdownNow();
     }
 }

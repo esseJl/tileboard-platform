@@ -31,7 +31,7 @@ public final class AnimationSystem {
     private final AtomicReference<CompletableFuture<Void>> currentAnimation = new AtomicReference<>();
     private final Random rng = new Random();
     private final AtomicLong generation = new AtomicLong(0);
-    private volatile Thread runningThread;
+    private final AtomicReference<Thread> runningThread = new AtomicReference<>();
 
 
     public AnimationSystem(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
@@ -122,9 +122,9 @@ public final class AnimationSystem {
     }
 
     public void cancelCurrent() {
-        generation.incrementAndGet();       // invalidate current generation
+        generation.incrementAndGet();
         cancelRequested.set(true);
-        Thread t = runningThread;
+        Thread t = runningThread.getAndSet(null);
         if (t != null) t.interrupt();
     }
 
@@ -308,7 +308,7 @@ public final class AnimationSystem {
             int centerCol = 1 + rng.nextInt(Math.max(1, width - 2));
             Position center = new Position(centerRow, centerCol);
 
-            TileColor color = TileColor.values()[1 + (int) (Math.random() * 6)];
+            TileColor color = TileColor.values()[1 + rng.nextInt(6)];
 
             for (int radius = 0; radius <= 3; radius++) {
                 Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
@@ -510,7 +510,7 @@ public final class AnimationSystem {
         for (int frame = 0; frame < 50; frame++) {
             Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
 
-            int twinkles = 2 + (int) (Math.random() * 3);
+            int twinkles = 2 + rng.nextInt(3);
             for (int i = 0; i < twinkles; i++) {
                 int row = rng.nextInt(height);
                 int col = rng.nextInt(width);
@@ -531,15 +531,14 @@ public final class AnimationSystem {
      * Submits an animation body, handling cooperative cancellation.
      */
     private CompletableFuture<Void> submit(Runnable body) {
-        cancelRequested.set(false);         // reset BEFORE submitting
-        long myGeneration = generation.get();
+        cancelRequested.set(false);
+        //final long myGen = generation.get(); // keep for actual guard
         CompletableFuture<Void> future = CompletableFuture.runAsync(() -> {
-            runningThread = Thread.currentThread();
+            runningThread.set(Thread.currentThread());
             try {
                 body.run();
-            } catch (AnimationCancelledException ignored) {
             } finally {
-                runningThread = null;
+                runningThread.set(null);
                 Thread.interrupted();
             }
         }, animationExecutor);
@@ -548,6 +547,7 @@ public final class AnimationSystem {
     }
 
     private void sleep(long ms) {
+        // || generation.get() != myGen
         if (cancelRequested.get()) throw new AnimationCancelledException();
         if (ms > 0) {
             try {
