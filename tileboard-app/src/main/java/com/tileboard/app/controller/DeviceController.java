@@ -1,16 +1,15 @@
 package com.tileboard.app.controller;
 
+import com.tileboard.app.dto.ApiResponse;
+import com.tileboard.app.dto.ApiResponses;
 import com.tileboard.app.service.device.DeviceConfiguration;
 import com.tileboard.app.service.device.DeviceConfigurationService;
 import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.dto.DeviceConfigurationRequest;
 import com.tileboard.app.dto.DeviceConfigurationResponse;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
 /**
  * Manages the board's physical geometry (width x height in tiles).
@@ -30,17 +29,17 @@ public class DeviceController {
     }
 
     @GetMapping
-    public DeviceConfigurationResponse getCurrentConfiguration() {
-        return deviceConfigurationService.current()
+    public ResponseEntity<ApiResponse<DeviceConfigurationResponse, Void>> getCurrentConfiguration() {
+        return ApiResponses.ok("Device successfuly configured.", deviceConfigurationService.current()
                 .map(DeviceConfigurationResponse::from)
-                .orElseThrow(DeviceNotConfiguredException::new);
+                .orElseThrow(DeviceNotConfiguredException::new));
     }
 
 
-    @PutMapping
-    public DeviceConfigurationResponse configure(@RequestBody @Valid DeviceConfigurationRequest request) {
+    @PostMapping
+    public ResponseEntity<ApiResponse<DeviceConfigurationResponse, Void>> configure(@RequestBody @Valid DeviceConfigurationRequest request) {
         DeviceConfiguration configuration =
                 deviceConfigurationService.configure(request.width(), request.height());
-        return DeviceConfigurationResponse.from(configuration);
+        return ApiResponses.ok("Device successfuly configured.", DeviceConfigurationResponse.from(configuration));
     }
 }

@@ -1,8 +1,6 @@
 package com.tileboard.app.controller;
 
-import com.tileboard.app.dto.AssignPortRequest;
-import com.tileboard.app.dto.ConnectionStatusResponse;
-import com.tileboard.app.dto.SerialPortResponse;
+import com.tileboard.app.dto.*;
 import com.tileboard.app.service.serial.PortRole;
 import com.tileboard.app.service.serial.SerialConnectionManager;
 import jakarta.validation.Valid;
@@ -16,7 +14,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 
-/** Discovering, assigning and (dis)connecting the serial link to the tile board. */
+/**
+ * Discovering, assigning and (dis)connecting the serial link to the tile board.
+ */
 @RestController
 @RequestMapping("/api/v1/ports")
 public class SerialPortController {
@@ -28,33 +28,32 @@ public class SerialPortController {
     }
 
     @GetMapping
-    public List<SerialPortResponse> listAvailablePorts() {
-        return connectionManager.listAvailablePorts().stream()
+    public ResponseEntity<ApiResponse<List<SerialPortResponse>, Void>> listAvailablePorts() {
+        List<SerialPortResponse> list = connectionManager.listAvailablePorts().stream()
                 .map(SerialPortResponse::from)
                 .toList();
+        return ApiResponses.ok(list.size() + "ports are availabled", list);
     }
 
     @PostMapping("/{role}/assign")
-    public ResponseEntity<Void> assignPort(@PathVariable PortRole role, @RequestBody @Valid AssignPortRequest request) {
+    public ResponseEntity<ApiResponse<Void, Void>> assignPort(@PathVariable PortRole role, @RequestBody @Valid AssignPortRequest request) {
         connectionManager.assign(role, request.portName());
-        return ResponseEntity.noContent().build();
+        return ApiResponses.ok();
     }
 
     @GetMapping("/status")
-    public ConnectionStatusResponse status() {
-        return ConnectionStatusResponse.of(
-                connectionManager.connectionState(),
-                connectionManager.currentAssignment());
+    public ResponseEntity<ApiResponse<ConnectionStatusResponse, Void>> status() {
+        return ApiResponses.ok(ConnectionStatusResponse.of(connectionManager.connectionState(), connectionManager.currentAssignment()));
     }
 
     @PostMapping("/connect")
-    public ConnectionStatusResponse connect() {
+    public ResponseEntity<ApiResponse<ConnectionStatusResponse, Void>> connect() {
         connectionManager.connect();
         return status();
     }
 
     @PostMapping("/disconnect")
-    public ConnectionStatusResponse disconnect() {
+    public ResponseEntity<ApiResponse<ConnectionStatusResponse, Void>> disconnect() {
         connectionManager.disconnect();
         return status();
     }

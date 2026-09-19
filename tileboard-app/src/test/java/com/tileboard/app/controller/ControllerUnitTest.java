@@ -12,6 +12,7 @@ import com.tileboard.engine.model.PlayerRole;
 import com.tileboard.engine.spring.GameEngineManager;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -31,8 +32,8 @@ class ControllerUnitTest {
 
         DeviceConfiguration config = new DeviceConfiguration(8, 6);
         when(service.configure(8, 6)).thenReturn(config);
-        DeviceConfigurationResponse response = controller.configure(new DeviceConfigurationRequest(8, 6));
-        assertEquals(48, response.tileCount());
+        ResponseEntity<ApiResponse<DeviceConfigurationResponse, Void>> response = controller.configure(new DeviceConfigurationRequest(8, 6));
+        assertEquals(48, response.getBody().data().tileCount());
         verify(service).configure(8, 6);
     }
 
@@ -44,15 +45,17 @@ class ControllerUnitTest {
         when(manager.currentAssignment()).thenReturn(new PortAssignment(Optional.of("COM2"), Optional.of("COM1")));
         when(manager.connectionState()).thenReturn(ConnectionState.CONNECTED);
 
-        assertEquals("COM1", controller.listAvailablePorts().get(0).systemName());
-        assertEquals(HttpStatus.NO_CONTENT, controller.assignPort(PortRole.OUT, new AssignPortRequest("COM1")).getStatusCode());
+        assertEquals("COM1", controller.listAvailablePorts().getBody().data().get(0).systemName());
+        assertEquals(HttpStatus.OK, controller.assignPort(PortRole.OUT, new AssignPortRequest("COM1")).getStatusCode());
         verify(manager).assign(PortRole.OUT, "COM1");
-        assertEquals(ConnectionState.CONNECTED, controller.status().state());
-        assertEquals("COM2", controller.status().inPort());
-        assertEquals("COM1", controller.status().outPort());
+        assertEquals(ConnectionState.CONNECTED, controller.status().getBody().data().state());
+        assertEquals("COM2", controller.status().getBody().data().inPort());
+        assertEquals("COM1", controller.status().getBody().data().outPort());
 
-        controller.connect(); verify(manager).connect();
-        controller.disconnect(); verify(manager).disconnect();
+        controller.connect();
+        verify(manager).connect();
+        controller.disconnect();
+        verify(manager).disconnect();
     }
 
     @Test
