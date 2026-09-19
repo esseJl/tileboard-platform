@@ -14,10 +14,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -27,12 +24,18 @@ public final class GameEngineImpl implements GameEngine {
 
     private static final Logger log = LoggerFactory.getLogger(GameEngineImpl.class);
 
-    private final GameRegistry        registry;
-    private final TileGatewayClient   gateway;
-    private final GameEventBus        eventBus;
-    private final Duration            tickInterval;
+    private final GameRegistry registry;
+    private final TileGatewayClient gateway;
+    private final GameEventBus eventBus;
+    private final Duration tickInterval;
 
     private final Map<String, GameSessionImpl> activeSessions = new ConcurrentHashMap<>();
+    private final ScheduledExecutorService sessionReaper =
+            Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread t = new Thread(runnable, "tileboard-session-reaper");
+                t.setDaemon(true);
+                return t;
+            });
 
     public GameEngineImpl(
             GameRegistry registry,
@@ -42,48 +45,74 @@ public final class GameEngineImpl implements GameEngine {
             int boardWidth,
             int boardHeight
     ) {
-        this.registry     = Objects.requireNonNull(registry);
-        this.gateway      = Objects.requireNonNull(gateway);
-        this.eventBus     = Objects.requireNonNull(eventBus);
+        this.registry = Objects.requireNonNull(registry);
+        this.gateway = Objects.requireNonNull(gateway);
+        this.eventBus = Objects.requireNonNull(eventBus);
         this.tickInterval = tickInterval != null ? tickInterval : Duration.ofMillis(100);
 
-        // Register the DATA_IN router with the *actual* connected board's dimensions
-        gateway.addFrameListener(new EngineFrameRouter(boardWidth, boardHeight, this::routeTouchFrame));
+        TouchFrameRouter router = new TouchFrameRouter(activeSessions::values);
+        gateway.addFrameListener(
+                new EngineFrameRouter(boardWidth, boardHeight, router::route));
+    }
+
+    private static void validatePlayers(GameDescriptor descriptor, List<Player> players) {
+        int count = players.size();
+
+        if (count < descriptor.minPlayers() || count > descriptor.maxPlayers()) {
+            throw new GameSessionException(
+                    "Game '%s' requires %d..%d players, but got %d"
+                            .formatted(descriptor.gameId(), descriptor.minPlayers(), descriptor.maxPlayers(), count)
+            );
+        }
+        Set<String> ids = new HashSet<>();
+
+        for (Player player : players) {
+            Objects.requireNonNull(player, "players contains null");
+            if (!ids.add(player.id())) {
+                throw new GameSessionException("Duplicate player id: " + player.id());
+            }
+        }
     }
 
     @Override
     public String startGame(String gameId, List<Player> players) {
-        Game game        = registry.instantiate(gameId);
-        String sessionId = UUID.randomUUID().toString();
+        Objects.requireNonNull(players, "players");
+        Game game = registry.instantiate(gameId);
 
-        GameSessionImpl session = new GameSessionImpl(
-                sessionId, game, players, gateway, tickInterval, eventBus);
+        validatePlayers(game.descriptor(), players);
+
+        String sessionId = UUID.randomUUID().toString();
+        GameSessionImpl session =
+                new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus);
 
         activeSessions.put(sessionId, session);
 
-        // ✅ Store unsubscribe in session's cleanup
         AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
-        Runnable unsubscribe = eventBus.subscribe(event -> {
+        AtomicReference<ScheduledFuture<?>> reaperRef = new AtomicReference<>();
+
+        Runnable cleanup = () -> {
+            activeSessions.remove(sessionId);
+            ScheduledFuture<?> reaper = reaperRef.get();
+            if (reaper != null) reaper.cancel(false);
+            Runnable unsubscribe = unsubscribeRef.get();
+            if (unsubscribe != null) unsubscribe.run();
+        };
+
+        unsubscribeRef.set(eventBus.subscribe(event -> {
             if (event.sessionId().equals(sessionId) &&
                     (event.type() == GameEventType.SESSION_FINISHED ||
                             event.type() == GameEventType.SESSION_STOPPED)) {
-                activeSessions.remove(sessionId);
-                Runnable cleanup = unsubscribeRef.get();
-                if (cleanup != null) cleanup.run();
+                cleanup.run();
             }
-        });
-        unsubscribeRef.set(unsubscribe);
+        }));
 
-        // ✅ Add safety timeout cleanup
-        ScheduledExecutorService cleanupExecutor = Executors.newSingleThreadScheduledExecutor();
-        cleanupExecutor.schedule(() -> {
+        reaperRef.set(sessionReaper.schedule(() -> {
             if (activeSessions.containsKey(sessionId)) {
-                log.warn("Session {} never finished, forcing cleanup", sessionId);
+                log.warn("Session {} TTL exceeded, forcing cleanup", sessionId);
                 session.stop();
-                unsubscribe.run();
             }
-            cleanupExecutor.shutdown();
-        }, 24, TimeUnit.HOURS);
+            cleanup.run();
+        }, 24, TimeUnit.HOURS));
 
         session.start();
         return sessionId;
@@ -105,10 +134,12 @@ public final class GameEngineImpl implements GameEngine {
         return List.copyOf(activeSessions.values());
     }
 
-    @Override
-    public GameRegistry registry() { return registry; }
-
     // ── Internal: fan-out touch events to all running sessions ────────────
+
+    @Override
+    public GameRegistry registry() {
+        return registry;
+    }
 
     private void routeTouchFrame(Board<Boolean> touchBoard) {
         activeSessions.forEach((id, session) -> {
@@ -120,38 +151,5 @@ public final class GameEngineImpl implements GameEngine {
                 }
             }
         });
-    }
-
-    private static void validatePlayers(
-            GameDescriptor descriptor,
-            List<Player> players
-    ) {
-        int count = players.size();
-
-        if (count < descriptor.minPlayers() ||
-                count > descriptor.maxPlayers()) {
-
-            throw new GameSessionException(
-                    "Game '%s' requires %d..%d players, but got %d"
-                            .formatted(
-                                    descriptor.gameId(),
-                                    descriptor.minPlayers(),
-                                    descriptor.maxPlayers(),
-                                    count
-                            )
-            );
-        }
-
-        Set<String> ids = new HashSet<>();
-
-        for (Player player : players) {
-            Objects.requireNonNull(player, "players contains null");
-
-            if (!ids.add(player.id())) {
-                throw new GameSessionException(
-                        "Duplicate player id: " + player.id()
-                );
-            }
-        }
     }
 }
