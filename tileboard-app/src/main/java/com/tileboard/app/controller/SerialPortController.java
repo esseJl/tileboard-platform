@@ -4,6 +4,7 @@ import com.tileboard.app.dto.*;
 import com.tileboard.app.service.serial.PortRole;
 import com.tileboard.app.service.serial.SerialConnectionManager;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -18,7 +19,7 @@ import java.util.List;
  * Discovering, assigning and (dis)connecting the serial link to the tile board.
  */
 @RestController
-@RequestMapping("/api/v1/ports")
+@RequestMapping(path = "/api/v1/ports",produces = MediaType.APPLICATION_JSON_VALUE)
 public class SerialPortController {
 
     private final SerialConnectionManager connectionManager;
@@ -32,7 +33,7 @@ public class SerialPortController {
         List<SerialPortResponse> list = connectionManager.listAvailablePorts().stream()
                 .map(SerialPortResponse::from)
                 .toList();
-        return ApiResponses.ok(list.size() + " ports are availabled", list);
+        return ApiResponses.ok(list.size() + " ports are available", list);
     }
 
     @PostMapping("/{role}/assign")
@@ -41,7 +42,7 @@ public class SerialPortController {
         return ApiResponses.ok();
     }
 
-    @GetMapping("/status")
+    @GetMapping(value = "/status")
     public ResponseEntity<ApiResponse> status() {
         return ApiResponses.ok(ConnectionStatusResponse.of(connectionManager.connectionState(), connectionManager.currentAssignment()));
     }

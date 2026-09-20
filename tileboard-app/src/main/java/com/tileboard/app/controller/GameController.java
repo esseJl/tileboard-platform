@@ -10,6 +10,7 @@ import com.tileboard.engine.core.GameRegistry;
 import com.tileboard.engine.model.Player;
 import com.tileboard.engine.spring.GameEngineManager;
 import jakarta.validation.Valid;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,7 +32,7 @@ import java.util.List;
  * engine used by this controller up.
  */
 @RestController
-@RequestMapping("/api/v1/games")
+@RequestMapping(path = "/api/v1/games",produces = MediaType.APPLICATION_JSON_VALUE)
 public class GameController {
 
     private final GameRegistry registry;

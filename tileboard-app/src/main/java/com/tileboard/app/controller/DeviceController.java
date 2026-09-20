@@ -30,7 +30,7 @@ public class DeviceController {
 
     @GetMapping
     public ResponseEntity<ApiResponse> getCurrentConfiguration() {
-        return ApiResponses.ok("Device successfuly configured.", deviceConfigurationService.current()
+        return ApiResponses.ok("Device successfully configured.", deviceConfigurationService.current()
                 .map(DeviceConfigurationResponse::from)
                 .orElseThrow(DeviceNotConfiguredException::new));
     }
@@ -40,6 +40,6 @@ public class DeviceController {
     public ResponseEntity<ApiResponse> configure(@RequestBody @Valid DeviceConfigurationRequest request) {
         DeviceConfiguration configuration =
                 deviceConfigurationService.configure(request.width(), request.height());
-        return ApiResponses.ok("Device successfuly configured.", DeviceConfigurationResponse.from(configuration));
+        return ApiResponses.ok("Device successfully configured.", DeviceConfigurationResponse.from(configuration));
     }
 }
