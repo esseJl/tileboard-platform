@@ -77,7 +77,7 @@ public class TileboardEngineAutoConfiguration {
             @Autowired(required = false) List<Game> games) {
         GameRegistry registry = new DefaultGameRegistry();
         if (games == null || games.isEmpty()) {
-            log.warn("No Game beans found in context — registry is empty. "
+            log.warn("No Game beans found in context - registry is empty. "
                     + "Register at least one @Bean implementing Game.");
         } else {
             games.forEach(game -> {
