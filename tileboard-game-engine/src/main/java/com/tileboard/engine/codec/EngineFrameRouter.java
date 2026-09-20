@@ -49,9 +49,7 @@ public final class EngineFrameRouter implements FrameListener {
      * @param height            actual physical board height (rows)
      * @param reassemblyTimeout how long a partially received board may wait for its next chunk
      */
-    public EngineFrameRouter(int width, int height,
-                             Consumer<Board<Boolean>> touchBoardConsumer,
-                             Duration reassemblyTimeout) {
+    public EngineFrameRouter(int width, int height, Consumer<Board<Boolean>> touchBoardConsumer, Duration reassemblyTimeout) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("width and height must be > 0");
         }

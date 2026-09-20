@@ -9,12 +9,10 @@ import com.tileboard.serial.board.TileCodec;
  */
 public final class ColorTileCodec {
 
-    private ColorTileCodec() {}
+    private ColorTileCodec() {
+    }
 
     public static TileCodec<TileColor> instance() {
-        return TileCodec.of(
-                color -> (byte) color.wireCode(),
-                wire  -> TileColor.fromWireCode(wire & 0xFF)
-        );
+        return TileCodec.of(color -> (byte) color.wireCode(), wire -> TileColor.fromWireCode(wire & 0xFF));
     }
 }
