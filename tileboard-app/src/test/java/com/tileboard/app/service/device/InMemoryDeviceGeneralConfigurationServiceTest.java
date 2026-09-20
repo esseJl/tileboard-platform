@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class InMemoryDeviceConfigurationServiceTest {
+class InMemoryDeviceGeneralConfigurationServiceTest {
     @Test
     void startsEmptyAndReplacesConfigurationAtomically() {
         InMemoryDeviceConfigurationService service = new InMemoryDeviceConfigurationService();
