@@ -28,32 +28,32 @@ public class SerialPortController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<List<SerialPortResponse>, Void>> listAvailablePorts() {
+    public ResponseEntity<ApiResponse> listAvailablePorts() {
         List<SerialPortResponse> list = connectionManager.listAvailablePorts().stream()
                 .map(SerialPortResponse::from)
                 .toList();
-        return ApiResponses.ok(list.size() + "ports are availabled", list);
+        return ApiResponses.ok(list.size() + " ports are availabled", list);
     }
 
     @PostMapping("/{role}/assign")
-    public ResponseEntity<ApiResponse<Void, Void>> assignPort(@PathVariable PortRole role, @RequestBody @Valid AssignPortRequest request) {
+    public ResponseEntity<ApiResponse> assignPort(@PathVariable PortRole role, @RequestBody @Valid AssignPortRequest request) {
         connectionManager.assign(role, request.portName());
         return ApiResponses.ok();
     }
 
     @GetMapping("/status")
-    public ResponseEntity<ApiResponse<ConnectionStatusResponse, Void>> status() {
+    public ResponseEntity<ApiResponse> status() {
         return ApiResponses.ok(ConnectionStatusResponse.of(connectionManager.connectionState(), connectionManager.currentAssignment()));
     }
 
     @PostMapping("/connect")
-    public ResponseEntity<ApiResponse<ConnectionStatusResponse, Void>> connect() {
+    public ResponseEntity<ApiResponse> connect() {
         connectionManager.connect();
         return status();
     }
 
     @PostMapping("/disconnect")
-    public ResponseEntity<ApiResponse<ConnectionStatusResponse, Void>> disconnect() {
+    public ResponseEntity<ApiResponse> disconnect() {
         connectionManager.disconnect();
         return status();
     }

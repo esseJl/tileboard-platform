@@ -32,8 +32,8 @@ class ControllerUnitTest {
 
         DeviceConfiguration config = new DeviceConfiguration(8, 6);
         when(service.configure(8, 6)).thenReturn(config);
-        ResponseEntity<ApiResponse<DeviceConfigurationResponse, Void>> response = controller.configure(new DeviceConfigurationRequest(8, 6));
-        assertEquals(48, response.getBody().data().tileCount());
+        ResponseEntity<ApiResponse> response = controller.configure(new DeviceConfigurationRequest(8, 6));
+        assertEquals(48, ((DeviceConfigurationResponse)response.getBody().data()).tileCount());
         verify(service).configure(8, 6);
     }
 
@@ -45,12 +45,12 @@ class ControllerUnitTest {
         when(manager.currentAssignment()).thenReturn(new PortAssignment(Optional.of("COM2"), Optional.of("COM1")));
         when(manager.connectionState()).thenReturn(ConnectionState.CONNECTED);
 
-        assertEquals("COM1", controller.listAvailablePorts().getBody().data().get(0).systemName());
+        assertEquals("COM1", ((List<SerialPortResponse>)controller.listAvailablePorts().getBody().data()).get(0).systemName());
         assertEquals(HttpStatus.OK, controller.assignPort(PortRole.OUT, new AssignPortRequest("COM1")).getStatusCode());
         verify(manager).assign(PortRole.OUT, "COM1");
-        assertEquals(ConnectionState.CONNECTED, controller.status().getBody().data().state());
-        assertEquals("COM2", controller.status().getBody().data().inPort());
-        assertEquals("COM1", controller.status().getBody().data().outPort());
+        assertEquals(ConnectionState.CONNECTED, ((ConnectionStatusResponse)controller.status().getBody().data()).state());
+        assertEquals("COM2", ((ConnectionStatusResponse)controller.status().getBody().data()).inPort());
+        assertEquals("COM1", ((ConnectionStatusResponse)controller.status().getBody().data()).outPort());
 
         controller.connect();
         verify(manager).connect();

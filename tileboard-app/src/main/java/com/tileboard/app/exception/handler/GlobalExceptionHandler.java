@@ -1,5 +1,7 @@
 package com.tileboard.app.exception.handler;
 
+import com.tileboard.app.dto.ApiResponse;
+import com.tileboard.app.dto.ApiResponses;
 import com.tileboard.app.exception.ApiException;
 import com.tileboard.engine.exception.EngineNotReadyException;
 import com.tileboard.engine.exception.GameEngineException;
@@ -10,8 +12,8 @@ import com.tileboard.serial.exception.ProtocolException;
 import com.tileboard.serial.exception.SerialTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,40 +32,38 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
-    public ProblemDetail handleApiException(ApiException exception) {
+    public ResponseEntity<ApiResponse> handleApiException(ApiException exception) {
         log.warn("{}: {}", exception.errorCode(), exception.getMessage());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(exception.status(), exception.getMessage());
-        problem.setProperty("errorCode", exception.errorCode());
-        return problem;
+        return ApiResponses.error(exception.getMessage(),exception.status());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ProblemDetail handleValidationException(MethodArgumentNotValidException exception) {
-        ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
+    public ResponseEntity<ApiResponse> handleValidationException(MethodArgumentNotValidException exception) {
+        return ApiResponses.badRequest(exception.getMessage());
+  /*      ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
         problem.setTitle("Validation failed");
         problem.setProperty("errors", exception.getBindingResult().getFieldErrors().stream()
                 .collect(java.util.stream.Collectors.toMap(
                         org.springframework.validation.FieldError::getField,
                         fieldError -> fieldError.getDefaultMessage() == null ? "invalid" : fieldError.getDefaultMessage(),
                         (a, b) -> a)));
-        return problem;
+        return problem;*/
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ProblemDetail handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
+    public ResponseEntity<ApiResponse> handleTypeMismatch(MethodArgumentTypeMismatchException exception) {
         String expected = exception.getRequiredType() != null ? exception.getRequiredType().getSimpleName() : "the expected type";
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
-                "'" + exception.getValue() + "' is not a valid value for '" + exception.getName() + "' (expected " + expected + ")");
+        return ApiResponses.badRequest("'" + exception.getValue() + "' is not a valid value for '" + exception.getName() + "' (expected " + expected + ")");
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
-    public ProblemDetail handleUnreadableBody(HttpMessageNotReadableException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Request body is missing or malformed JSON.");
+    public ResponseEntity<ApiResponse> handleUnreadableBody(HttpMessageNotReadableException exception) {
+        return ApiResponses.badRequest("Request body is missing or malformed JSON.");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ProblemDetail handleIllegalArgument(IllegalArgumentException exception) {
-        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+    public ResponseEntity<ApiResponse> handleIllegalArgument(IllegalArgumentException exception) {
+        return ApiResponses.badRequest( exception.getMessage());
     }
 
     /**
@@ -75,50 +75,40 @@ public class GlobalExceptionHandler {
      * kept in sync by hand.
      */
     @ExceptionHandler(EngineNotReadyException.class)
-    public ProblemDetail handleEngineNotReady(EngineNotReadyException exception) {
+    public ResponseEntity<ApiResponse> handleEngineNotReady(EngineNotReadyException exception) {
         log.warn("engine_not_ready: {}", exception.getMessage());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
-        problem.setProperty("errorCode", "engine_not_ready");
-        return problem;
+        return ApiResponses.conflict(exception.getMessage());
     }
 
     @ExceptionHandler(GameNotFoundException.class)
-    public ProblemDetail handleGameNotFound(GameNotFoundException exception) {
+    public ResponseEntity<ApiResponse> handleGameNotFound(GameNotFoundException exception) {
         log.warn("game_not_found: {}", exception.getMessage());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
-        problem.setProperty("errorCode", "game_not_found");
-        return problem;
+    return  ApiResponses.notFound(exception.getMessage());
     }
 
     @ExceptionHandler(GameSessionException.class)
-    public ProblemDetail handleGameSessionException(GameSessionException exception) {
+    public ResponseEntity<ApiResponse> handleGameSessionException(GameSessionException exception) {
         log.warn("game_session_error: {}", exception.getMessage());
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
-        problem.setProperty("errorCode", "game_session_error");
-        return problem;
+        return ApiResponses.conflict(exception.getMessage());
     }
 
     /** Catch-all for any other engine failure not covered by a more specific handler above. */
     @ExceptionHandler(GameEngineException.class)
-    public ProblemDetail handleGameEngineException(GameEngineException exception) {
+    public ResponseEntity<ApiResponse> handleGameEngineException(GameEngineException exception) {
         log.error("game_engine_error", exception);
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, "Game engine error.");
-        problem.setProperty("errorCode", "game_engine_error");
-        return problem;
+        return ApiResponses.badGateway(exception.getMessage());
     }
 
     /** Anything the tileboard-serial-protocol library raises while talking to real hardware. */
     @ExceptionHandler({SerialTransportException.class, ProtocolException.class, BoardException.class})
-    public ProblemDetail handleSerialLibraryException(RuntimeException exception) {
+    public ResponseEntity<ApiResponse> handleSerialLibraryException(RuntimeException exception) {
         log.error("Serial/protocol failure", exception);
-        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, exception.getMessage());
-        problem.setProperty("errorCode", "serial_link_error");
-        return problem;
+    return ApiResponses.badGateway(exception.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
-    public ProblemDetail handleUnexpectedException(Exception exception) {
+    public ResponseEntity<ApiResponse> handleUnexpectedException(Exception exception) {
         log.error("Unhandled exception", exception);
-        return ProblemDetail.forStatusAndDetail(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected server error.");
+    return ApiResponses.internalServerError(exception.getMessage());
     }
 }

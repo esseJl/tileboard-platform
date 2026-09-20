@@ -8,77 +8,81 @@ public final class ApiResponses {
     private ApiResponses() {
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> ok() {
+    public static ResponseEntity<ApiResponse> ok() {
         return ResponseEntity.ok(ApiResponse.success());
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> ok(String message) {
+    public static  ResponseEntity<ApiResponse> ok(String message) {
         return ResponseEntity.ok(ApiResponse.success(message));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> ok(T data) {
+    public static  ResponseEntity<ApiResponse> ok(Object data) {
         return ResponseEntity.ok(ApiResponse.success(data));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> ok(String message, T data) {
+    public static  ResponseEntity<ApiResponse> ok(String message, Object data) {
         return ResponseEntity.ok(ApiResponse.success(message, data));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> ok(String message, T data, E extra) {
+    public static  ResponseEntity<ApiResponse> ok(String message, Object data, Object extra) {
         return ResponseEntity.ok(ApiResponse.success(message, data, extra));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> info(String message) {
+    public static  ResponseEntity<ApiResponse> info(String message) {
         return ResponseEntity.ok(ApiResponse.info(message));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> info(String message, T data) {
+    public static  ResponseEntity<ApiResponse> info(String message, Object data) {
         return ResponseEntity.ok(ApiResponse.info(message, data));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> info(String message, T data, E extra) {
+    public static  ResponseEntity<ApiResponse> info(String message, Object data, Object extra) {
         return ResponseEntity.ok(ApiResponse.info(message, data, extra));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> warning(String message) {
+    public static  ResponseEntity<ApiResponse> warning(String message) {
         return ResponseEntity.ok(ApiResponse.warning(message));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> warning(String message, T data) {
+    public static  ResponseEntity<ApiResponse> warning(String message, Object data) {
         return ResponseEntity.ok(ApiResponse.warning(message, data));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> warning(String message, T data, E extra) {
+    public static  ResponseEntity<ApiResponse> warning(String message, Object data, Object extra) {
         return ResponseEntity.ok(ApiResponse.warning(message, data, extra));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> error(String message, HttpStatus status) {
+    public static  ResponseEntity<ApiResponse> error(String message, HttpStatus status) {
         return ResponseEntity
                 .status(status)
                 .body(ApiResponse.error(message));
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> badRequest(String message) {
+    public static  ResponseEntity<ApiResponse> badRequest(String message) {
         return error(message, HttpStatus.BAD_REQUEST);
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> unauthorized(String message) {
+    public static  ResponseEntity<ApiResponse> unauthorized(String message) {
         return error(message, HttpStatus.UNAUTHORIZED);
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> forbidden(String message) {
+    public static  ResponseEntity<ApiResponse> forbidden(String message) {
         return error(message, HttpStatus.FORBIDDEN);
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> notFound(String message) {
+    public static  ResponseEntity<ApiResponse> notFound(String message) {
         return error(message, HttpStatus.NOT_FOUND);
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> conflict(String message) {
+    public static  ResponseEntity<ApiResponse> conflict(String message) {
         return error(message, HttpStatus.CONFLICT);
     }
 
-    public static <T, E> ResponseEntity<ApiResponse<T, E>> internalServerError(String message) {
+    public static  ResponseEntity<ApiResponse> internalServerError(String message) {
         return error(message, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    public static ResponseEntity<ApiResponse> badGateway(String message) {
+        return error(message,HttpStatus.BAD_GATEWAY);
     }
 }

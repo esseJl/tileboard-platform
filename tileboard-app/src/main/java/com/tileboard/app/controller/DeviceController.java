@@ -29,7 +29,7 @@ public class DeviceController {
     }
 
     @GetMapping
-    public ResponseEntity<ApiResponse<DeviceConfigurationResponse, Void>> getCurrentConfiguration() {
+    public ResponseEntity<ApiResponse> getCurrentConfiguration() {
         return ApiResponses.ok("Device successfuly configured.", deviceConfigurationService.current()
                 .map(DeviceConfigurationResponse::from)
                 .orElseThrow(DeviceNotConfiguredException::new));
@@ -37,7 +37,7 @@ public class DeviceController {
 
 
     @PostMapping
-    public ResponseEntity<ApiResponse<DeviceConfigurationResponse, Void>> configure(@RequestBody @Valid DeviceConfigurationRequest request) {
+    public ResponseEntity<ApiResponse> configure(@RequestBody @Valid DeviceConfigurationRequest request) {
         DeviceConfiguration configuration =
                 deviceConfigurationService.configure(request.width(), request.height());
         return ApiResponses.ok("Device successfuly configured.", DeviceConfigurationResponse.from(configuration));
