@@ -26,13 +26,19 @@ public interface GameEngine {
      */
     String startGame(String gameId, List<Player> players);
 
-    /** Immediately stops the session identified by {@code sessionId}. */
-    void stopGame(String sessionId);
+    /**
+     * Immediately stops the session identified by {@code sessionId}.
+     *
+     * @return
+     */
+    boolean stopGame(String sessionId);
 
     Optional<GameSession> activeSession(String sessionId);
 
     List<GameSession> activeSessions();
 
-    /** Returns the registry – used by Spring controllers to list available games. */
+    /**
+     * Returns the registry – used by Spring controllers to list available games.
+     */
     GameRegistry registry();
 }

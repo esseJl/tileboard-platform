@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * The canonical, thread-safe implementation of both {@link GameSession} and
@@ -32,7 +33,12 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class GameSessionImpl implements GameSession, GameContext {
 
     private static final Logger log = LoggerFactory.getLogger(GameSessionImpl.class);
-
+    /**
+     * Serializes actual gateway writes with a dedicated (non-board) lock so hardware
+     * writes stay strictly ordered without ever blocking board-state readers/writers.
+     */
+    private final Object gatewayWriteLock = new Object();
+    private final ReentrantLock boardWriteLock = new ReentrantLock();
     // ── Identity ──────────────────────────────────────────────────────────
     private final String sessionId;
     private final Game game;
@@ -46,7 +52,6 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final AtomicReference<GameStatus> status = new AtomicReference<>(GameStatus.IDLE);
     // ── Shared board buffer (write-lock protected) ────────────────────────
     private final Board<TileColor> boardBuffer;
-    private final Object boardWriteLock = new Object();
     // ── Built-in features ────────────────────────────────────────────────
     private final GameState gameState = new GameState();
     private final ScoreSystem scoreSystem;
@@ -206,28 +211,44 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
     @Override
     public void publishBoard(Board<TileColor> board) {
-        synchronized (boardWriteLock) {
-            board.forEach(boardBuffer::set);
-            gateway.sendBoard(Command.DATA_OUT, CommandType.SET, board, colorCodec);
+        Board<TileColor> snapshot = board.copy(); // defensive copy — caller's board may still be mutated later
+        boardWriteLock.lock();
+        try {
+            snapshot.forEach(boardBuffer::set);
+        } finally {
+            boardWriteLock.unlock();
         }
-        eventBus.publish(com.tileboard.engine.event.GameEvent.of(
+        // Slow serial I/O now happens WITHOUT holding the lock, so concurrent
+        // setTile()/fillBoard() calls from other threads are never blocked by it.
+        safeSend(snapshot);
+        eventBus.publish(GameEvent.of(
                 GameEventType.BOARD_UPDATED, sessionId, game.descriptor().gameId(), snapshotForSse()));
     }
 
     @Override
     public void setTile(int row, int col, TileColor color) {
-        synchronized (boardWriteLock) {
+        Board<TileColor> snapshot;
+        boardWriteLock.lock();
+        try {
             boardBuffer.set(row, col, color);
-            gateway.sendBoard(Command.DATA_OUT, CommandType.SET, boardBuffer, colorCodec);
+            snapshot = boardBuffer.copy();
+        } finally {
+            boardWriteLock.unlock();
         }
+        safeSend(snapshot);
     }
 
     @Override
     public void fillBoard(TileColor color) {
-        synchronized (boardWriteLock) {
+        Board<TileColor> snapshot;
+        boardWriteLock.lock();
+        try {
             boardBuffer.fill(color);
-            gateway.sendBoard(Command.DATA_OUT, CommandType.SET, boardBuffer, colorCodec);
+            snapshot = boardBuffer.copy();
+        } finally {
+            boardWriteLock.unlock();
         }
+        safeSend(snapshot);
     }
 
     @Override
@@ -422,4 +443,17 @@ public final class GameSessionImpl implements GameSession, GameContext {
                 gameTimer.elapsed().toSeconds()
         );
     }
+
+    private void safeSend(Board<TileColor> snapshot) {
+        synchronized (gatewayWriteLock) {
+            gateway.sendBoard(Command.DATA_OUT, CommandType.SET, snapshot, colorCodec);
+        }
+    }
 }
+
+
+
+
+
+
+

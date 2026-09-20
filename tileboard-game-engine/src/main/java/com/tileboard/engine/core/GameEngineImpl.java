@@ -5,9 +5,6 @@ import com.tileboard.engine.event.GameEventBus;
 import com.tileboard.engine.event.GameEventType;
 import com.tileboard.engine.exception.GameSessionException;
 import com.tileboard.engine.model.Player;
-import com.tileboard.engine.model.TileEvent;
-import com.tileboard.serial.board.Board;
-import com.tileboard.serial.board.Position;
 import com.tileboard.serial.gateway.TileGatewayClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +26,10 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     private final TileGatewayClient gateway;
     private final GameEventBus eventBus;
     private final Duration tickInterval;
+    /**
+     * Only one session may own the physical board at a time. Empty when idle.
+     */
+    private final AtomicReference<String> exclusiveSessionId = new AtomicReference<>();
 
     private final Map<String, GameSessionImpl> activeSessions = new ConcurrentHashMap<>();
     private final ScheduledExecutorService sessionReaper =
@@ -46,9 +47,8 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
         this.eventBus = Objects.requireNonNull(eventBus);
         this.tickInterval = tickInterval != null ? tickInterval : Duration.ofMillis(100);
 
-        TouchFrameRouter router = new TouchFrameRouter(activeSessions::values);
-        gateway.addFrameListener(
-                new EngineFrameRouter(boardWidth, boardHeight, router::route));
+        TouchFrameRouter router = new TouchFrameRouter(activeSessions::values, this::exclusiveOwner);
+        gateway.addFrameListener(new EngineFrameRouter(boardWidth, boardHeight, router::route));
     }
 
     private static void validatePlayers(GameDescriptor descriptor, List<Player> players) {
@@ -74,12 +74,25 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     public String startGame(String gameId, List<Player> players) {
         Objects.requireNonNull(players, "players");
         Game game = registry.instantiate(gameId);
-
         validatePlayers(game.descriptor(), players);
 
         String sessionId = UUID.randomUUID().toString();
-        GameSessionImpl session =
-                new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus);
+
+        // Reserve exclusive hardware access BEFORE any session object is created.
+        if (!exclusiveSessionId.compareAndSet(null, sessionId)) {
+            String owner = exclusiveSessionId.get();
+            throw new GameSessionException(
+                    "Cannot start game '%s': board is already owned by session %s. "
+                            + "Stop it first or wait for it to finish.".formatted(gameId, owner));
+        }
+
+        GameSessionImpl session;
+        try {
+            session = new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus);
+        } catch (RuntimeException e) {
+            exclusiveSessionId.compareAndSet(sessionId, null); // release reservation on failed construction
+            throw e;
+        }
 
         activeSessions.put(sessionId, session);
 
@@ -89,32 +102,43 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
                 log.warn("Session {} TTL exceeded, forcing cleanup", sessionId);
                 s.stop();
             }
-        }, 1, TimeUnit.HOURS);
+        }, 1000, TimeUnit.MILLISECONDS);
 
-        Runnable[] unsubscribeRef = new Runnable[1];
         AtomicBoolean cleaned = new AtomicBoolean(false);
+        Runnable[] unsubscribeRef = new Runnable[1];
         Runnable cleanup = () -> {
             if (!cleaned.compareAndSet(false, true)) return;
             activeSessions.remove(sessionId);
+            exclusiveSessionId.compareAndSet(sessionId, null); // release the board
             reaper.cancel(false);
             if (unsubscribeRef[0] != null) unsubscribeRef[0].run();
         };
 
-        Runnable unsubscribe = eventBus.subscribe(event -> {
+        unsubscribeRef[0] = eventBus.subscribe(event -> {
             if (event.sessionId().equals(sessionId) &&
                     (event.type() == GameEventType.SESSION_FINISHED || event.type() == GameEventType.SESSION_STOPPED)) {
                 cleanup.run();
             }
         });
-        unsubscribeRef[0] = unsubscribe;
-        session.start();
+
+        try {
+            session.start();
+        } catch (RuntimeException e) {
+            cleanup.run();
+            throw e;
+        }
         return sessionId;
     }
 
     @Override
-    public void stopGame(String sessionId) {
+    public boolean stopGame(String sessionId) {
         GameSessionImpl s = activeSessions.get(sessionId);
-        if (s != null) s.stop();
+        if (s == null) {
+            log.warn("stopGame() called with unknown or already-finished sessionId={}", sessionId);
+            return false;
+        }
+        s.stop();
+        return true;
     }
 
     @Override
@@ -143,5 +167,12 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
             sessionReaper.shutdownNow();
             Thread.currentThread().interrupt();
         }
+    }
+
+    /**
+     * Exposed so REST layers can show "board busy" state before attempting to start a game.
+     */
+    public Optional<String> exclusiveOwner() {
+        return Optional.ofNullable(exclusiveSessionId.get());
     }
 }

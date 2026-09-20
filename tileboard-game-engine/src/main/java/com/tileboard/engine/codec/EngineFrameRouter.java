@@ -84,30 +84,23 @@ public final class EngineFrameRouter implements FrameListener {
             }
 
             if (payload.length == expectedSize) {
-                // A full frame is self-contained, so it also resynchronises the stream.
                 if (buffered > 0) {
-                    log.warn("Full frame arrived while {} partial bytes were buffered; dropping partial data",
-                            buffered);
+                    log.warn("Full frame arrived while {} partial bytes were buffered; dropping partial data", buffered);
                     buffered = 0;
                 }
-                complete = payload;
-
+                complete = payload.clone(); // defensive copy: never trust caller-owned arrays across the lock boundary
             } else if (payload.length > expectedSize) {
                 log.warn("Discarding DATA_IN payload of {} bytes: larger than expected {}x{}={} bytes",
                         payload.length, width, height, expectedSize);
                 buffered = 0;
-
             } else {
-                // Shorter than a board: treat as a chunk.
                 if (buffered + payload.length > expectedSize) {
-                    log.warn("Chunk overflows board ({} + {} > {}); resynchronising",
-                            buffered, payload.length, expectedSize);
-                    buffered = 0; // this payload becomes the start of a new board
+                    log.warn("Chunk overflows board ({} + {} > {}); resynchronising", buffered, payload.length, expectedSize);
+                    buffered = 0;
                 }
                 System.arraycopy(payload, 0, buffer, buffered, payload.length);
                 buffered += payload.length;
                 lastChunkNanos = now;
-
                 if (buffered == expectedSize) {
                     complete = buffer.clone();
                     buffered = 0;

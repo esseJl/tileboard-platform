@@ -71,12 +71,26 @@ public class GameEngineManager {
         shutdownCurrentEngine();
     }
 
+    /**
+     * Idempotent: safe to call even if no engine is currently bound
+     * (e.g. duplicate disconnect events, or disconnect before any connect).
+     */
     private void shutdownCurrentEngine() {
-        if (engine != null) engine.close();
-        List<GameSession> sessions = engine.activeSessions();
-        sessions.forEach(GameSession::stop);
-        engine = null;
-        log.info("Game engine unbound{}", sessions.isEmpty() ? "" : " (" + sessions.size() + " active session(s) stopped)");
+        GameEngineImpl current = this.engine;
+        if (current == null) {
+            log.debug("shutdownCurrentEngine() called with no engine bound — nothing to do");
+            return;
+        }
+        this.engine = null; // publish null first: require()/current() never see a half-closed engine
+
+        List<GameSession> sessions = current.activeSessions();
+        try {
+            current.close(); // GameEngineImpl.close() already stops every session exactly once
+        } catch (RuntimeException e) {
+            log.warn("Error while closing previous game engine instance", e);
+        }
+        log.info("Game engine unbound{}",
+                sessions.isEmpty() ? "" : " (" + sessions.size() + " active session(s) stopped)");
     }
 
     /**

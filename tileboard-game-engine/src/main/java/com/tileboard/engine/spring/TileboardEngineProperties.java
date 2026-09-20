@@ -31,10 +31,22 @@ import java.time.Duration;
  */
 @ConfigurationProperties(prefix = "tileboard.engine")
 public final class TileboardEngineProperties {
-
-    /** Interval between {@code onTick()} calls for every running session. */
     private Duration tickInterval = Duration.ofMillis(100);
+    private Duration sessionTtl = Duration.ofHours(1);
 
-    public Duration getTickInterval()           { return tickInterval; }
-    public void     setTickInterval(Duration v) { this.tickInterval = v; }
+    public Duration getTickInterval() {
+        return tickInterval;
+    }
+
+    public void setTickInterval(Duration v) {
+        this.tickInterval = v;
+    }
+
+    public Duration getSessionTtl() {
+        return sessionTtl;
+    }
+
+    public void setSessionTtl(Duration v) {
+        this.sessionTtl = v;
+    }
 }

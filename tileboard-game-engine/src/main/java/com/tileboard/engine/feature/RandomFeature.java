@@ -44,6 +44,11 @@ public final class RandomFeature {
         List<TileColor> pool = new ArrayList<>(Arrays.asList(TileColor.values()));
         pool.remove(TileColor.OFF);
         pool.removeAll(Arrays.asList(exclude));
+        if (pool.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "randomColor(): no candidate colors left after excluding " + Arrays.toString(exclude)
+                            + " — cannot pick a random color");
+        }
         return pool.get(rng.nextInt(pool.size()));
     }
 
