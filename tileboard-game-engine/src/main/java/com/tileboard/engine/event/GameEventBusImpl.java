@@ -3,23 +3,17 @@ package com.tileboard.engine.event;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
-/**
- * Each subscription owns its own bounded queue + single dispatch thread, so a
- * slow or blocked listener (e.g. one doing network I/O) can never delay
- * delivery to any other subscriber. Publishing itself is always non-blocking
- * from the caller's perspective for BLOCK-policy subscriptions up to queue
- * capacity, and never blocking for DROP_OLDEST subscriptions.
- */
 public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
-
     private static final Logger log = LoggerFactory.getLogger(GameEventBusImpl.class);
     private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>();
     private final int defaultQueueCapacity;
     private final OverflowPolicy defaultPolicy;
+    private final Duration blockTimeout;
     private final AtomicLong droppedEvents = new AtomicLong();
 
     public GameEventBusImpl() {
@@ -27,8 +21,13 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
     }
 
     public GameEventBusImpl(int defaultQueueCapacity, OverflowPolicy defaultPolicy) {
+        this(defaultQueueCapacity, defaultPolicy, Duration.ofMillis(200));
+    }
+
+    public GameEventBusImpl(int defaultQueueCapacity, OverflowPolicy defaultPolicy, Duration blockTimeout) {
         this.defaultQueueCapacity = defaultQueueCapacity;
         this.defaultPolicy = defaultPolicy;
+        this.blockTimeout = Objects.requireNonNull(blockTimeout, "blockTimeout");
     }
 
     @Override
@@ -54,13 +53,10 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         return subscribe(listener, null, sessionId, defaultQueueCapacity, defaultPolicy);
     }
 
-    /**
-     * Advanced entry point used by I/O-bound subscribers (SSE, WebSocket) that want a
-     * small DROP_OLDEST queue so a stalled client never causes unbounded memory growth.
-     */
     public Runnable subscribe(GameEventListener listener, GameEventType filterType, String filterSessionId,
                               int queueCapacity, OverflowPolicy policy) {
-        Subscription sub = new Subscription(listener, filterType, filterSessionId, queueCapacity, policy);
+        Subscription sub = new Subscription(listener, filterType, filterSessionId, queueCapacity, policy,
+                blockTimeout.toNanos());
         subscriptions.add(sub);
         sub.start();
         return () -> {
@@ -71,6 +67,10 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
 
     public long droppedEventCount() {
         return droppedEvents.get();
+    }
+
+    public int subscriberCount() {
+        return subscriptions.size();
     }
 
     private boolean matches(Subscription sub, GameEvent event) {
@@ -92,15 +92,18 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         final GameEventType filterType;
         final String filterSessionId;
         final OverflowPolicy policy;
+        final long blockTimeoutNanos;
         final BlockingQueue<GameEvent> queue;
         final ExecutorService worker;
         volatile boolean running = true;
 
-        Subscription(GameEventListener listener, GameEventType filterType, String filterSessionId, int capacity, OverflowPolicy policy) {
+        Subscription(GameEventListener listener, GameEventType filterType, String filterSessionId,
+                     int capacity, OverflowPolicy policy, long blockTimeoutNanos) {
             this.listener = listener;
             this.filterType = filterType;
             this.filterSessionId = filterSessionId;
             this.policy = policy;
+            this.blockTimeoutNanos = blockTimeoutNanos;
             this.queue = new LinkedBlockingQueue<>(capacity);
             this.worker = Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "tileboard-eventbus-subscriber");
@@ -116,7 +119,12 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         void offer(GameEvent event) {
             if (policy == OverflowPolicy.BLOCK) {
                 try {
-                    queue.put(event); // backpressure: publisher waits briefly if this subscriber is behind
+                    boolean accepted = queue.offer(event, blockTimeoutNanos, TimeUnit.NANOSECONDS);
+                    if (!accepted) {
+                        log.warn("Subscriber did not drain within {}ns; dropping event {} instead of blocking publisher",
+                                blockTimeoutNanos, event.type());
+                        droppedEvents.incrementAndGet();
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
@@ -124,7 +132,7 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
                 while (!queue.offer(event)) {
                     GameEvent discarded = queue.poll();
                     if (discarded != null) droppedEvents.incrementAndGet();
-                    else break; // queue drained concurrently by drainLoop — just retry offer
+                    else break;
                 }
             }
         }
