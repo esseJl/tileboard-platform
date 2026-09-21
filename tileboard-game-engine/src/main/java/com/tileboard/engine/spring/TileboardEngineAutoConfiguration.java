@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 
+import com.tileboard.engine.event.EventOverflowPolicy;
+
 /**
  * Spring Boot auto-configuration for the Tileboard game engine.
  *
@@ -69,11 +71,11 @@ import java.util.concurrent.ScheduledExecutorService;
 public class TileboardEngineAutoConfiguration {
 
     private static final Logger log = LoggerFactory.getLogger(TileboardEngineAutoConfiguration.class);
-
+    
     @Bean
     @ConditionalOnMissingBean
-    public GameEventBus gameEventBus() {
-        return new GameEventBusImpl();
+    public GameEventBusImpl gameEventBus(TileboardEngineProperties props) {
+        return new GameEventBusImpl(props.getEventBusQueueCapacity(), EventOverflowPolicy.DROP_OLDEST);
     }
 
     @Bean
@@ -87,8 +89,7 @@ public class TileboardEngineAutoConfiguration {
             games.forEach(game -> {
                 registry.register(game);
                 log.info("Auto-registered game: '{}' ({})",
-                        game.descriptor().displayName(),
-                        game.descriptor().gameId());
+                        game.descriptor().displayName(), game.descriptor().gameId());
             });
         }
         return registry;
@@ -97,7 +98,8 @@ public class TileboardEngineAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     @DependsOn("gameEventBus")
-    public GameEngineManager gameEngineManager(GameRegistry registry, GameEventBus eventBus, TileboardEngineProperties props) {
+    public GameEngineManager gameEngineManager(GameRegistry registry, GameEventBus eventBus,
+                                               TileboardEngineProperties props) {
         return new GameEngineManager(registry, eventBus, props);
     }
 

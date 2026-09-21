@@ -21,7 +21,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicReference;
 
 public final class GameSessionImpl implements GameSession, GameContext {
 
@@ -31,16 +30,10 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final String tickThreadName;
     private final Game game;
     private final List<Player> players;
-
     private final BoardChannel boardChannel;
-
-    private final AtomicReference<GameStatus> status = new AtomicReference<>(GameStatus.IDLE);
     private final GameState gameState = new GameState();
-
     private final FeatureBundle features;
-
     private final GameEventBus eventBus;
-
     private final ScheduledExecutorService tickExecutor;
     private final ScheduledFuture<?> tickFuture;
     private final ExecutorService teardownExecutor;
@@ -48,7 +41,8 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private volatile GameResult result;
 
     public GameSessionImpl(String sessionId, Game game, List<Player> players,
-                           TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus, ExecutorService teardownExecutor) {
+                           TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus,
+                           ExecutorService teardownExecutor, int touchHistoryMaxSize) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.teardownExecutor = Objects.requireNonNull(teardownExecutor, "teardownExecutor");
         this.tickThreadName = "tileboard-tick-" + sessionId;
@@ -60,7 +54,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         int w = game.descriptor().requiredWidth();
         int h = game.descriptor().requiredHeight();
         this.boardChannel = new BoardChannel(w, h, gateway, ColorTileCodec.instance());
-        this.features = FeatureBundle.create(w, h, players, sessionId, this::publishBoard);
+        this.features = FeatureBundle.create(w, h, players, sessionId, touchHistoryMaxSize, this::publishBoard);
 
         if (tickInterval != null && !tickInterval.isZero()) {
             this.tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, tickThreadName));
@@ -78,7 +72,9 @@ public final class GameSessionImpl implements GameSession, GameContext {
         try {
             game.onStart(this);
             eventBus.publish(GameEvent.of(GameEventType.SESSION_STARTED, sessionId, gameId(), snapshotForSse()));
+            log.info("Session {} started for game '{}'", sessionId, gameId());
         } catch (RuntimeException e) {
+            log.error("onStart threw in session {}", sessionId, e);
             forceStop();
             throw new GameSessionException(
                     "Game '" + gameId() + "' failed to start (session " + sessionId + ")", e);
@@ -86,7 +82,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     public void handleTileEvent(TileEvent event) {
-        if (status.get() != GameStatus.RUNNING) return;
+        if (lifecycle.current() != GameStatus.RUNNING) return;
         features.touchHistory().record(event);
         features.reactionSpeed().record(event);
         try {
@@ -98,11 +94,10 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void runTick() {
-        if (status.get() != GameStatus.RUNNING) return;
+        if (lifecycle.current() != GameStatus.RUNNING) return;
         try {
             game.onTick(this);
-            eventBus.publish(GameEvent.of(
-                    GameEventType.TICK, sessionId, game.descriptor().gameId(), snapshotForSse()));
+            eventBus.publish(GameEvent.of(GameEventType.TICK, sessionId, gameId(), snapshotForSse()));
         } catch (RuntimeException e) {
             log.warn("onTick threw in session {}", sessionId, e);
             handleGameError(e);
@@ -118,7 +113,6 @@ public final class GameSessionImpl implements GameSession, GameContext {
         }
     }
 
-    // ── GameContext ──────────────────────────────────────────────────
     @Override
     public String sessionId() {
         return sessionId;
@@ -291,7 +285,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
-        if (!lifecycle.finish(finalStatus)) return; // idempotent: از قبل تمام شده بود
+        if (!lifecycle.finish(finalStatus)) return; // idempotent
 
         features.timer().stop();
         cancelTick();
@@ -309,11 +303,14 @@ public final class GameSessionImpl implements GameSession, GameContext {
         try {
             fillBoard(TileColor.OFF);
         } catch (RuntimeException e) {
-            log.warn("Could not clear board on session end: {}", e.getMessage());
+            log.warn("Could not clear board on session end (gateway may be disconnected): {}", e.getMessage());
         }
+
         eventBus.publish(GameEvent.of(
                 finalStatus == GameStatus.FINISHED ? GameEventType.SESSION_FINISHED : GameEventType.SESSION_STOPPED,
                 sessionId, gameId(), snapshotForSse()));
+
+        log.info("Session {} ended with status={}, winners={}", sessionId, finalStatus, winners);
     }
 
     private void forceStop() {
@@ -348,7 +345,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         return new SessionSnapshot(
                 features.scores().allScores(),
                 features.levels().currentLevel(),
-                status.get().name(),
+                lifecycle.current().name(),
                 features.timer().elapsed().toSeconds()
         );
     }

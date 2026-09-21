@@ -31,18 +31,14 @@ public final class TouchHistory {
     }
 
     public TouchHistory(String sessionId, int maxSize) {
-        if (maxSize <= 0) {
-            throw new IllegalArgumentException("maxSize must be > 0");
-        }
+        if (maxSize <= 0) throw new IllegalArgumentException("maxSize must be > 0");
         this.sessionId = sessionId;
         this.maxSize = maxSize;
     }
 
     public void record(TileEvent event) {
         synchronized (lock) {
-            if (history.size() >= maxSize) {
-                history.pollFirst(); // drop the oldest
-            }
+            if (history.size() >= maxSize) history.pollFirst();
             history.addLast(event);
             totalTouches++;
         }
@@ -51,12 +47,6 @@ public final class TouchHistory {
     public int totalTouches() {
         synchronized (lock) {
             return (int) Math.min(totalTouches, Integer.MAX_VALUE);
-        }
-    }
-
-    public List<Position> positionOrder() {
-        synchronized (lock) {
-            return history.stream().map(TileEvent::position).toList();
         }
     }
 
@@ -70,9 +60,6 @@ public final class TouchHistory {
         return last().map(TileEvent::position);
     }
 
-    /**
-     * Snapshot of the current touch sequence (positions + timestamps).
-     */
     public TouchSequence sequence() {
         synchronized (lock) {
             List<Position> pos = new ArrayList<>(history.size());
@@ -85,9 +72,12 @@ public final class TouchHistory {
         }
     }
 
-    /**
-     * The set of distinct positions that have been touched at least once.
-     */
+    public List<Position> positionOrder() {
+        synchronized (lock) {
+            return history.stream().map(TileEvent::position).toList();
+        }
+    }
+
     public Set<Position> distinctPositions() {
         synchronized (lock) {
             return history.stream().map(TileEvent::position)

@@ -24,9 +24,6 @@ public final class GameTimer {
         if (startedAt != null && stoppedAt == null) stoppedAt = Instant.now();
     }
 
-    /**
-     * Sets a countdown duration and callback fired when elapsed >= target.
-     */
     public void startCountdown(Duration duration, Runnable onExpireCallback) {
         this.countdownTarget = duration;
         this.onExpire.set(onExpireCallback);
@@ -39,13 +36,9 @@ public final class GameTimer {
         return Duration.between(startedAt, end);
     }
 
-    /**
-     * Remaining time in a countdown, or {@link Duration#ZERO} if expired / not started.
-     */
     public Duration remaining() {
         if (countdownTarget == null || startedAt == null) return Duration.ZERO;
-        Duration elapsed = elapsed();
-        Duration rem = countdownTarget.minus(elapsed);
+        Duration rem = countdownTarget.minus(elapsed());
         return rem.isNegative() ? Duration.ZERO : rem;
     }
 
@@ -53,9 +46,6 @@ public final class GameTimer {
         return countdownTarget != null && remaining().isZero();
     }
 
-    /**
-     * Should be called on every tick to fire the expire callback exactly once.
-     */
     public void checkExpiry() {
         if (!isExpired()) return;
         Runnable cb = onExpire.getAndSet(null);

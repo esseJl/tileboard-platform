@@ -9,45 +9,35 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 
-/**
- * Measures how quickly a player reacts. A "stimulus" is set by the game
- * (e.g. lighting a tile); the next touch records the reaction time.
- */
 public final class ReactionSpeedTracker {
-
     private final AtomicReference<Instant> stimulusAt = new AtomicReference<>();
     private final LongAdder totalNanos = new LongAdder();
     private final AtomicLong count = new AtomicLong(0L);
-    private volatile long lastNanos = -1L;
-    private volatile long bestNanos = Long.MAX_VALUE;
+    private final AtomicLong lastNanos = new AtomicLong(-1L);
+    private final AtomicLong bestNanos = new AtomicLong(Long.MAX_VALUE);
 
-    /**
-     * Marks the moment a stimulus (e.g. lit tile) was presented.
-     */
     public void stimulus() {
         stimulusAt.set(Instant.now());
     }
 
-    /**
-     * Called by the engine for every tile event; records reaction if a stimulus is pending.
-     */
     public void record(TileEvent event) {
         Instant s = stimulusAt.getAndSet(null);
         if (s == null) return;
-        long nanos = Duration.between(s, event.occurredAt()).toNanos();
-        if (nanos < 0) nanos = 0;
-        lastNanos = nanos;
-        if (nanos < bestNanos) bestNanos = nanos;
+        long nanos = Math.max(0, Duration.between(s, event.occurredAt()).toNanos());
+        lastNanos.set(nanos);
+        bestNanos.updateAndGet(prev -> Math.min(prev, nanos));
         totalNanos.add(nanos);
         count.incrementAndGet();
     }
 
     public Duration lastReaction() {
-        return lastNanos < 0 ? Duration.ZERO : Duration.ofNanos(lastNanos);
+        long v = lastNanos.get();
+        return v < 0 ? Duration.ZERO : Duration.ofNanos(v);
     }
 
     public Duration bestReaction() {
-        return bestNanos == Long.MAX_VALUE ? Duration.ZERO : Duration.ofNanos(bestNanos);
+        long v = bestNanos.get();
+        return v == Long.MAX_VALUE ? Duration.ZERO : Duration.ofNanos(v);
     }
 
     public OptionalDouble averageReactionMillis() {
@@ -64,7 +54,7 @@ public final class ReactionSpeedTracker {
         stimulusAt.set(null);
         totalNanos.reset();
         count.set(0L);
-        lastNanos = -1L;
-        bestNanos = Long.MAX_VALUE;
+        lastNanos.set(-1L);
+        bestNanos.set(Long.MAX_VALUE);
     }
 }
