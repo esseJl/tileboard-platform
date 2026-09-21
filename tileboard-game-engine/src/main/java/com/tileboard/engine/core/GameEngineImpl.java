@@ -31,25 +31,36 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
      */
     private final AtomicReference<String> exclusiveSessionId = new AtomicReference<>();
 
-    private final ScheduledExecutorService sessionReaper =
-            Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "tileboard-session-reaper");
-                t.setDaemon(true);
-                return t;
-            });
+    private final ScheduledExecutorService sessionReaper;
+    private final ExecutorService teardownExecutor;
 
     public GameEngineImpl(GameRegistry registry, TileGatewayClient gateway, GameEventBus eventBus,
-                          Duration tickInterval, Duration sessionTtl, int boardWidth, int boardHeight) {
+                          Duration tickInterval, Duration sessionTtl, Duration frameReassemblyTimeout, int boardWidth, int boardHeight) {
         this.registry = Objects.requireNonNull(registry);
         this.gateway = Objects.requireNonNull(gateway);
         this.eventBus = Objects.requireNonNull(eventBus);
         this.tickInterval = tickInterval != null ? tickInterval : Duration.ofMillis(100);
         this.sessionTtl = (sessionTtl != null && !sessionTtl.isZero()) ? sessionTtl : Duration.ofHours(1);
 
+        Duration effectiveReassembly = (frameReassemblyTimeout != null && !frameReassemblyTimeout.isZero())
+                ? frameReassemblyTimeout : Duration.ofMillis(500);
+
+        sessionReaper = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "tileboard-session-reaper");
+            t.setDaemon(true);
+            return t;
+        });
+
+        teardownExecutor = Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "tileboard-session-teardown");
+            t.setDaemon(true);
+            return t;
+        });
+
         TouchFrameRouter router = new TouchFrameRouter(
-                id -> Optional.ofNullable(activeSessions.get(id)),
-                this::exclusiveOwner);
-        gateway.addFrameListener(new EngineFrameRouter(boardWidth, boardHeight, router::route));
+                id -> Optional.ofNullable(activeSessions.get(id)), this::exclusiveOwner);
+        gateway.addFrameListener(
+                new EngineFrameRouter(boardWidth, boardHeight, router::route, effectiveReassembly));
     }
 
     private static void validatePlayers(GameDescriptor descriptor, List<Player> players) {
@@ -82,7 +93,7 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
 
         GameSessionImpl session;
         try {
-            session = new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus);
+            session = new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus, teardownExecutor);
         } catch (RuntimeException e) {
             exclusiveSessionId.compareAndSet(sessionId, null);
             throw e;
@@ -156,10 +167,13 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     public void close() {
         activeSessions.values().forEach(GameSession::stop);
         sessionReaper.shutdown();
+        teardownExecutor.shutdown();
         try {
             if (!sessionReaper.awaitTermination(5, TimeUnit.SECONDS)) sessionReaper.shutdownNow();
+            if (!teardownExecutor.awaitTermination(5, TimeUnit.SECONDS)) teardownExecutor.shutdownNow();
         } catch (InterruptedException e) {
             sessionReaper.shutdownNow();
+            teardownExecutor.shutdownNow();
             Thread.currentThread().interrupt();
         }
     }

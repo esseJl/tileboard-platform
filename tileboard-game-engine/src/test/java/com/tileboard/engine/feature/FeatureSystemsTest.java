@@ -157,19 +157,19 @@ class FeatureSystemsTest {
         assertTrue(feature.noneMatch(board, TileColor.BLUE::equals));
         assertTrue(feature.isValid(new Position(1, 2)));
         assertFalse(feature.isValid(new Position(2, 2)));
-        assertEquals(3, feature.manhattanDistance(new Position(0,0), new Position(1,2)));
-        assertEquals(2, feature.chebyshevDistance(new Position(0,0), new Position(1,2)));
+        assertEquals(3, feature.manhattanDistance(new Position(0, 0), new Position(1, 2)));
+        assertEquals(2, feature.chebyshevDistance(new Position(0, 0), new Position(1, 2)));
     }
 
     @Test
     void patternMatcherHandlesTailExactContainsAndCyclicCases() {
         PatternMatcher matcher = new PatternMatcher();
-        Position a = new Position(0,0), b = new Position(0,1), c = new Position(0,2);
-        assertTrue(matcher.tailMatches(List.of(c,a,b), List.of(a,b)));
-        assertFalse(matcher.tailMatches(List.of(a), List.of(a,b)));
-        assertTrue(matcher.exactMatch(List.of(a,b), List.of(a,b)));
-        assertTrue(matcher.containsSequence(List.of(c,a,b,c), List.of(a,b)));
-        assertTrue(matcher.cyclicMatch(List.of(b,c,a), List.of(a,b,c)));
+        Position a = new Position(0, 0), b = new Position(0, 1), c = new Position(0, 2);
+        assertTrue(matcher.tailMatches(List.of(c, a, b), List.of(a, b)));
+        assertFalse(matcher.tailMatches(List.of(a), List.of(a, b)));
+        assertTrue(matcher.exactMatch(List.of(a, b), List.of(a, b)));
+        assertTrue(matcher.containsSequence(List.of(c, a, b, c), List.of(a, b)));
+        assertTrue(matcher.cyclicMatch(List.of(b, c, a), List.of(a, b, c)));
         assertTrue(matcher.tailMatches(List.of(a), List.of()));
     }
 
@@ -186,15 +186,16 @@ class FeatureSystemsTest {
         assertThrows(java.util.NoSuchElementException.class, () -> a.pick(List.of()));
         assertFalse(a.chance(0.0));
         assertTrue(a.chance(1.0));
-        a.reseed(7L); b.reseed(7L);
+        a.reseed(7L);
+        b.reseed(7L);
         assertEquals(a.randomPosition(), b.randomPosition());
     }
 
     @Test
     void memoryFeatureTracksPrefixCompletionAndOverInputSafely() {
         MemoryFeature memory = new MemoryFeature();
-        Position a = new Position(0,0), b = new Position(1,1), x = new Position(2,2);
-        memory.setTarget(List.of(a,b));
+        Position a = new Position(0, 0), b = new Position(1, 1), x = new Position(2, 2);
+        memory.setTarget(List.of(a, b));
         assertEquals(2, memory.targetLength());
         assertTrue(memory.isCorrectSoFar());
         memory.addInput(a);
@@ -213,14 +214,14 @@ class FeatureSystemsTest {
     @Test
     void graphFeatureFindsShortestPathAndConnectedComponents() {
         GraphFeature graph = new GraphFeature(3, 3);
-        Position from = new Position(0,0), to = new Position(2,2), blocked = new Position(1,1);
+        Position from = new Position(0, 0), to = new Position(2, 2), blocked = new Position(1, 1);
         List<Position> path = graph.shortestPath(from, to, p -> !p.equals(blocked));
         assertFalse(path.isEmpty());
         assertEquals(from, path.get(0));
-        assertEquals(to, path.get(path.size()-1));
+        assertEquals(to, path.get(path.size() - 1));
         assertEquals(5, path.size());
         assertTrue(graph.shortestPath(from, to, p -> false).isEmpty());
         assertEquals(1, graph.connectedComponents(p -> !p.equals(blocked)).size());
-        assertEquals(2, graph.connectedComponents(p -> p.equals(new Position(0,0)) || p.equals(new Position(2,2))).size());
+        assertEquals(2, graph.connectedComponents(p -> p.equals(new Position(0, 0)) || p.equals(new Position(2, 2))).size());
     }
 }

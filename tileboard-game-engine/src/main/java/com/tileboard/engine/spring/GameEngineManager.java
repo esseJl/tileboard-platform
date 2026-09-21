@@ -48,6 +48,7 @@ public class GameEngineManager {
     private final GameEventBus eventBus;
     private final Duration tickInterval;
     private final Duration sessionTtl;
+    private final Duration frameReassemblyTimeout;
 
     private volatile GameEngineImpl engine;
 
@@ -56,6 +57,7 @@ public class GameEngineManager {
         this.eventBus = eventBus;
         this.tickInterval = props.getTickInterval();
         this.sessionTtl = props.getSessionTtl();
+        this.frameReassemblyTimeout = props.getFrameReassemblyTimeout();
     }
 
     @EventListener
@@ -65,8 +67,8 @@ public class GameEngineManager {
                     + "(missing disconnect event?) - stopping its sessions before rebinding");
             shutdownCurrentEngine();
         }
-        engine = new GameEngineImpl(registry, event.client(), eventBus, tickInterval, sessionTtl,
-                event.boardWidth(), event.boardHeight());
+        engine = new GameEngineImpl(registry, event.client(), eventBus, tickInterval, sessionTtl, frameReassemblyTimeout
+                , event.boardWidth(), event.boardHeight());
         log.info("Game engine bound to the newly connected tile gateway ({}x{})",
                 event.boardWidth(), event.boardHeight());
     }

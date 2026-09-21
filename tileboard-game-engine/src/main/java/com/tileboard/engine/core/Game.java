@@ -1,22 +1,27 @@
 package com.tileboard.engine.core;
 
+
 /**
- * The single interface every game must implement. Combines static metadata
- * ({@link GameDescriptor}) with the runtime lifecycle ({@link GameLifecycle}).
+ * The contract every game must implement.
  *
- * <p>A {@code Game} instance is <em>stateless</em>: each session creates its
- * own {@link GameSession}, and mutable state lives in {@link GameState} (via
- * {@link GameContext}). This allows the engine to run multiple concurrent
- * sessions of the same game type without synchronisation issues.
- *
- * <p><strong>Auto-registration:</strong> In the Spring Boot layer any
- * {@code @Component}-annotated {@code Game} bean is automatically discovered
- * and added to the {@link GameRegistry} by
- * {@link com.tileboard.engine.spring.TileboardEngineAutoConfiguration}.
- * Outside Spring, call {@link GameRegistry#register(Game)} manually.
+ * <h2>Statelessness contract</h2>
+ * When registered via {@link GameRegistry#register(Game)}, a single {@code Game}
+ * instance is reused across every future session of that {@code gameId} (similar to
+ * the Servlet singleton model). Implementations MUST NOT keep per-session mutable
+ * state in instance fields; all session-scoped data must be stored through
+ * {@link GameContext#state()} (a fresh {@link GameState} is created per session) or
+ * through the feature objects exposed by {@link GameContext}, which are also
+ * per-session.
+ * <p>
+ * If a game genuinely needs per-instance construction state (e.g. injected
+ * dependencies configured differently per session), register it with
+ * {@link GameRegistry#register(GameDescriptor, GameFactory)} instead, which creates
+ * a brand-new instance for every session.
  */
 public interface Game extends GameLifecycle {
 
-    /** Static metadata for this game type. Never {@code null}. */
+    /**
+     * Static metadata for this game type. Never {@code null}.
+     */
     GameDescriptor descriptor();
 }
