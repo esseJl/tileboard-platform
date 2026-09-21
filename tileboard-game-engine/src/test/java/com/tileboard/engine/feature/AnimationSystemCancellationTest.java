@@ -1,13 +1,20 @@
 package com.tileboard.engine.feature;
 
+import com.tileboard.engine.model.TileColor;
+import com.tileboard.serial.board.Board;
 import org.awaitility.Awaitility;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Random;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 
 class AnimationSystemCancellationTest {
 
@@ -46,6 +53,27 @@ class AnimationSystemCancellationTest {
         Awaitility.await().atMost(Duration.ofSeconds(2)).until(() -> frames.get() > afterFirstWait);
         // proves the loop did NOT stop after a fixed number of frames (original bug: fixed 50-frame loop)
 
+        system.shutdown();
+    }
+
+    @Test
+    void supersededAnimation_futureCompletesAsCancelled_notNormally() {
+        List<Board<TileColor>> published = new CopyOnWriteArrayList<>();
+        AnimationSystem system = new AnimationSystem(8, 8, published::add);
+
+        CompletableFuture<Void> first = system.playStandbyAnimation(
+                AnimationSystem.StandbyAnimationType.BREATHING); // انیمیشن بی‌پایان تا لغو شود
+
+        Awaitility.await().atMost(Duration.ofSeconds(1)).until(() -> !published.isEmpty());
+
+        CompletableFuture<Void> second = system.playWinAnimation(
+                AnimationSystem.WinAnimationType.SPARKLE); // این باید اولی را سرکوب کند
+
+        assertThrows(CancellationException.class, () -> first.get(1, TimeUnit.SECONDS),
+                "superseded animation's future must be cancelled, matching the documented contract");
+        assertTrue(first.isCancelled());
+
+        assertDoesNotThrow(() -> second.get(5, TimeUnit.SECONDS));
         system.shutdown();
     }
 }

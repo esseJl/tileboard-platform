@@ -15,6 +15,10 @@ tileboard:
     handshake-min-sequence: 0
   engine:
     tick-interval: 100ms
+    session-ttl: 30m
+    frame-reassembly-timeout: 500ms
+    event-bus-queue-capacity: 256
+    touch-history-max-size: 2000
 
 management:
   endpoints:
