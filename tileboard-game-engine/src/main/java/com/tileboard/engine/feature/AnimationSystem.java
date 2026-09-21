@@ -32,6 +32,7 @@ public final class AnimationSystem {
     private final ExecutorService executor;
     private final Random rng;
     private final AtomicLong generation = new AtomicLong(0);
+    private final Object runLock = new Object();
     private volatile Future<?> currentTask;
 
     public AnimationSystem(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
@@ -54,12 +55,45 @@ public final class AnimationSystem {
     }
 
     /**
+     * Cancels the running animation and starts {@code body}. The returned future completes normally when the
+     * body finishes, exceptionally if it fails, and as cancelled if it is superseded or the system shuts down.
+     */
+    private CompletableFuture<Void> run(Consumer<RunToken> body) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        synchronized (runLock) {
+            Future<?> previous = currentTask;
+            if (previous != null) previous.cancel(true);
+            long myGeneration = generation.incrementAndGet();
+            RunToken token = new RunToken(myGeneration);
+            try {
+                Future<?> submitted = executor.submit(() -> {
+                    try {
+                        body.accept(token);
+                        result.complete(null);
+                    } catch (RuntimeException e) {
+                        result.completeExceptionally(e);
+                    } finally {
+                        Thread.interrupted(); // پاک‌کردن interrupt باقی‌مانده قبل از استفادهٔ دوباره از thread
+                    }
+                });
+                currentTask = submitted;
+            } catch (RejectedExecutionException e) {
+                result.completeExceptionally(e);
+            }
+        }
+        return result;
+    }
+
+    /**
      * Cancels whatever animation is currently running (no-op if none). Idempotent.
      */
     public void cancelCurrent() {
-        generation.incrementAndGet();
-        Future<?> task = currentTask;
-        if (task != null) task.cancel(true);
+        synchronized (runLock) {
+            generation.incrementAndGet();
+            Future<?> task = currentTask;
+            if (task != null) task.cancel(true);
+            currentTask = null;
+        }
     }
 
     private void clearBoard() {
@@ -444,28 +478,6 @@ public final class AnimationSystem {
         }
     }
 
-    /**
-     * Cancels the running animation and starts {@code body}. The returned future completes normally when the
-     * body finishes, exceptionally if it fails, and as cancelled if it is superseded or the system shuts down.
-     */
-    private CompletableFuture<Void> run(Consumer<RunToken> body) {
-        cancelCurrent();
-        long myGeneration = generation.get();
-        RunToken token = new RunToken(myGeneration);
-        CompletableFuture<Void> result = new CompletableFuture<>();
-        Future<?> submitted = executor.submit(() -> {
-            try {
-                body.accept(token);
-                result.complete(null);
-            } catch (RuntimeException e) {
-                result.completeExceptionally(e);
-            } finally {
-                Thread.interrupted(); // clear leftover interrupt status before the thread is reused
-            }
-        });
-        currentTask = submitted;
-        return result;
-    }
 
     public void shutdown() {
         cancelCurrent();

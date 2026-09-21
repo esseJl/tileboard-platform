@@ -5,9 +5,8 @@ import com.tileboard.serial.board.Board;
 import com.tileboard.serial.board.Position;
 
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
 
 /**
@@ -23,13 +22,16 @@ public final class WaveGenerator implements AutoCloseable {
     private final int width;
     private final int height;
     private final Consumer<Board<TileColor>> boardPublisher;
-    private final ScheduledExecutorService scheduler;
+    private final ExecutorService executor;
+    private final AtomicLong generation = new AtomicLong(0);
+    private final Object runLock = new Object();
+    private volatile Future<?> currentTask;
 
     public WaveGenerator(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
         this.width = width;
         this.height = height;
         this.boardPublisher = boardPublisher;
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
+        this.executor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "tileboard-wave");
             t.setDaemon(true);
             return t;
@@ -41,67 +43,128 @@ public final class WaveGenerator implements AutoCloseable {
      * between each row. Blocking – run on a background thread if needed.
      */
     public CompletableFuture<Void> sweepDown(TileColor color, long delayMs) {
-        return CompletableFuture.runAsync(() -> {
+        return run(token -> {
             Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-            for (int row = 0; row < height && !Thread.currentThread().isInterrupted(); row++) {
+            for (int row = 0; row < height; row++) {
                 for (int col = 0; col < width; col++) board.set(row, col, color);
-                boardPublisher.accept(board.copy());
-                try {
-                    Thread.sleep(delayMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
+                if (!token.publish(board.copy())) return;
+                if (!token.sleep(delayMs)) return;
             }
-        }, scheduler);
+        });
     }
 
     /**
      * Expands a ripple from {@code center} outward, painting each "ring"
      * with {@code color}.
      */
-    public void ripple(Position center, TileColor color, long delayMs) {
-        int maxRadius = Math.max(
-                Math.max(center.row(), height - 1 - center.row()),
-                Math.max(center.col(), width - 1 - center.col())
-        );
-        Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-        for (int radius = 0; radius <= maxRadius; radius++) {
-            final int r = radius;
-            board.forEach((row, col, tile) -> {
-                int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
-                if (dist == r) board.set(row, col, color);
-            });
-            boardPublisher.accept(board.copy());
-            sleep(delayMs);
-        }
+    public CompletableFuture<Void> ripple(Position center, TileColor color, long delayMs) {
+        return run(token -> {
+            int maxRadius = Math.max(
+                    Math.max(center.row(), height - 1 - center.row()),
+                    Math.max(center.col(), width - 1 - center.col()));
+            Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
+            for (int radius = 0; radius <= maxRadius; radius++) {
+                final int r = radius;
+                board.forEach((row, col, tile) -> {
+                    int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
+                    if (dist == r) board.set(row, col, color);
+                });
+                if (!token.publish(board.copy())) return;
+                if (!token.sleep(delayMs)) return;
+            }
+        });
     }
 
     /**
      * Blinks the entire board between {@code on} and {@code off} for {@code times} cycles.
      */
-    public void blink(TileColor on, TileColor off, int times, long intervalMs) {
-        Board<TileColor> onBoard = new Board<>(width, height, on);
-        Board<TileColor> offBoard = new Board<>(width, height, off);
-        for (int i = 0; i < times; i++) {
-            boardPublisher.accept(onBoard.copy());
-            sleep(intervalMs);
-            boardPublisher.accept(offBoard.copy());
-            sleep(intervalMs);
+    public CompletableFuture<Void> blink(TileColor on, TileColor off, int times, long intervalMs) {
+        return run(token -> {
+            Board<TileColor> onBoard = new Board<>(width, height, on);
+            Board<TileColor> offBoard = new Board<>(width, height, off);
+            for (int i = 0; i < times; i++) {
+                if (!token.publish(onBoard.copy())) return;
+                if (!token.sleep(intervalMs)) return;
+                if (!token.publish(offBoard.copy())) return;
+                if (!token.sleep(intervalMs)) return;
+            }
+        });
+    }
+
+    public void cancelCurrent() {
+        synchronized (runLock) {
+            generation.incrementAndGet();
+            Future<?> task = currentTask;
+            if (task != null) task.cancel(true);
+            currentTask = null;
         }
     }
 
-    private void sleep(long ms) {
-        if (ms <= 0) return;
+    private CompletableFuture<Void> run(Consumer<WaveToken> body) {
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        synchronized (runLock) {
+            Future<?> previous = currentTask;
+            if (previous != null) previous.cancel(true);
+            long myGeneration = generation.incrementAndGet();
+            WaveToken token = new WaveToken(myGeneration);
+            try {
+                Future<?> submitted = executor.submit(() -> {
+                    try {
+                        body.accept(token);
+                        result.complete(null);
+                    } catch (RuntimeException e) {
+                        result.completeExceptionally(e);
+                    } finally {
+                        Thread.interrupted();
+                    }
+                });
+                currentTask = submitted;
+            } catch (RejectedExecutionException e) {
+                result.completeExceptionally(e);
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public void close() {
+        cancelCurrent();
+        executor.shutdownNow();
         try {
-            Thread.sleep(ms);
+            executor.awaitTermination(1, TimeUnit.SECONDS);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
     }
 
-    @Override
-    public void close() {
-        scheduler.shutdownNow();
+    private final class WaveToken {
+        private final long myGeneration;
+
+        WaveToken(long myGeneration) {
+            this.myGeneration = myGeneration;
+        }
+
+        private boolean isCancelled() {
+            return generation.get() != myGeneration;
+        }
+
+        boolean sleep(long ms) {
+            if (isCancelled()) return false;
+            if (ms > 0) {
+                try {
+                    Thread.sleep(ms);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return false;
+                }
+            }
+            return !isCancelled();
+        }
+
+        boolean publish(Board<TileColor> board) {
+            if (isCancelled()) return false;
+            boardPublisher.accept(board);
+            return true;
+        }
     }
 }
