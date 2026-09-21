@@ -7,7 +7,6 @@ import com.tileboard.serial.board.Position;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
@@ -16,7 +15,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
@@ -69,11 +67,17 @@ public final class AnimationSystem {
                 Future<?> submitted = executor.submit(() -> {
                     try {
                         body.accept(token);
-                        result.complete(null);
+                        if (token.isCancelled()) {
+                            result.cancel(false);
+                        } else {
+                            result.complete(null);
+                        }
+                    } catch (AnimationCancelledException cancelled) {
+                        result.cancel(false);
                     } catch (RuntimeException e) {
                         result.completeExceptionally(e);
                     } finally {
-                        Thread.interrupted(); // پاک‌کردن interrupt باقی‌مانده قبل از استفادهٔ دوباره از thread
+                        Thread.interrupted();
                     }
                 });
                 currentTask = submitted;
@@ -94,6 +98,24 @@ public final class AnimationSystem {
             if (task != null) task.cancel(true);
             currentTask = null;
         }
+    }
+
+    private Board<TileColor> ringBoard(Position center, TileColor color, int radius) {
+        Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
+        board.forEach((row, col, tile) -> {
+            int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
+            if (dist == radius) board.set(row, col, color);
+        });
+        return board;
+    }
+
+    private Board<TileColor> ringBandBoard(Position center, TileColor color, int outerRadius) {
+        Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
+        board.forEach((row, col, tile) -> {
+            int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
+            if (dist <= outerRadius && dist >= outerRadius - 1) board.set(row, col, color);
+        });
+        return board;
     }
 
     private void clearBoard() {
@@ -221,17 +243,11 @@ public final class AnimationSystem {
         int maxRadius = Math.max(Math.max(center.row(), height - 1 - center.row()),
                 Math.max(center.col(), width - 1 - center.col())) + 2;
         for (int radius = 0; radius <= maxRadius; radius++) {
-            Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-            TileColor color = colors[radius % colors.length];
-            int finalRadius = radius;
-            board.forEach((row, col, tile) -> {
-                int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
-                if (dist <= finalRadius && dist >= finalRadius - 1) board.set(row, col, color);
-            });
-            boardPublisher.accept(board);
-            if (!token.sleep(100)) return;
+            token.show(ringBandBoard(center, colors[radius % colors.length], radius));
+            token.pause(100);
         }
-        if (token.sleep(500)) clearBoard();
+        token.pause(500);
+        token.clear();
     }
 
     private Board<TileColor> createBoard(TileColor[] colors, int radius, Position center) {
@@ -286,25 +302,16 @@ public final class AnimationSystem {
     private void playFireworks(RunToken token) {
         TileColor[] colors = {TileColor.RED, TileColor.YELLOW, TileColor.GREEN,
                 TileColor.BLUE, TileColor.PINK, TileColor.LIGHT_BLUE};
-
         for (int firework = 0; firework < 3; firework++) {
             Position center = new Position(randomInterior(height), randomInterior(width));
             TileColor color = colors[rng.nextInt(colors.length)];
-
             for (int radius = 0; radius <= 3; radius++) {
-                Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-                for (int row = 0; row < height; row++) {
-                    for (int col = 0; col < width; col++) {
-                        int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
-                        if (dist == radius) board.set(row, col, color);
-                    }
-                }
-                token.show(board);
+                token.show(ringBoard(center, color, radius));
                 token.pause(100);
             }
             token.pause(200);
         }
-        clearBoard();
+        token.clear();
     }
 
     /**
