@@ -24,7 +24,6 @@ import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * The canonical, thread-safe implementation of both {@link GameSession} and
@@ -38,20 +37,17 @@ public final class GameSessionImpl implements GameSession, GameContext {
      * writes stay strictly ordered without ever blocking board-state readers/writers.
      */
     private final Object gatewayWriteLock = new Object();
-    private final ReentrantLock boardWriteLock = new ReentrantLock();
+    private final BoardChannel boardChannel;
     // ── Identity ──────────────────────────────────────────────────────────
     private final String sessionId;
     private final Game game;
     private final List<Player> players;
     private final TileGatewayClient gateway;
     private final TileCodec<TileColor> colorCodec;
-    private final Instant startedAt = Instant.now();
     private final AnimationSystem animationSystem;
 
     // ── State ─────────────────────────────────────────────────────────────
     private final AtomicReference<GameStatus> status = new AtomicReference<>(GameStatus.IDLE);
-    // ── Shared board buffer (write-lock protected) ────────────────────────
-    private final Board<TileColor> boardBuffer;
     // ── Built-in features ────────────────────────────────────────────────
     private final GameState gameState = new GameState();
     private final ScoreSystem scoreSystem;
@@ -73,21 +69,21 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final GameEventBus eventBus;
     // ── Tick executor ────────────────────────────────────────────────────
     private final ScheduledExecutorService tickExecutor;
+    private final ScheduledFuture<?> tickFuture;
     private volatile GameResult result;
-    private ScheduledFuture<?> tickFuture;
 
-    public GameSessionImpl(
-            String sessionId, Game game, List<Player> players,
-            TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus) {
+    public GameSessionImpl(String sessionId, Game game, List<Player> players,
+                           TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus) {
         this.sessionId = Objects.requireNonNull(sessionId);
         this.game = Objects.requireNonNull(game);
         this.players = List.copyOf(Objects.requireNonNull(players));
         this.gateway = Objects.requireNonNull(gateway);
         this.colorCodec = ColorTileCodec.instance();
         this.eventBus = sharedEventBus;
+
         int w = game.descriptor().requiredWidth();
         int h = game.descriptor().requiredHeight();
-        this.boardBuffer = new Board<>(w, h, TileColor.OFF);
+        this.boardChannel = new BoardChannel(w, h, gateway, ColorTileCodec.instance());
 
         // ── Initialise built-in features ──────────────────────────────────
         this.scoreSystem = new ScoreSystem(players);
@@ -211,49 +207,23 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
     @Override
     public void publishBoard(Board<TileColor> board) {
-        Board<TileColor> snapshot = board.copy(); // defensive copy — caller's board may still be mutated later
-        boardWriteLock.lock();
-        try {
-            snapshot.forEach(boardBuffer::set);
-        } finally {
-            boardWriteLock.unlock();
-        }
-        // Slow serial I/O now happens WITHOUT holding the lock, so concurrent
-        // setTile()/fillBoard() calls from other threads are never blocked by it.
-        safeSend(snapshot);
-        eventBus.publish(GameEvent.of(
-                GameEventType.BOARD_UPDATED, sessionId, game.descriptor().gameId(), snapshotForSse()));
+        boardChannel.publish(board); // I/O now fully outside any state lock — see BoardChannel
+        eventBus.publish(GameEvent.of(GameEventType.BOARD_UPDATED, sessionId, gameId(), snapshotForSse()));
     }
 
     @Override
     public void setTile(int row, int col, TileColor color) {
-        Board<TileColor> snapshot;
-        boardWriteLock.lock();
-        try {
-            boardBuffer.set(row, col, color);
-            snapshot = boardBuffer.copy();
-        } finally {
-            boardWriteLock.unlock();
-        }
-        safeSend(snapshot);
+        boardChannel.setTile(row, col, color);
     }
 
     @Override
     public void fillBoard(TileColor color) {
-        Board<TileColor> snapshot;
-        boardWriteLock.lock();
-        try {
-            boardBuffer.fill(color);
-            snapshot = boardBuffer.copy();
-        } finally {
-            boardWriteLock.unlock();
-        }
-        safeSend(snapshot);
+        boardChannel.fill(color);
     }
 
     @Override
     public Board<TileColor> newBoard() {
-        return new Board<>(boardWidth(), boardHeight(), TileColor.OFF);
+        return boardChannel.newEmptyBoard();
     }
 
     // ── Features ──────────────────────────────────────────────────────────

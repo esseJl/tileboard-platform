@@ -92,8 +92,7 @@ public class TileboardEngineAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
-    public GameEngineManager gameEngineManager(
-            GameRegistry registry, GameEventBus eventBus, TileboardEngineProperties props) {
-        return new GameEngineManager(registry, eventBus, props.getTickInterval());
+    public GameEngineManager gameEngineManager(GameRegistry registry, GameEventBus eventBus, TileboardEngineProperties props) {
+        return new GameEngineManager(registry, eventBus, props);
     }
 }

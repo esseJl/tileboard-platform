@@ -29,34 +29,42 @@ public final class AnimationSystem {
     private final int width;
     private final int height;
     private final Consumer<Board<TileColor>> boardPublisher;
-    private final ExecutorService animationExecutor;
+    private final ExecutorService executor;
     private final Random rng;
     private final AtomicLong generation = new AtomicLong(0);
-    private final AtomicReference<CompletableFuture<Void>> currentAnimation = new AtomicReference<>();
     private volatile Future<?> currentTask;
-    private volatile boolean shutdown;
 
     public AnimationSystem(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
         this(width, height, boardPublisher, new Random());
     }
 
     /**
-     * Package-private constructor used by tests to inject a deterministic RNG.
+     * Visible for tests: inject a seeded RNG for deterministic sparkle/twinkle/crumble assertions.
      */
     AnimationSystem(int width, int height, Consumer<Board<TileColor>> boardPublisher, Random rng) {
-        if (width <= 0 || height <= 0) throw new IllegalArgumentException("width and height must be > 0");
         this.width = width;
         this.height = height;
-        this.boardPublisher = Objects.requireNonNull(boardPublisher, "boardPublisher");
-        this.rng = Objects.requireNonNull(rng, "rng");
-        this.animationExecutor = Executors.newSingleThreadExecutor(r -> {
+        this.boardPublisher = boardPublisher;
+        this.rng = rng;
+        this.executor = Executors.newSingleThreadExecutor(r -> {
             Thread t = new Thread(r, "tileboard-animation");
             t.setDaemon(true);
             return t;
         });
     }
 
-    // ------------------------------------------------------------------ public API
+    /**
+     * Cancels whatever animation is currently running (no-op if none). Idempotent.
+     */
+    public void cancelCurrent() {
+        generation.incrementAndGet();
+        Future<?> task = currentTask;
+        if (task != null) task.cancel(true);
+    }
+
+    private void clearBoard() {
+        boardPublisher.accept(new Board<>(width, height, TileColor.OFF));
+    }
 
     public CompletableFuture<Void> playCountdown() {
         return playCountdown(1000);
@@ -114,125 +122,82 @@ public final class AnimationSystem {
         });
     }
 
-    public synchronized void cancelCurrent() {
-        generation.incrementAndGet(); // every RunToken in flight now sees isCancelled() == true
-        Future<?> task = currentTask;
-        if (task != null) task.cancel(true); // interrupt promptly if blocked in Thread.sleep
-        CompletableFuture<Void> future = currentAnimation.getAndSet(null);
-        if (future != null) future.cancel(false); // also covers a task cancelled before it ever started
-    }
-
-    public void shutdown() {
-        synchronized (this) {
-            shutdown = true;
-            cancelCurrent();
-        }
-        animationExecutor.shutdownNow();
-        try {
-            animationExecutor.awaitTermination(1, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    // ------------------------------------------------------------------ countdown
-
     private void playSimpleCountdown(RunToken token, long digitDurationMs) {
         TileColor[] colors = {TileColor.RED, TileColor.YELLOW, TileColor.GREEN};
-        for (TileColor color : colors) {
-            token.show(new Board<>(width, height, color));
-            token.pause(digitDurationMs);
+        for (int i = 3; i > 0 && token.sleep(0); i--) {
+            boardPublisher.accept(new Board<>(width, height, colors[3 - i]));
+            if (!token.sleep(digitDurationMs)) return;
         }
-        token.clear();
+        clearBoard();
     }
 
     private void playScalableCountdown(RunToken token, long digitDurationMs) {
         for (int digit = 3; digit >= 1; digit--) {
-            token.show(renderDigit(digit));
-            token.pause(digitDurationMs);
+            boardPublisher.accept(renderDigit(digit));
+            if (!token.sleep(digitDurationMs)) return;
         }
-        // Start flash
         for (int i = 0; i < 3; i++) {
-            token.show(new Board<>(width, height, TileColor.GREEN));
-            token.pause(150);
-            token.clear();
-            token.pause(150);
+            boardPublisher.accept(new Board<>(width, height, TileColor.GREEN));
+            if (!token.sleep(150)) return;
+            clearBoard();
+            if (!token.sleep(150)) return;
         }
     }
 
     private Board<TileColor> renderDigit(int digit) {
         Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
         boolean[][] pattern = getDigitPattern(digit);
-
-        int patternHeight = pattern.length;
-        int patternWidth = pattern[0].length;
-        int startRow = (height - patternHeight) / 2;
-        int startCol = (width - patternWidth) / 2;
-
+        int startRow = (height - pattern.length) / 2;
+        int startCol = (width - pattern[0].length) / 2;
         TileColor color = switch (digit) {
             case 3 -> TileColor.RED;
             case 2 -> TileColor.YELLOW;
             case 1 -> TileColor.GREEN;
             default -> TileColor.WHITE;
         };
-
-        for (int r = 0; r < patternHeight; r++) {
-            for (int c = 0; c < patternWidth; c++) {
-                int row = startRow + r;
-                int col = startCol + c;
-                if (pattern[r][c] && row >= 0 && row < height && col >= 0 && col < width) {
-                    board.set(row, col, color);
+        for (int r = 0; r < pattern.length; r++) {
+            for (int c = 0; c < pattern[0].length; c++) {
+                if (pattern[r][c] && inBounds(startRow + r, startCol + c)) {
+                    board.set(startRow + r, startCol + c, color);
                 }
             }
         }
         return board;
     }
 
+    private boolean inBounds(int r, int c) {
+        return r >= 0 && r < height && c >= 0 && c < width;
+    }
+
     private boolean[][] getDigitPattern(int digit) {
         return switch (digit) {
-            case 1 -> new boolean[][]{
-                    {false, true, false},
-                    {true, true, false},
-                    {false, true, false},
-                    {false, true, false},
-                    {true, true, true}
-            };
-            case 2 -> new boolean[][]{
-                    {true, true, true},
-                    {false, false, true},
-                    {true, true, true},
-                    {true, false, false},
-                    {true, true, true}
-            };
-            case 3 -> new boolean[][]{
-                    {true, true, true},
-                    {false, false, true},
-                    {true, true, true},
-                    {false, false, true},
-                    {true, true, true}
-            };
+            case 1 ->
+                    new boolean[][]{{false, true, false}, {true, true, false}, {false, true, false}, {false, true, false}, {true, true, true}};
+            case 2 ->
+                    new boolean[][]{{true, true, true}, {false, false, true}, {true, true, true}, {true, false, false}, {true, true, true}};
+            case 3 ->
+                    new boolean[][]{{true, true, true}, {false, false, true}, {true, true, true}, {false, false, true}, {true, true, true}};
             default -> new boolean[5][3];
         };
     }
 
-    // ------------------------------------------------------------------ win
-
     private void playRadialBurst(RunToken token) {
         Position center = new Position(height / 2, width / 2);
-        TileColor[] colors = {TileColor.YELLOW, TileColor.GREEN, TileColor.BLUE,
-                TileColor.PINK, TileColor.LIGHT_BLUE};
-
-        int maxRadius = Math.max(
-                Math.max(center.row(), height - 1 - center.row()),
-                Math.max(center.col(), width - 1 - center.col())
-        ) + 2;
-
+        TileColor[] colors = {TileColor.YELLOW, TileColor.GREEN, TileColor.BLUE, TileColor.PINK, TileColor.LIGHT_BLUE};
+        int maxRadius = Math.max(Math.max(center.row(), height - 1 - center.row()),
+                Math.max(center.col(), width - 1 - center.col())) + 2;
         for (int radius = 0; radius <= maxRadius; radius++) {
-            token.show(createBoard(colors, radius, center));
-            token.pause(100);
+            Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
+            TileColor color = colors[radius % colors.length];
+            int finalRadius = radius;
+            board.forEach((row, col, tile) -> {
+                int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
+                if (dist <= finalRadius && dist >= finalRadius - 1) board.set(row, col, color);
+            });
+            boardPublisher.accept(board);
+            if (!token.sleep(100)) return;
         }
-        token.pause(500);
-        token.clear();
+        if (token.sleep(500)) clearBoard();
     }
 
     private Board<TileColor> createBoard(TileColor[] colors, int radius, Position center) {
@@ -267,22 +232,21 @@ public final class AnimationSystem {
                 token.pause(80);
             }
         }
-        token.clear();
+        clearBoard();
     }
 
     private void playSparkle(RunToken token) {
         TileColor[] colors = {TileColor.YELLOW, TileColor.WHITE, TileColor.LIGHT_BLUE};
-
         for (int cycle = 0; cycle < 15; cycle++) {
             Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
             int sparks = 5 + (cycle % 5);
             for (int i = 0; i < sparks; i++) {
                 board.set(rng.nextInt(height), rng.nextInt(width), colors[rng.nextInt(colors.length)]);
             }
-            token.show(board);
-            token.pause(120);
+            boardPublisher.accept(board);
+            if (!token.sleep(120)) return;
         }
-        token.clear();
+        clearBoard();
     }
 
     private void playFireworks(RunToken token) {
@@ -306,7 +270,7 @@ public final class AnimationSystem {
             }
             token.pause(200);
         }
-        token.clear();
+        clearBoard();
     }
 
     /**
@@ -316,25 +280,23 @@ public final class AnimationSystem {
         return size > 2 ? 1 + rng.nextInt(size - 2) : rng.nextInt(size);
     }
 
-    // ------------------------------------------------------------------ lose
-
     private void playFadeToRed(RunToken token) {
         Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-
         for (int phase = 0; phase < 3; phase++) {
             for (int row = 0; row < height; row++) {
                 for (int col = 0; col < width; col++) {
-                    if (rng.nextDouble() < 0.3) board.set(row, col, TileColor.RED);
+                    if (rng.nextDouble() < 0.3) board.set(row, col, TileColor.RED); // was Math.random()
                 }
             }
-            token.show(board.copy());
-            token.pause(300);
+            boardPublisher.accept(board.copy());
+            if (!token.sleep(300)) return;
         }
-
-        token.show(new Board<>(width, height, TileColor.RED));
-        token.pause(1000);
-        token.clear();
+        board.fill(TileColor.RED);
+        boardPublisher.accept(board);
+        if (token.sleep(1000)) clearBoard();
     }
+
+    // ------------------------------------------------------------------ lose
 
     private void playDescendingCurtain(RunToken token) {
         for (int row = 0; row < height; row++) {
@@ -348,7 +310,7 @@ public final class AnimationSystem {
             token.pause(200);
         }
         token.pause(500);
-        token.clear();
+        clearBoard();
     }
 
     private void playCrumble(RunToken token) {
@@ -371,37 +333,36 @@ public final class AnimationSystem {
         }
         token.show(board.copy());
         token.pause(500);
-        token.clear();
+        clearBoard();
     }
 
     private void playPulseRed(RunToken token) {
         for (int pulse = 0; pulse < 4; pulse++) {
             token.show(new Board<>(width, height, TileColor.RED));
             token.pause(200);
-            token.clear();
+            clearBoard();
             token.pause(200);
         }
     }
 
-    // ------------------------------------------------------------------ standby (run until cancelled)
-
     private void playBreathing(RunToken token) {
         TileColor[] breathColors = {TileColor.BLUE, TileColor.LIGHT_BLUE};
-        for (int cycle = 0; ; cycle++) {
-            TileColor color = breathColors[cycle % 2];
+        for (int cycle = 0; !token.isCancelled(); cycle++) {
             Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-
+            TileColor color = breathColors[cycle % 2];
             paintCorners(board, color);
-            token.show(board.copy());
-            token.pause(500);
+            boardPublisher.accept(board);
+            if (!token.sleep(500)) return;
 
             if (width >= 3 && height >= 3) {
                 paintBorder(board, color);
-                token.show(board.copy());
-                token.pause(500);
+                boardPublisher.accept(board);
+                if (!token.sleep(500)) return;
             }
         }
     }
+
+    // ------------------------------------------------------------------ standby (run until cancelled)
 
     private void paintCorners(Board<TileColor> board, TileColor color) {
         board.set(0, 0, color);
@@ -475,75 +436,53 @@ public final class AnimationSystem {
     }
 
     private void playRandomTwinkle(RunToken token) {
-        while (true) {
+        while (token.sleep(300)) { // runs forever, ~300ms per frame, until cancelCurrent() is called
             Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
             int twinkles = 2 + rng.nextInt(3);
-            for (int i = 0; i < twinkles; i++) {
-                board.set(rng.nextInt(height), rng.nextInt(width), TileColor.WHITE);
-            }
-            token.show(board);
-            token.pause(300);
+            for (int i = 0; i < twinkles; i++) board.set(rng.nextInt(height), rng.nextInt(width), TileColor.WHITE);
+            boardPublisher.accept(board);
         }
     }
-
-    // ------------------------------------------------------------------ execution core
 
     /**
      * Cancels the running animation and starts {@code body}. The returned future completes normally when the
      * body finishes, exceptionally if it fails, and as cancelled if it is superseded or the system shuts down.
      */
-    private synchronized CompletableFuture<Void> run(Consumer<RunToken> body) {
-        if (shutdown) {
-            return CompletableFuture.failedFuture(new IllegalStateException("AnimationSystem is shut down"));
-        }
-        cancelCurrent(); // exactly one animation "owns" the executor at a time
-        RunToken token = new RunToken(generation.get());
-        CompletableFuture<Void> future = new CompletableFuture<>();
-        currentAnimation.set(future);
+    private CompletableFuture<Void> run(Consumer<RunToken> body) {
+        cancelCurrent();
+        long myGeneration = generation.get();
+        RunToken token = new RunToken(myGeneration);
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        Future<?> submitted = executor.submit(() -> {
+            try {
+                body.accept(token);
+                result.complete(null);
+            } catch (RuntimeException e) {
+                result.completeExceptionally(e);
+            } finally {
+                Thread.interrupted(); // clear leftover interrupt status before the thread is reused
+            }
+        });
+        currentTask = submitted;
+        return result;
+    }
+
+    public void shutdown() {
+        cancelCurrent();
+        executor.shutdownNow();
         try {
-            currentTask = animationExecutor.submit(() -> {
-                try {
-                    if (token.isCancelled()) {
-                        future.cancel(false);
-                        return;
-                    }
-                    body.accept(token);
-                    future.complete(null); // no-op if the future was already cancelled
-                } catch (AnimationCancelledException e) {
-                    future.cancel(false);
-                } catch (Throwable t) {
-                    future.completeExceptionally(t);
-                } finally {
-                    Thread.interrupted(); // clear any leftover interrupt before the thread is reused
-                }
-            });
-        } catch (RejectedExecutionException e) {
-            currentAnimation.compareAndSet(future, null);
-            future.completeExceptionally(e);
+            executor.awaitTermination(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
-        return future;
     }
 
-    public enum WinAnimationType {
-        RADIAL_BURST,
-        RAINBOW_SWEEP,
-        SPARKLE,
-        FIREWORKS
-    }
 
-    public enum LoseAnimationType {
-        FADE_TO_RED,
-        DESCENDING_CURTAIN,
-        CRUMBLE,
-        PULSE_RED
-    }
+    public enum WinAnimationType {RADIAL_BURST, RAINBOW_SWEEP, SPARKLE, FIREWORKS}
 
-    public enum StandbyAnimationType {
-        BREATHING,
-        CORNER_PULSE,
-        WAVE_BORDER,
-        RANDOM_TWINKLE
-    }
+    public enum LoseAnimationType {FADE_TO_RED, DESCENDING_CURTAIN, CRUMBLE, PULSE_RED}
+
+    public enum StandbyAnimationType {BREATHING, CORNER_PULSE, WAVE_BORDER, RANDOM_TWINKLE}
 
     /**
      * Thrown internally to unwind a superseded animation cooperatively. Never leaves this class.
@@ -557,7 +496,7 @@ public final class AnimationSystem {
     /**
      * A cooperative cancellation token bound to one "generation" of animation.
      */
-    private final class RunToken {
+    public final class RunToken {
         private final long myGeneration;
 
         RunToken(long myGeneration) {
