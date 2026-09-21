@@ -2,7 +2,7 @@ package com.tileboard.app.controller;
 
 import com.tileboard.app.dto.ApiResponse;
 import com.tileboard.app.dto.ApiResponses;
-import com.tileboard.app.service.device.DeviceConfiguration;
+import com.tileboard.app.config.DeviceConfiguration;
 import com.tileboard.app.service.device.DeviceConfigurationService;
 import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.dto.DeviceConfigurationRequest;

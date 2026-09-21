@@ -3,7 +3,7 @@ package com.tileboard.app.controller;
 import com.tileboard.app.dto.*;
 import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.exception.NoActiveGameException;
-import com.tileboard.app.service.device.DeviceConfiguration;
+import com.tileboard.app.config.DeviceConfiguration;
 import com.tileboard.app.service.device.DeviceConfigurationService;
 import com.tileboard.app.service.serial.*;
 import com.tileboard.app.service.streaming.BoardStateBroadcaster;

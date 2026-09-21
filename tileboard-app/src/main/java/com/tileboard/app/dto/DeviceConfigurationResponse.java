@@ -1,6 +1,6 @@
 package com.tileboard.app.dto;
 
-import com.tileboard.app.service.device.DeviceConfiguration;
+import com.tileboard.app.config.DeviceConfiguration;
 
 /** Read-facing view of {@link DeviceConfiguration}. */
 public record DeviceConfigurationResponse(int width, int height, int tileCount) {

@@ -1,4 +1,4 @@
-package com.tileboard.app.service.device;
+package com.tileboard.app.config;
 
 /**
  * The physical geometry of the tile board: how many tiles wide and tall it

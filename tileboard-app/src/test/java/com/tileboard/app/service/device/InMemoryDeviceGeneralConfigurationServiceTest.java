@@ -1,5 +1,6 @@
 package com.tileboard.app.service.device;
 
+import com.tileboard.app.config.DeviceConfiguration;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;

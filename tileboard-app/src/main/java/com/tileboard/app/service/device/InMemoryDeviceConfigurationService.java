@@ -1,5 +1,6 @@
 package com.tileboard.app.service.device;
 
+import com.tileboard.app.config.DeviceConfiguration;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
