@@ -91,12 +91,6 @@ public final class BoardChannel {
         return new Board<>(width, height, TileColor.OFF);
     }
 
-    private void send(Board<TileColor> snapshot) {
-        synchronized (gatewayWriteLock) {
-            gateway.sendBoard(Command.DATA_OUT, CommandType.SET, snapshot, codec);
-        }
-    }
-
     /**
      * Returns a copy of the current logical board state without touching hardware.
      */
