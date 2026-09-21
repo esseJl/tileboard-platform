@@ -288,7 +288,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
-        if (!lifecycle.finish(finalStatus)) return; // idempotent: تنها یک‌بار باید چک شود
+        if (!lifecycle.finish(finalStatus)) return;
 
         features.timer().stop();
         cancelTick();
