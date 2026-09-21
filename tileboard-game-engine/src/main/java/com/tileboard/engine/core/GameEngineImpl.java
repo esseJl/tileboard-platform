@@ -24,34 +24,34 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     private final GameEventBus eventBus;
     private final Duration tickInterval;
     private final Duration sessionTtl;
+    private final int touchHistoryMaxSize;
 
     private final Map<String, GameSessionImpl> activeSessions = new ConcurrentHashMap<>();
-    /**
-     * Enforces single-session hardware ownership (see Critical Bug #2).
-     */
     private final AtomicReference<String> exclusiveSessionId = new AtomicReference<>();
 
     private final ScheduledExecutorService sessionReaper;
     private final ExecutorService teardownExecutor;
 
     public GameEngineImpl(GameRegistry registry, TileGatewayClient gateway, GameEventBus eventBus,
-                          Duration tickInterval, Duration sessionTtl, Duration frameReassemblyTimeout, int boardWidth, int boardHeight) {
+                          Duration tickInterval, Duration sessionTtl, Duration frameReassemblyTimeout,
+                          int touchHistoryMaxSize, int boardWidth, int boardHeight) {
         this.registry = Objects.requireNonNull(registry);
         this.gateway = Objects.requireNonNull(gateway);
         this.eventBus = Objects.requireNonNull(eventBus);
         this.tickInterval = tickInterval != null ? tickInterval : Duration.ofMillis(100);
         this.sessionTtl = (sessionTtl != null && !sessionTtl.isZero()) ? sessionTtl : Duration.ofHours(1);
+        this.touchHistoryMaxSize = touchHistoryMaxSize > 0 ? touchHistoryMaxSize : 2_000;
 
         Duration effectiveReassembly = (frameReassemblyTimeout != null && !frameReassemblyTimeout.isZero())
                 ? frameReassemblyTimeout : Duration.ofMillis(500);
 
-        sessionReaper = Executors.newSingleThreadScheduledExecutor(r -> {
+        this.sessionReaper = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "tileboard-session-reaper");
             t.setDaemon(true);
             return t;
         });
 
-        teardownExecutor = Executors.newCachedThreadPool(r -> {
+        this.teardownExecutor = Executors.newCachedThreadPool(r -> {
             Thread t = new Thread(r, "tileboard-session-teardown");
             t.setDaemon(true);
             return t;
@@ -82,9 +82,7 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
         Objects.requireNonNull(players, "players");
         Game game = registry.instantiate(gameId);
         validatePlayers(game.descriptor(), players);
-
         String sessionId = UUID.randomUUID().toString();
-
         if (!exclusiveSessionId.compareAndSet(null, sessionId)) {
             throw new GameSessionException(
                     "Cannot start game '%s': board is already owned by session %s"
@@ -93,7 +91,8 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
 
         GameSessionImpl session;
         try {
-            session = new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus, teardownExecutor);
+            session = new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus,
+                    teardownExecutor, touchHistoryMaxSize);
         } catch (RuntimeException e) {
             exclusiveSessionId.compareAndSet(sessionId, null);
             throw e;

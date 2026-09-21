@@ -17,8 +17,9 @@ public record FeatureBundle(
         RandomFeature random, WaveGenerator waves, MemoryFeature memory,
         ReactionSpeedTracker reactionSpeed, GraphFeature graph, AnimationSystem animations) {
 
-    static FeatureBundle create(int w, int h, List<Player> players, String sessionId, Consumer<Board<TileColor>> publisher) {
-        TouchHistory touchHistory = new TouchHistory(sessionId);
+    static FeatureBundle create(int w, int h, List<Player> players, String sessionId,
+                                int touchHistoryMaxSize, Consumer<Board<TileColor>> publisher) {
+        TouchHistory touchHistory = new TouchHistory(sessionId, touchHistoryMaxSize);
         return new FeatureBundle(
                 new ScoreSystem(players), new HealthSystem(players), new LevelSystem(), new ComboTracker(),
                 new GameTimer(), touchHistory, new TouchAnalyzer(touchHistory),

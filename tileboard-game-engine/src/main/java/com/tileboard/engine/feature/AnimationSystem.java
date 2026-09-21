@@ -242,6 +242,7 @@ public final class AnimationSystem {
         TileColor[] colors = {TileColor.YELLOW, TileColor.GREEN, TileColor.BLUE, TileColor.PINK, TileColor.LIGHT_BLUE};
         int maxRadius = Math.max(Math.max(center.row(), height - 1 - center.row()),
                 Math.max(center.col(), width - 1 - center.col())) + 2;
+
         for (int radius = 0; radius <= maxRadius; radius++) {
             token.show(ringBandBoard(center, colors[radius % colors.length], radius));
             token.pause(100);
@@ -249,21 +250,7 @@ public final class AnimationSystem {
         token.pause(500);
         token.clear();
     }
-
-    private Board<TileColor> createBoard(TileColor[] colors, int radius, Position center) {
-        Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
-        TileColor color = colors[radius % colors.length];
-
-        for (int row = 0; row < height; row++) {
-            for (int col = 0; col < width; col++) {
-                int dist = Math.max(Math.abs(row - center.row()), Math.abs(col - center.col()));
-                if (dist <= radius && dist >= radius - 1) {
-                    board.set(row, col, color);
-                }
-            }
-        }
-        return board;
-    }
+    
 
     private void playRainbowSweep(RunToken token) {
         TileColor[] rainbow = {TileColor.RED, TileColor.YELLOW, TileColor.GREEN,
@@ -305,6 +292,7 @@ public final class AnimationSystem {
         for (int firework = 0; firework < 3; firework++) {
             Position center = new Position(randomInterior(height), randomInterior(width));
             TileColor color = colors[rng.nextInt(colors.length)];
+
             for (int radius = 0; radius <= 3; radius++) {
                 token.show(ringBoard(center, color, radius));
                 token.pause(100);

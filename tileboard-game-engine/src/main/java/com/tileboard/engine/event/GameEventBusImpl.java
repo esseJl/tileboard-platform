@@ -11,7 +11,9 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
+
     private static final Logger log = LoggerFactory.getLogger(GameEventBusImpl.class);
+
     private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>();
     private final int defaultQueueCapacity;
     private final EventOverflowPolicy defaultPolicy;
@@ -34,7 +36,7 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
 
     @Override
     public void publish(GameEvent event) {
-        Objects.requireNonNull(event);
+        Objects.requireNonNull(event, "event");
         for (Subscription sub : subscriptions) {
             if (sub.matches(event)) sub.offer(event);
         }
@@ -47,12 +49,14 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
 
     @Override
     public Runnable subscribe(GameEventType type, GameEventListener listener) {
-        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity).withPolicy(defaultPolicy).withType(type));
+        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity)
+                .withPolicy(defaultPolicy).withType(type));
     }
 
     @Override
     public Runnable subscribeSession(String sessionId, GameEventListener listener) {
-        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity).withPolicy(defaultPolicy).withSession(sessionId));
+        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity)
+                .withPolicy(defaultPolicy).withSession(sessionId));
     }
 
     @Override
@@ -66,12 +70,6 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         };
     }
 
-    public Runnable subscribe(GameEventListener listener, GameEventType filterType, String filterSessionId,
-                              int queueCapacity, EventOverflowPolicy policy) {
-        return subscribe(listener,
-                new SubscriptionOptions(filterType, filterSessionId, queueCapacity, policy));
-    }
-
     public long droppedEventCount() {
         return droppedEvents.get();
     }
@@ -80,25 +78,21 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         return subscriptions.size();
     }
 
-
     @Override
     public void close() {
         subscriptions.forEach(Subscription::stop);
         subscriptions.clear();
     }
 
-
     private final class Subscription {
         private final GameEventListener listener;
         private final SubscriptionOptions options;
-
+        private final long blockTimeoutNanos;
         private final BlockingQueue<GameEvent> blockingQueue;
         private final ArrayDeque<GameEvent> ring;
         private final ReentrantLock ringLock = new ReentrantLock();
         private final Semaphore ringAvailable = new Semaphore(0);
-
         private final ExecutorService worker;
-        private final long blockTimeoutNanos;
         private volatile boolean running = true;
 
         Subscription(GameEventListener listener, SubscriptionOptions options, long blockTimeoutNanos) {
@@ -125,11 +119,8 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         }
 
         void offer(GameEvent event) {
-            if (options.policy() == EventOverflowPolicy.BLOCK) {
-                offerBlocking(event);
-            } else {
-                offerDropOldest(event);
-            }
+            if (options.policy() == EventOverflowPolicy.BLOCK) offerBlocking(event);
+            else offerDropOldest(event);
         }
 
         private void offerBlocking(GameEvent event) {
@@ -144,7 +135,6 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         }
 
         private void offerDropOldest(GameEvent event) {
-            // کل توالی زیر یک بخش بحرانی اتمیک است: دیگر امکان over-drop یا miscounting نیست
             ringLock.lock();
             try {
                 while (ring.size() >= options.queueCapacity()) {

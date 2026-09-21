@@ -49,7 +49,7 @@ public class GameEngineManager {
     private final Duration tickInterval;
     private final Duration sessionTtl;
     private final Duration frameReassemblyTimeout;
-
+    private final int touchHistoryMaxSize;
     private volatile GameEngineImpl engine;
 
     public GameEngineManager(GameRegistry registry, GameEventBus eventBus, TileboardEngineProperties props) {
@@ -58,6 +58,7 @@ public class GameEngineManager {
         this.tickInterval = props.getTickInterval();
         this.sessionTtl = props.getSessionTtl();
         this.frameReassemblyTimeout = props.getFrameReassemblyTimeout();
+        this.touchHistoryMaxSize = props.getTouchHistoryMaxSize();
     }
 
     @EventListener
@@ -67,8 +68,8 @@ public class GameEngineManager {
                     + "(missing disconnect event?) - stopping its sessions before rebinding");
             shutdownCurrentEngine();
         }
-        engine = new GameEngineImpl(registry, event.client(), eventBus, tickInterval, sessionTtl, frameReassemblyTimeout
-                , event.boardWidth(), event.boardHeight());
+        engine = new GameEngineImpl(registry, event.client(), eventBus, tickInterval, sessionTtl,
+                frameReassemblyTimeout, touchHistoryMaxSize, event.boardWidth(), event.boardHeight());
         log.info("Game engine bound to the newly connected tile gateway ({}x{})",
                 event.boardWidth(), event.boardHeight());
     }
@@ -78,25 +79,19 @@ public class GameEngineManager {
         shutdownCurrentEngine();
     }
 
-    /**
-     * Idempotent and null-safe: safe to call with no engine bound.
-     */
     private void shutdownCurrentEngine() {
         GameEngineImpl current = this.engine;
-        if (current == null) {
-            log.debug("shutdownCurrentEngine() called with no engine bound — nothing to do");
-            return;
-        }
-        this.engine = null; // visible to current()/require() immediately, before the potentially slow close()
+        if (current == null) return;
+        this.engine = null;
 
         List<GameSession> sessions = current.activeSessions();
         try {
-            current.close(); // sole owner of "stop every session" logic — no duplicate iteration here
+            current.close();
         } catch (RuntimeException e) {
             log.warn("Error while closing previous game engine instance", e);
         }
-        log.info("Game engine unbound{}",
-                sessions.isEmpty() ? "" : " (" + sessions.size() + " active session(s) stopped)");
+        log.info("Game engine unbound {}",
+                sessions.isEmpty() ? "" : "(" + sessions.size() + " active session(s) stopped)");
     }
 
     public synchronized Optional<GameEngine> current() {
@@ -109,9 +104,6 @@ public class GameEngineManager {
         return snapshot;
     }
 
-    /**
-     * Ensures daemon threads are released even if the app shuts down without a disconnect event.
-     */
     @PreDestroy
     public synchronized void shutdownOnContextClose() {
         shutdownCurrentEngine();
