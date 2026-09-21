@@ -4,29 +4,31 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.util.ArrayDeque;
 import java.util.Objects;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(GameEventBusImpl.class);
     private final CopyOnWriteArrayList<Subscription> subscriptions = new CopyOnWriteArrayList<>();
     private final int defaultQueueCapacity;
-    private final OverflowPolicy defaultPolicy;
+    private final EventOverflowPolicy defaultPolicy;
     private final Duration blockTimeout;
     private final AtomicLong droppedEvents = new AtomicLong();
 
     public GameEventBusImpl() {
-        this(256, OverflowPolicy.DROP_OLDEST);
+        this(256, EventOverflowPolicy.DROP_OLDEST);
     }
 
-    public GameEventBusImpl(int defaultQueueCapacity, OverflowPolicy defaultPolicy) {
+    public GameEventBusImpl(int defaultQueueCapacity, EventOverflowPolicy defaultPolicy) {
         this(defaultQueueCapacity, defaultPolicy, Duration.ofMillis(200));
     }
 
-    public GameEventBusImpl(int defaultQueueCapacity, OverflowPolicy defaultPolicy, Duration blockTimeout) {
+    public GameEventBusImpl(int defaultQueueCapacity, EventOverflowPolicy defaultPolicy, Duration blockTimeout) {
         this.defaultQueueCapacity = defaultQueueCapacity;
-        this.defaultPolicy = defaultPolicy;
+        this.defaultPolicy = Objects.requireNonNull(defaultPolicy, "defaultPolicy");
         this.blockTimeout = Objects.requireNonNull(blockTimeout, "blockTimeout");
     }
 
@@ -34,35 +36,40 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
     public void publish(GameEvent event) {
         Objects.requireNonNull(event);
         for (Subscription sub : subscriptions) {
-            if (matches(sub, event)) sub.offer(event);
+            if (sub.matches(event)) sub.offer(event);
         }
     }
 
     @Override
     public Runnable subscribe(GameEventListener listener) {
-        return subscribe(listener, null, null, defaultQueueCapacity, defaultPolicy);
+        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity).withPolicy(defaultPolicy));
     }
 
     @Override
     public Runnable subscribe(GameEventType type, GameEventListener listener) {
-        return subscribe(listener, type, null, defaultQueueCapacity, defaultPolicy);
+        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity).withPolicy(defaultPolicy).withType(type));
     }
 
     @Override
     public Runnable subscribeSession(String sessionId, GameEventListener listener) {
-        return subscribe(listener, null, sessionId, defaultQueueCapacity, defaultPolicy);
+        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity).withPolicy(defaultPolicy).withSession(sessionId));
     }
 
-    public Runnable subscribe(GameEventListener listener, GameEventType filterType, String filterSessionId,
-                              int queueCapacity, OverflowPolicy policy) {
-        Subscription sub = new Subscription(listener, filterType, filterSessionId, queueCapacity, policy,
-                blockTimeout.toNanos());
+    @Override
+    public Runnable subscribe(GameEventListener listener, SubscriptionOptions options) {
+        Subscription sub = new Subscription(listener, options, blockTimeout.toNanos());
         subscriptions.add(sub);
         sub.start();
         return () -> {
             subscriptions.remove(sub);
             sub.stop();
         };
+    }
+
+    public Runnable subscribe(GameEventListener listener, GameEventType filterType, String filterSessionId,
+                              int queueCapacity, EventOverflowPolicy policy) {
+        return subscribe(listener,
+                new SubscriptionOptions(filterType, filterSessionId, queueCapacity, policy));
     }
 
     public long droppedEventCount() {
@@ -73,11 +80,6 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         return subscriptions.size();
     }
 
-    private boolean matches(Subscription sub, GameEvent event) {
-        if (sub.filterType != null && sub.filterType != event.type()) return false;
-        if (sub.filterSessionId != null && !sub.filterSessionId.equals(event.sessionId())) return false;
-        return true;
-    }
 
     @Override
     public void close() {
@@ -85,26 +87,31 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
         subscriptions.clear();
     }
 
-    public enum OverflowPolicy {BLOCK, DROP_OLDEST}
 
     private final class Subscription {
-        final GameEventListener listener;
-        final GameEventType filterType;
-        final String filterSessionId;
-        final OverflowPolicy policy;
-        final long blockTimeoutNanos;
-        final BlockingQueue<GameEvent> queue;
-        final ExecutorService worker;
-        volatile boolean running = true;
+        private final GameEventListener listener;
+        private final SubscriptionOptions options;
 
-        Subscription(GameEventListener listener, GameEventType filterType, String filterSessionId,
-                     int capacity, OverflowPolicy policy, long blockTimeoutNanos) {
+        private final BlockingQueue<GameEvent> blockingQueue;
+        private final ArrayDeque<GameEvent> ring;
+        private final ReentrantLock ringLock = new ReentrantLock();
+        private final Semaphore ringAvailable = new Semaphore(0);
+
+        private final ExecutorService worker;
+        private final long blockTimeoutNanos;
+        private volatile boolean running = true;
+
+        Subscription(GameEventListener listener, SubscriptionOptions options, long blockTimeoutNanos) {
             this.listener = listener;
-            this.filterType = filterType;
-            this.filterSessionId = filterSessionId;
-            this.policy = policy;
+            this.options = options;
             this.blockTimeoutNanos = blockTimeoutNanos;
-            this.queue = new LinkedBlockingQueue<>(capacity);
+            if (options.policy() == EventOverflowPolicy.BLOCK) {
+                this.blockingQueue = new LinkedBlockingQueue<>(options.queueCapacity());
+                this.ring = null;
+            } else {
+                this.blockingQueue = null;
+                this.ring = new ArrayDeque<>(options.queueCapacity());
+            }
             this.worker = Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "tileboard-eventbus-subscriber");
                 t.setDaemon(true);
@@ -112,35 +119,64 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
             });
         }
 
-        void start() {
-            worker.submit(this::drainLoop);
+        boolean matches(GameEvent event) {
+            if (options.filterType() != null && options.filterType() != event.type()) return false;
+            return options.filterSessionId() == null || options.filterSessionId().equals(event.sessionId());
         }
 
         void offer(GameEvent event) {
-            if (policy == OverflowPolicy.BLOCK) {
-                try {
-                    boolean accepted = queue.offer(event, blockTimeoutNanos, TimeUnit.NANOSECONDS);
-                    if (!accepted) {
-                        log.warn("Subscriber did not drain within {}ns; dropping event {} instead of blocking publisher",
-                                blockTimeoutNanos, event.type());
-                        droppedEvents.incrementAndGet();
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+            if (options.policy() == EventOverflowPolicy.BLOCK) {
+                offerBlocking(event);
             } else {
-                while (!queue.offer(event)) {
-                    GameEvent discarded = queue.poll();
-                    if (discarded != null) droppedEvents.incrementAndGet();
-                    else break;
-                }
+                offerDropOldest(event);
             }
+        }
+
+        private void offerBlocking(GameEvent event) {
+            try {
+                if (!blockingQueue.offer(event, blockTimeoutNanos, TimeUnit.NANOSECONDS)) {
+                    log.warn("Subscriber did not drain within {}ns; dropping event {}", blockTimeoutNanos, event.type());
+                    droppedEvents.incrementAndGet();
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
+        private void offerDropOldest(GameEvent event) {
+            // کل توالی زیر یک بخش بحرانی اتمیک است: دیگر امکان over-drop یا miscounting نیست
+            ringLock.lock();
+            try {
+                while (ring.size() >= options.queueCapacity()) {
+                    if (ring.pollFirst() != null) droppedEvents.incrementAndGet();
+                }
+                ring.addLast(event);
+            } finally {
+                ringLock.unlock();
+            }
+            ringAvailable.release();
+        }
+
+        private GameEvent takeDropOldest(long timeoutMs) throws InterruptedException {
+            if (!ringAvailable.tryAcquire(timeoutMs, TimeUnit.MILLISECONDS)) return null;
+            ringLock.lock();
+            try {
+                return ring.pollFirst();
+            } finally {
+                ringLock.unlock();
+            }
+        }
+
+        void start() {
+            worker.submit(this::drainLoop);
         }
 
         void drainLoop() {
             while (running) {
                 try {
-                    GameEvent event = queue.poll(1, TimeUnit.SECONDS);
+                    GameEvent event = (options.policy() == EventOverflowPolicy.BLOCK)
+                            ? blockingQueue.poll(1, TimeUnit.SECONDS)
+                            : takeDropOldest(1000);
                     if (event == null) continue;
                     try {
                         listener.onEvent(event);

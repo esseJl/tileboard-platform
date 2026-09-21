@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,8 +33,8 @@ class GameSessionImplStartFailureTest {
         when(failingGame.descriptor()).thenReturn(descriptor);
         doThrow(new IllegalStateException("kaboom")).when(failingGame).onStart(any());
 
-        GameSessionImpl session = new GameSessionImpl(
-                "s1", failingGame, List.of(Player.solo("Alice")), gateway, null, eventBus);
+        GameSessionImpl session = new GameSessionImpl("s1", failingGame,
+                List.of(Player.solo("Alice")), gateway, null, eventBus, mock(ScheduledExecutorService.class));
 
         GameSessionException ex = assertThrows(GameSessionException.class, session::start);
         assertTrue(ex.getCause() instanceof IllegalStateException);

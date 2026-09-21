@@ -2,6 +2,7 @@ package com.tileboard.engine.feature;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * A wall-clock timer that supports elapsed time, countdown and optional
@@ -9,24 +10,26 @@ import java.time.Instant;
  */
 public final class GameTimer {
 
-    private volatile Instant  startedAt;
-    private volatile Instant  stoppedAt;
+    private final AtomicReference<Runnable> onExpire = new AtomicReference<>();
+    private volatile Instant startedAt;
+    private volatile Instant stoppedAt;
     private volatile Duration countdownTarget;
-    private volatile Runnable onExpire;
 
     public void start() {
-        startedAt  = Instant.now();
-        stoppedAt  = null;
+        startedAt = Instant.now();
+        stoppedAt = null;
     }
 
     public void stop() {
         if (startedAt != null && stoppedAt == null) stoppedAt = Instant.now();
     }
 
-    /** Sets a countdown duration and callback fired when elapsed >= target. */
-    public void startCountdown(Duration duration, Runnable onExpire) {
+    /**
+     * Sets a countdown duration and callback fired when elapsed >= target.
+     */
+    public void startCountdown(Duration duration, Runnable onExpireCallback) {
         this.countdownTarget = duration;
-        this.onExpire        = onExpire;
+        this.onExpire.set(onExpireCallback);
         start();
     }
 
@@ -36,7 +39,9 @@ public final class GameTimer {
         return Duration.between(startedAt, end);
     }
 
-    /** Remaining time in a countdown, or {@link Duration#ZERO} if expired / not started. */
+    /**
+     * Remaining time in a countdown, or {@link Duration#ZERO} if expired / not started.
+     */
     public Duration remaining() {
         if (countdownTarget == null || startedAt == null) return Duration.ZERO;
         Duration elapsed = elapsed();
@@ -48,19 +53,19 @@ public final class GameTimer {
         return countdownTarget != null && remaining().isZero();
     }
 
-    /** Should be called on every tick to fire the expire callback exactly once. */
+    /**
+     * Should be called on every tick to fire the expire callback exactly once.
+     */
     public void checkExpiry() {
-        if (isExpired() && onExpire != null) {
-            Runnable cb = onExpire;
-            onExpire = null;   // fire only once
-            cb.run();
-        }
+        if (!isExpired()) return;
+        Runnable cb = onExpire.getAndSet(null);
+        if (cb != null) cb.run();
     }
 
     public void reset() {
-        startedAt       = null;
-        stoppedAt       = null;
+        startedAt = null;
+        stoppedAt = null;
         countdownTarget = null;
-        onExpire        = null;
+        onExpire.set(null);
     }
 }

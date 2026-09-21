@@ -15,9 +15,16 @@ public interface GameEventBus {
      */
     Runnable subscribe(GameEventListener listener);
 
-    /** Subscribes only for events of {@code type}. */
+    /**
+     * Subscribes only for events of {@code type}.
+     */
     Runnable subscribe(GameEventType type, GameEventListener listener);
 
-    /** Subscribes only for events belonging to {@code sessionId}. */
+    /**
+     * Subscribes only for events belonging to {@code sessionId}.
+     */
     Runnable subscribeSession(String sessionId, GameEventListener listener);
+
+    Runnable subscribe(GameEventListener listener, SubscriptionOptions options);
+
 }

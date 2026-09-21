@@ -22,34 +22,16 @@ public final class NeighborFinder {
         System.arraycopy(DIAG, 0, EIGHT, 4, 4);
     }
 
-    private final int width;
-    private final int height;
     private final Adjacency adjacency;
+    private final GridTopology topology;
 
     public NeighborFinder(int width, int height, Adjacency adjacency) {
-        this.width = width;
-        this.height = height;
+        this.topology = new GridTopology(width, height);
         this.adjacency = adjacency;
     }
 
     public List<Position> of(Position position) {
         return of(position.row(), position.col());
-    }
-
-    public List<Position> of(int row, int col) {
-        int[][] dirs = switch (adjacency) {
-            case FOUR_WAY -> FOUR;
-            case EIGHT_WAY -> EIGHT;
-            case DIAGONAL_ONLY -> DIAG;
-        };
-        List<Position> result = new ArrayList<>(dirs.length);
-        for (int[] d : dirs) {
-            int r = row + d[0], c = col + d[1];
-            if (r >= 0 && r < height && c >= 0 && c < width) {
-                result.add(new Position(r, c));
-            }
-        }
-        return result;
     }
 
     /**
@@ -77,5 +59,9 @@ public final class NeighborFinder {
             }
         }
         return visited;
+    }
+
+    public List<Position> of(int row, int col) {
+        return topology.neighbors(row, col, adjacency);
     }
 }

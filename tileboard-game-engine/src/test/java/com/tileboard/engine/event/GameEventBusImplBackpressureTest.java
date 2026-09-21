@@ -14,16 +14,16 @@ class GameEventBusImplBackpressureTest {
 
     @Test
     void aStuckBlockSubscriberCannotFreezeThePublisherForever() {
-        GameEventBusImpl bus = new GameEventBusImpl(1, GameEventBusImpl.OverflowPolicy.BLOCK, Duration.ofMillis(100));
+        GameEventBusImpl bus = new GameEventBusImpl(1, EventOverflowPolicy.BLOCK, Duration.ofMillis(100));
         CountDownLatch neverDrains = new CountDownLatch(1);
 
         bus.subscribe(event -> {
             try {
-                neverDrains.await(10, TimeUnit.SECONDS); // شبیه‌سازی کلاینت گیرکرده/قطع‌شده
+                neverDrains.await(10, TimeUnit.SECONDS);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
-        }, null, null, 1, GameEventBusImpl.OverflowPolicy.BLOCK);
+        }, null, null, 1, EventOverflowPolicy.BLOCK);
 
         long start = System.nanoTime();
         for (int i = 0; i < 5; i++) {

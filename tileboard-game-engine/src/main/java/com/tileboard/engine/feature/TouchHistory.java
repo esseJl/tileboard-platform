@@ -5,33 +5,65 @@ import com.tileboard.engine.model.TouchSequence;
 import com.tileboard.serial.board.Position;
 
 import java.time.Instant;
-import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Records every {@link TileEvent} for a session and exposes query methods:
  * last touched, count, ordered sequence, inter-touch timing.
+ * Thread-safe: all access to shared state is guarded by {@code lock}.
  */
 public final class TouchHistory {
 
     private final String sessionId;
-    private final List<TileEvent> history = new CopyOnWriteArrayList<>();
+    private final int maxSize;
+    private final Deque<TileEvent> history = new ArrayDeque<>();
+    private final Object lock = new Object();
+    private long totalTouches = 0;
 
     public TouchHistory(String sessionId) {
+        this(sessionId, 2_000);
+    }
+
+    public TouchHistory(String sessionId, int maxSize) {
+        if (maxSize <= 0) {
+            throw new IllegalArgumentException("maxSize must be > 0");
+        }
         this.sessionId = sessionId;
+        this.maxSize = maxSize;
     }
 
     public void record(TileEvent event) {
-        history.add(event);
+        synchronized (lock) {
+            if (history.size() >= maxSize) {
+                history.pollFirst(); // drop the oldest
+            }
+            history.addLast(event);
+            totalTouches++;
+        }
     }
 
     public int totalTouches() {
-        return history.size();
+        synchronized (lock) {
+            return (int) Math.min(totalTouches, Integer.MAX_VALUE);
+        }
+    }
+
+    public List<Position> positionOrder() {
+        synchronized (lock) {
+            return history.stream().map(TileEvent::position).toList();
+        }
     }
 
     public Optional<TileEvent> last() {
-        if (history.isEmpty()) return Optional.empty();
-        return Optional.of(history.get(history.size() - 1));
+        synchronized (lock) {
+            return Optional.ofNullable(history.peekLast());
+        }
     }
 
     public Optional<Position> lastTouchedPosition() {
@@ -42,34 +74,31 @@ public final class TouchHistory {
      * Snapshot of the current touch sequence (positions + timestamps).
      */
     public TouchSequence sequence() {
-        Object[] snapshot = history.toArray();
-        List<Position> pos = new ArrayList<>(snapshot.length);
-        List<Instant> ts = new ArrayList<>(snapshot.length);
-        for (Object o : snapshot) {
-            TileEvent e = (TileEvent) o;
-            pos.add(e.position());
-            ts.add(e.occurredAt());
+        synchronized (lock) {
+            List<Position> pos = new ArrayList<>(history.size());
+            List<Instant> ts = new ArrayList<>(history.size());
+            for (TileEvent e : history) {
+                pos.add(e.position());
+                ts.add(e.occurredAt());
+            }
+            return new TouchSequence(pos, ts);
         }
-        return new TouchSequence(pos, ts);
-    }
-
-    /**
-     * All positions touched, in order, since the session started or last {@link #reset()}.
-     */
-    public List<Position> positionOrder() {
-        return Arrays.stream(history.toArray())
-                .map(o -> ((TileEvent) o).position()).toList();
     }
 
     /**
      * The set of distinct positions that have been touched at least once.
      */
     public Set<Position> distinctPositions() {
-        return history.stream().map(TileEvent::position)
-                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+        synchronized (lock) {
+            return history.stream().map(TileEvent::position)
+                    .collect(Collectors.toUnmodifiableSet());
+        }
     }
 
     public void reset() {
-        history.clear();
+        synchronized (lock) {
+            history.clear();
+            totalTouches = 0;
+        }
     }
 }

@@ -20,10 +20,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
 public final class GameSessionImpl implements GameSession, GameContext {
@@ -31,6 +28,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private static final Logger log = LoggerFactory.getLogger(GameSessionImpl.class);
 
     private final String sessionId;
+    private final String tickThreadName;
     private final Game game;
     private final List<Player> players;
 
@@ -45,11 +43,15 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
     private final ScheduledExecutorService tickExecutor;
     private final ScheduledFuture<?> tickFuture;
+    private final ExecutorService teardownExecutor;
+    private final SessionLifecycle lifecycle = new SessionLifecycle();
     private volatile GameResult result;
 
     public GameSessionImpl(String sessionId, Game game, List<Player> players,
-                           TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus) {
+                           TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus, ExecutorService teardownExecutor) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
+        this.teardownExecutor = Objects.requireNonNull(teardownExecutor, "teardownExecutor");
+        this.tickThreadName = "tileboard-tick-" + sessionId;
         this.game = Objects.requireNonNull(game, "game");
         this.players = List.copyOf(Objects.requireNonNull(players, "players"));
         Objects.requireNonNull(gateway, "gateway");
@@ -61,14 +63,9 @@ public final class GameSessionImpl implements GameSession, GameContext {
         this.features = FeatureBundle.create(w, h, players, sessionId, this::publishBoard);
 
         if (tickInterval != null && !tickInterval.isZero()) {
-            this.tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
-                Thread t = new Thread(r, "tileboard-tick-" + sessionId);
-                t.setDaemon(true);
-                return t;
-            });
+            this.tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, tickThreadName));
             long millis = tickInterval.toMillis();
-            this.tickFuture = tickExecutor.scheduleAtFixedRate(
-                    this::runTick, millis, millis, TimeUnit.MILLISECONDS);
+            this.tickFuture = tickExecutor.scheduleAtFixedRate(this::runTick, millis, millis, TimeUnit.MILLISECONDS);
         } else {
             this.tickExecutor = null;
             this.tickFuture = null;
@@ -76,20 +73,15 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     void start() {
-        if (!status.compareAndSet(GameStatus.IDLE, GameStatus.RUNNING)) {
-            throw new GameSessionException("Session " + sessionId + " already started");
-        }
+        if (!lifecycle.start()) throw new GameSessionException("Session " + sessionId + " already started");
         features.timer().start();
         try {
             game.onStart(this);
-            eventBus.publish(GameEvent.of(
-                    GameEventType.SESSION_STARTED, sessionId, game.descriptor().gameId(), snapshotForSse()));
-            log.info("Session {} started for game '{}'", sessionId, game.descriptor().gameId());
+            eventBus.publish(GameEvent.of(GameEventType.SESSION_STARTED, sessionId, gameId(), snapshotForSse()));
         } catch (RuntimeException e) {
-            log.error("onStart threw in session {}", sessionId, e);
             forceStop();
             throw new GameSessionException(
-                    "Game '" + game.descriptor().gameId() + "' failed to start (session " + sessionId + ")", e);
+                    "Game '" + gameId() + "' failed to start (session " + sessionId + ")", e);
         }
     }
 
@@ -280,7 +272,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
     @Override
     public GameStatus status() {
-        return status.get();
+        return lifecycle.current();
     }
 
     @Override
@@ -299,20 +291,14 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
-        GameStatus prev;
-        do {
-            prev = status.get();
-            if (prev != GameStatus.RUNNING && prev != GameStatus.PAUSED) return;
-        } while (!status.compareAndSet(prev, finalStatus));
+        if (!lifecycle.finish(finalStatus)) return; // idempotent: از قبل تمام شده بود
 
         features.timer().stop();
         cancelTick();
         features.closeAll();
 
-        GameResult finalResult = new GameResult(
-                sessionId, game.descriptor().gameId(), finalStatus, winners,
-                features.scores().allScores(), features.timer().elapsed(), Instant.now()
-        );
+        GameResult finalResult = new GameResult(sessionId, gameId(), finalStatus, winners,
+                features.scores().allScores(), features.timer().elapsed(), Instant.now());
         this.result = finalResult;
 
         try {
@@ -323,14 +309,11 @@ public final class GameSessionImpl implements GameSession, GameContext {
         try {
             fillBoard(TileColor.OFF);
         } catch (RuntimeException e) {
-            log.warn("Could not clear board on session end (gateway may be disconnected): {}", e.getMessage());
+            log.warn("Could not clear board on session end: {}", e.getMessage());
         }
-
         eventBus.publish(GameEvent.of(
                 finalStatus == GameStatus.FINISHED ? GameEventType.SESSION_FINISHED : GameEventType.SESSION_STOPPED,
-                sessionId, game.descriptor().gameId(), snapshotForSse()));
-
-        log.info("Session {} ended with status={}, winners={}", sessionId, finalStatus, winners);
+                sessionId, gameId(), snapshotForSse()));
     }
 
     private void forceStop() {
@@ -339,14 +322,25 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
     private void cancelTick() {
         if (tickFuture != null) tickFuture.cancel(false);
-        if (tickExecutor != null) {
-            tickExecutor.shutdown();
-            try {
-                if (!tickExecutor.awaitTermination(500, TimeUnit.MILLISECONDS)) tickExecutor.shutdownNow();
-            } catch (InterruptedException e) {
+        if (tickExecutor == null) return;
+
+        tickExecutor.shutdown();
+        if (Thread.currentThread().getName().equals(tickThreadName)) {
+            teardownExecutor.execute(this::awaitTickExecutorTermination);
+        } else {
+            awaitTickExecutorTermination();
+        }
+    }
+
+    private void awaitTickExecutorTermination() {
+        try {
+            if (!tickExecutor.awaitTermination(500, TimeUnit.MILLISECONDS)) {
+                log.warn("Session {} tick executor forced shutdownNow() after timeout", sessionId);
                 tickExecutor.shutdownNow();
-                Thread.currentThread().interrupt();
             }
+        } catch (InterruptedException e) {
+            tickExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 

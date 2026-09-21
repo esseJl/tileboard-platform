@@ -1,5 +1,7 @@
 package com.tileboard.engine.model;
 
+import java.util.Arrays;
+
 /**
  * Application-level tile color. The engine never hard-codes a palette;
  * games supply their own {@link com.tileboard.engine.codec.ColorTileCodec}.
@@ -15,16 +17,27 @@ public enum TileColor {
     YELLOW(6),
     WHITE(7);
 
+    private static final TileColor[] BY_WIRE_CODE = buildLookupTable();
     private final int wireCode;
 
-    TileColor(int wireCode) { this.wireCode = wireCode; }
+    TileColor(int wireCode) {
+        this.wireCode = wireCode;
+    }
 
-    public int wireCode() { return wireCode; }
+    private static TileColor[] buildLookupTable() {
+        TileColor[] table = new TileColor[256];
+        Arrays.fill(table, OFF);
+        for (TileColor c : values()) {
+            table[c.wireCode & 0xFF] = c;
+        }
+        return table;
+    }
 
     public static TileColor fromWireCode(int code) {
-        for (TileColor c : values()) {
-            if (c.wireCode == (code & 0xFF)) return c;
-        }
-        return OFF;
+        return BY_WIRE_CODE[code & 0xFF];
+    }
+
+    public int wireCode() {
+        return wireCode;
     }
 }

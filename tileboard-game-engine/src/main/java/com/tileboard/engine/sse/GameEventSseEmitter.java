@@ -3,10 +3,7 @@ package com.tileboard.engine.sse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import com.tileboard.engine.event.GameEvent;
-import com.tileboard.engine.event.GameEventBusImpl;
-import com.tileboard.engine.event.GameEventBusImpl.OverflowPolicy;
-import com.tileboard.engine.event.GameEventType;
+import com.tileboard.engine.event.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -17,18 +14,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Bridges the engine's {@link GameEventBusImpl} to Spring's {@link SseEmitter}.
- *
- * <p>Every network write ({@code emitter.send}) happens on a dedicated
- * per-connection subscriber thread (see {@link GameEventBusImpl#subscribe(
- *com.tileboard.engine.event.GameEventListener, GameEventType, String, int,
- * OverflowPolicy)}), never on the shared event-dispatch thread used by other
- * subscribers or sessions. The subscriber's queue uses {@code DROP_OLDEST}
- * with a small capacity: a stalled browser tab loses a few intermediate
- * ticks/board-updates rather than causing unbounded memory growth or stalling
- * anyone else.
- */
+
 public final class GameEventSseEmitter {
 
     private static final Logger log = LoggerFactory.getLogger(GameEventSseEmitter.class);
@@ -42,21 +28,10 @@ public final class GameEventSseEmitter {
     private GameEventSseEmitter() {
     }
 
-    public static SseEmitter forSession(String sessionId, GameEventBusImpl bus, ScheduledExecutorService heartbeats) {
-        return build(bus, null, sessionId, heartbeats);
-    }
 
-    public static SseEmitter forEventType(GameEventType type, GameEventBusImpl bus, ScheduledExecutorService heartbeats) {
-        return build(bus, type, null, heartbeats);
-    }
-
-    public static SseEmitter global(GameEventBusImpl bus, ScheduledExecutorService heartbeats) {
-        return build(bus, null, null, heartbeats);
-    }
-
-    private static SseEmitter build(GameEventBusImpl bus, GameEventType type, String sessionId,
-                                    ScheduledExecutorService heartbeats) {
-        SseEmitter emitter = new SseEmitter(0L); // no server-side timeout; rely on heartbeat + client disconnect
+    public static SseEmitter build(GameEventBus bus, GameEventType type, String sessionId,
+                                   ScheduledExecutorService heartbeats) {
+        SseEmitter emitter = new SseEmitter(0L);
         AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
         AtomicReference<ScheduledFuture<?>> heartbeatRef = new AtomicReference<>();
 
@@ -67,15 +42,16 @@ public final class GameEventSseEmitter {
             if (hb != null) hb.cancel(false);
         };
 
-        Runnable unsubscribe = bus.subscribe(
-                event -> push(emitter, event, teardown),
-                type, sessionId,
-                PER_CLIENT_QUEUE_CAPACITY, OverflowPolicy.DROP_OLDEST);
-        unsubscribeRef.set(unsubscribe);
+        SubscriptionOptions options = SubscriptionOptions
+                .defaults(32)
+                .withPolicy(EventOverflowPolicy.DROP_OLDEST);
+        if (type != null) options = options.withType(type);
+        if (sessionId != null) options = options.withSession(sessionId);
 
-        ScheduledFuture<?> heartbeat = heartbeats.scheduleAtFixedRate(
-                () -> sendComment(emitter, teardown), HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS);
-        heartbeatRef.set(heartbeat);
+        unsubscribeRef.set(bus.subscribe(event -> push(emitter, event, teardown), options));
+
+        heartbeatRef.set(heartbeats.scheduleAtFixedRate(
+                () -> sendComment(emitter, teardown), 15, 15, TimeUnit.SECONDS));
 
         emitter.onCompletion(teardown);
         emitter.onTimeout(teardown);
@@ -85,13 +61,11 @@ public final class GameEventSseEmitter {
 
     private static void push(SseEmitter emitter, GameEvent event, Runnable teardown) {
         try {
-            SseGameEvent dto = toDto(event);
-            String json = MAPPER.writeValueAsString(dto);
-            emitter.send(SseEmitter.event().id(event.id()).name(dto.type().name()).data(json));
+            String json = MAPPER.writeValueAsString(toDto(event));
+            emitter.send(SseEmitter.event().id(event.id()).name(event.type().name()).data(json));
         } catch (IOException | IllegalStateException e) {
-            // IllegalStateException covers "already completed" races on disconnect.
             teardown.run();
-            emitter.completeWithError(e);
+            safeCompleteWithError(emitter, e);
         }
     }
 
@@ -103,7 +77,7 @@ public final class GameEventSseEmitter {
             emitter.send(SseEmitter.event().comment("ping"));
         } catch (IOException | IllegalStateException e) {
             teardown.run();
-            emitter.completeWithError(e);
+            safeCompleteWithError(emitter, e);
         }
     }
 
@@ -116,5 +90,9 @@ public final class GameEventSseEmitter {
             default -> SseGameEventType.GAME_STATE;
         };
         return new SseGameEvent(event.sessionId(), event.gameId(), sseType, event.payload(), event.occurredAt());
+    }
+
+    private static void safeCompleteWithError(SseEmitter emitter, Exception e) throws IllegalStateException {
+        emitter.completeWithError(e);
     }
 }
