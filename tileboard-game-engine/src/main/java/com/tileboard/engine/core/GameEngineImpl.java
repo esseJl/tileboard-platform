@@ -46,7 +46,9 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
         this.tickInterval = tickInterval != null ? tickInterval : Duration.ofMillis(100);
         this.sessionTtl = (sessionTtl != null && !sessionTtl.isZero()) ? sessionTtl : Duration.ofHours(1);
 
-        TouchFrameRouter router = new TouchFrameRouter(activeSessions::values, this::exclusiveOwner);
+        TouchFrameRouter router = new TouchFrameRouter(
+                id -> Optional.ofNullable(activeSessions.get(id)),
+                this::exclusiveOwner);
         gateway.addFrameListener(new EngineFrameRouter(boardWidth, boardHeight, router::route));
     }
 
