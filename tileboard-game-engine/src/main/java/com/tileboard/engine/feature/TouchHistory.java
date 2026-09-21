@@ -13,14 +13,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-/**
- * Records every {@link TileEvent} for a session and exposes query methods:
- * last touched, count, ordered sequence, inter-touch timing.
- * Thread-safe: all access to shared state is guarded by {@code lock}.
- */
 public final class TouchHistory {
 
-    private final String sessionId;
     private final int maxSize;
     private final Deque<TileEvent> history = new ArrayDeque<>();
     private final Object lock = new Object();
@@ -32,7 +26,6 @@ public final class TouchHistory {
 
     public TouchHistory(String sessionId, int maxSize) {
         if (maxSize <= 0) throw new IllegalArgumentException("maxSize must be > 0");
-        this.sessionId = sessionId;
         this.maxSize = maxSize;
     }
 

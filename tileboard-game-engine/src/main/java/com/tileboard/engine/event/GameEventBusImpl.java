@@ -43,11 +43,6 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
     }
 
     @Override
-    public Runnable subscribe(GameEventListener listener) {
-        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity).withPolicy(defaultPolicy));
-    }
-
-    @Override
     public Runnable subscribe(GameEventType type, GameEventListener listener) {
         return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity)
                 .withPolicy(defaultPolicy).withType(type));
@@ -57,6 +52,11 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
     public Runnable subscribeSession(String sessionId, GameEventListener listener) {
         return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity)
                 .withPolicy(defaultPolicy).withSession(sessionId));
+    }
+
+    @Override
+    public Runnable subscribe(GameEventListener listener) {
+        return subscribe(listener, SubscriptionOptions.defaults(defaultQueueCapacity).withPolicy(defaultPolicy));
     }
 
     @Override

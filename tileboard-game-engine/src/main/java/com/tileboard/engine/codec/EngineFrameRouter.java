@@ -24,11 +24,8 @@ import java.util.function.Consumer;
  */
 public final class EngineFrameRouter implements FrameListener {
 
-    /**
-     * Maximum time between chunks of the same board before the partial data is dropped.
-     */
-    public static final Duration DEFAULT_REASSEMBLY_TIMEOUT = Duration.ofMillis(250);
     private static final Logger log = LoggerFactory.getLogger(EngineFrameRouter.class);
+
     private final int width;
     private final int height;
     private final int expectedSize;
@@ -36,20 +33,12 @@ public final class EngineFrameRouter implements FrameListener {
     private final Consumer<Board<Boolean>> touchBoardConsumer;
 
     private final Object lock = new Object();
-    private final byte[] buffer;      // guarded by lock
-    private int buffered;             // guarded by lock
-    private long lastChunkNanos;      // guarded by lock
+    private final byte[] buffer;
+    private int buffered;
+    private long lastChunkNanos;
 
-    public EngineFrameRouter(int width, int height, Consumer<Board<Boolean>> touchBoardConsumer) {
-        this(width, height, touchBoardConsumer, DEFAULT_REASSEMBLY_TIMEOUT);
-    }
-
-    /**
-     * @param width             actual physical board width (columns)
-     * @param height            actual physical board height (rows)
-     * @param reassemblyTimeout how long a partially received board may wait for its next chunk
-     */
-    public EngineFrameRouter(int width, int height, Consumer<Board<Boolean>> touchBoardConsumer, Duration reassemblyTimeout) {
+    public EngineFrameRouter(int width, int height, Consumer<Board<Boolean>> touchBoardConsumer,
+                             Duration reassemblyTimeout) {
         if (width <= 0 || height <= 0) {
             throw new IllegalArgumentException("width and height must be > 0");
         }
@@ -68,16 +57,12 @@ public final class EngineFrameRouter implements FrameListener {
     @Override
     public void onFrame(Frame frame) {
         if (frame.command() != Command.DATA_IN) return;
-
         byte[] payload = frame.payload();
         if (payload.length == 0) return;
 
         byte[] complete = null;
-
         synchronized (lock) {
             long now = System.nanoTime();
-
-            // Stale partial data: the missing chunk is never coming.
             if (buffered > 0 && now - lastChunkNanos > reassemblyTimeoutNanos) {
                 log.warn("Dropping stale partial board ({} of {} bytes)", buffered, expectedSize);
                 buffered = 0;
@@ -88,14 +73,14 @@ public final class EngineFrameRouter implements FrameListener {
                     log.warn("Full frame arrived while {} partial bytes were buffered; dropping partial data", buffered);
                     buffered = 0;
                 }
-                complete = payload.clone(); // defensive copy: never trust caller-owned arrays across the lock boundary
+                complete = payload.clone(); // defensive copy
             } else if (payload.length > expectedSize) {
                 log.warn("Discarding DATA_IN payload of {} bytes: larger than expected {}x{}={} bytes",
                         payload.length, width, height, expectedSize);
                 buffered = 0;
             } else {
                 if (buffered + payload.length > expectedSize) {
-                    log.warn("Chunk overflows board ({} + {} > {}); resynchronising", buffered, payload.length, expectedSize);
+                    log.warn("Chunk overflows board ({}+{}>{}); resynchronising", buffered, payload.length, expectedSize);
                     buffered = 0;
                 }
                 System.arraycopy(payload, 0, buffer, buffered, payload.length);
@@ -109,8 +94,6 @@ public final class EngineFrameRouter implements FrameListener {
         }
 
         if (complete == null) return; // waiting for more chunks
-
-        // Decode and dispatch outside the lock so a slow consumer can't block the serial thread's next frame.
         try {
             Board<Boolean> board = Board.fromWireBytes(complete, width, height, TileCodec.booleanState());
             touchBoardConsumer.accept(board);

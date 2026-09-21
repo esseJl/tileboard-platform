@@ -2,7 +2,11 @@ package com.tileboard.engine.feature.neighbor;
 
 import com.tileboard.serial.board.Position;
 
-import java.util.*;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -27,6 +31,9 @@ public final class NeighborFinder {
         return topology.neighbors(row, col, adjacency);
     }
 
+    /**
+     * All positions reachable from {@code start} via BFS (flood-fill).
+     */
     public List<Position> connectedRegion(Position start, Predicate<Position> passable) {
         List<Position> visited = new ArrayList<>();
         ArrayDeque<Position> queue = new ArrayDeque<>();

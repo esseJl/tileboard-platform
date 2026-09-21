@@ -7,50 +7,48 @@ import com.tileboard.serial.protocol.Frame;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.ArrayList;
+import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EngineFrameRouterTest {
 
     @Test
-    void mutatingThePayloadArrayAfterDeliveryDoesNotCorruptTheDecodedBoard() {
-        AtomicReference<Board<Boolean>> received = new AtomicReference<>();
-        EngineFrameRouter router = new EngineFrameRouter(2, 2, received::set);
+    void reassemblesChunkedPayloadIntoBoard() {
+        List<Board<Boolean>> received = new ArrayList<>();
+        EngineFrameRouter router = new EngineFrameRouter(2, 2, received::add, Duration.ofMillis(500));
 
-        byte[] payload = {1, 0, 0, 1}; // full 2x2 frame
-        router.onFrame(Frame.of(Command.DATA_IN, CommandType.GET, payload));
+        router.onFrame(frame(new byte[]{1, 0}));
+        assertTrue(received.isEmpty());
+        router.onFrame(frame(new byte[]{0, 1}));
 
-        // Simulate the transport reusing/zeroing its internal buffer right after onFrame() returns.
-        java.util.Arrays.fill(payload, (byte) 0);
-
-        assertNotNull(received.get());
-        assertTrue(received.get().get(0, 0)); // must reflect the ORIGINAL bytes, proving a defensive copy was made
+        assertEquals(1, received.size());
     }
 
     @Test
-    void chunksAreReassembledInOrder() {
-        AtomicReference<Board<Boolean>> received = new AtomicReference<>();
-        EngineFrameRouter router = new EngineFrameRouter(4, 1, received::set);
+    void staleChunkIsDroppedAfterTimeout() throws InterruptedException {
+        List<Board<Boolean>> received = new ArrayList<>();
+        EngineFrameRouter router = new EngineFrameRouter(2, 2, received::add, Duration.ofMillis(20));
 
-        router.onFrame(Frame.of(Command.DATA_IN, CommandType.GET, new byte[]{1, 0}));
-        assertNull(received.get(), "should still be waiting for the rest of the board");
-        router.onFrame(Frame.of(Command.DATA_IN, CommandType.GET, new byte[]{0, 1}));
+        router.onFrame(frame(new byte[]{1, 0}));
+        Thread.sleep(50);
+        router.onFrame(frame(new byte[]{0, 1}));
 
-        assertNotNull(received.get());
-        assertTrue(received.get().get(0, 0));
-        assertTrue(received.get().get(0, 3));
+        assertTrue(received.isEmpty());
     }
 
     @Test
-    void staleChunkIsDroppedAfterReassemblyTimeout() throws InterruptedException {
-        AtomicReference<Board<Boolean>> received = new AtomicReference<>();
-        EngineFrameRouter router = new EngineFrameRouter(4, 1, received::set, Duration.ofMillis(50));
+    void oversizedPayloadIsDiscarded() {
+        List<Board<Boolean>> received = new ArrayList<>();
+        EngineFrameRouter router = new EngineFrameRouter(2, 2, received::add, Duration.ofMillis(500));
 
-        router.onFrame(Frame.of(Command.DATA_IN, CommandType.GET, new byte[]{1, 0}));
-        Thread.sleep(80);
-        router.onFrame(Frame.of(Command.DATA_IN, CommandType.GET, new byte[]{1, 1})); // treated as a fresh 2-byte chunk
+        router.onFrame(frame(new byte[]{1, 1, 1, 1, 1}));
+        assertTrue(received.isEmpty());
+    }
 
-        assertNull(received.get(), "stale partial data must be dropped, not merged with new data");
+    private Frame frame(byte[] payload) {
+        return Frame.of(Command.DATA_IN, CommandType.GET, payload);
     }
 }

@@ -81,17 +81,20 @@ public class GameEngineManager {
 
     private void shutdownCurrentEngine() {
         GameEngineImpl current = this.engine;
-        if (current == null) return;
-        this.engine = null;
+        if (current == null) {
+            log.debug("shutdownCurrentEngine() called with no engine bound — nothing to do");
+            return;
+        }
+        this.engine = null; // visible to current()/require() immediately
 
         List<GameSession> sessions = current.activeSessions();
         try {
-            current.close();
+            current.close(); // sole owner of "stop every session" logic
         } catch (RuntimeException e) {
             log.warn("Error while closing previous game engine instance", e);
         }
-        log.info("Game engine unbound {}",
-                sessions.isEmpty() ? "" : "(" + sessions.size() + " active session(s) stopped)");
+        log.info("Game engine unbound{}",
+                sessions.isEmpty() ? "" : " (" + sessions.size() + " active session(s) stopped)");
     }
 
     public synchronized Optional<GameEngine> current() {

@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.LongAdder;
 
 public final class ReactionSpeedTracker {
+
     private final AtomicReference<Instant> stimulusAt = new AtomicReference<>();
     private final LongAdder totalNanos = new LongAdder();
     private final AtomicLong count = new AtomicLong(0L);

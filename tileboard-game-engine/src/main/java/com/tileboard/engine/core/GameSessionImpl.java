@@ -30,10 +30,12 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final String tickThreadName;
     private final Game game;
     private final List<Player> players;
+
     private final BoardChannel boardChannel;
     private final GameState gameState = new GameState();
     private final FeatureBundle features;
     private final GameEventBus eventBus;
+
     private final ScheduledExecutorService tickExecutor;
     private final ScheduledFuture<?> tickFuture;
     private final ExecutorService teardownExecutor;
@@ -113,6 +115,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         }
     }
 
+    // ── GameContext ──────────────────────────────────────────────────
     @Override
     public String sessionId() {
         return sessionId;
@@ -285,7 +288,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
-        if (!lifecycle.finish(finalStatus)) return; // idempotent
+        if (!lifecycle.finish(finalStatus)) return; // idempotent: تنها یک‌بار باید چک شود
 
         features.timer().stop();
         cancelTick();

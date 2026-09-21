@@ -8,6 +8,8 @@ import com.tileboard.engine.event.GameEvent;
 import com.tileboard.engine.event.GameEventBus;
 import com.tileboard.engine.event.GameEventType;
 import com.tileboard.engine.event.SubscriptionOptions;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
@@ -18,8 +20,10 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public final class GameEventSseEmitter {
 
+    private static final Logger log = LoggerFactory.getLogger(GameEventSseEmitter.class);
     private static final int PER_CLIENT_QUEUE_CAPACITY = 32;
     private static final long HEARTBEAT_SECONDS = 15;
+
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
@@ -59,6 +63,7 @@ public final class GameEventSseEmitter {
         if (sessionId != null) options = options.withSession(sessionId);
 
         unsubscribeRef.set(bus.subscribe(event -> push(emitter, event, teardown), options));
+
         heartbeatRef.set(heartbeats.scheduleAtFixedRate(
                 () -> sendComment(emitter, teardown), HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS));
 
