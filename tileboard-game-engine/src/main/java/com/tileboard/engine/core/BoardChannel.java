@@ -11,10 +11,17 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Owns the authoritative in-memory board state for one session and serializes
- * hardware writes. State mutation (fast, in-memory) and hardware I/O (slow,
- * blocking) intentionally use two SEPARATE locks so a slow serial port can
- * never stall readers/writers of logical board state (see Critical Bug #3).
+ * Publishes the latest committed board state to the gateway.
+ *
+ * <h2>Coalescing semantics</h2>
+ * This method intentionally re-reads {@link #snapshot()} <em>after</em> acquiring
+ * {@code gatewayWriteLock}, rather than sending the exact state captured by the
+ * caller. Under concurrent writers, this means a slightly stale caller may end up
+ * transmitting a newer state than the one it produced — which is by design: the
+ * gateway only ever needs the most recent board, and this avoids sending
+ * superseded frames out of order. Callers must not assume the {@link Board}
+ * returned by {@link #setTile}/{@link #fill}/{@link #publish} is byte-for-byte
+ * identical to what was last transmitted.
  */
 public final class BoardChannel {
 
@@ -26,6 +33,7 @@ public final class BoardChannel {
     private final ReentrantLock stateLock = new ReentrantLock();
     private final Object gatewayWriteLock = new Object();
     private final Board<TileColor> buffer;
+    private Board<TileColor> lastSentBoard;
 
     public BoardChannel(int width, int height, TileGatewayClient gateway, TileCodec<TileColor> codec) {
         this.width = width;
@@ -106,7 +114,9 @@ public final class BoardChannel {
     private Board<TileColor> sendLatest() {
         synchronized (gatewayWriteLock) {
             Board<TileColor> latest = snapshot();
+            if (latest.equals(lastSentBoard)) return latest;
             gateway.sendBoard(Command.DATA_OUT, CommandType.SET, latest, codec);
+            lastSentBoard = latest;
             return latest;
         }
     }
