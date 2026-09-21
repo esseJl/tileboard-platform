@@ -4,6 +4,7 @@ import com.tileboard.engine.core.DefaultGameRegistry;
 import com.tileboard.engine.core.Game;
 import com.tileboard.engine.core.GameRegistry;
 import com.tileboard.engine.event.EventOverflowPolicy;
+import com.tileboard.engine.event.GameEventBus;
 import com.tileboard.engine.event.GameEventBusImpl;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
@@ -52,9 +53,16 @@ public class TileboardEngineAutoConfiguration {
     @Bean
     @ConditionalOnMissingBean
     @DependsOn("gameEventBus")
-    public GameEngineManager gameEngineManager(GameRegistry registry, GameEventBusImpl eventBus,
+    public GameEngineManager gameEngineManager(GameRegistry registry, GameEventBus eventBus,
                                                TileboardEngineProperties props) {
         return new GameEngineManager(registry, eventBus, props);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public SseGameEventPublisher sseGameEventPublisher(
+            GameEventBus eventBus, ScheduledExecutorService tileboardSseHeartbeatScheduler) {
+        return new SseGameEventPublisher(eventBus, tileboardSseHeartbeatScheduler);
     }
 
     @Bean
@@ -73,11 +81,5 @@ public class TileboardEngineAutoConfiguration {
             return t;
         });
     }
-
-    @Bean
-    @ConditionalOnMissingBean
-    public SseGameEventPublisher sseGameEventPublisher(
-            GameEventBusImpl eventBus, ScheduledExecutorService tileboardSseHeartbeatScheduler) {
-        return new SseGameEventPublisher(eventBus, tileboardSseHeartbeatScheduler);
-    }
+    
 }
