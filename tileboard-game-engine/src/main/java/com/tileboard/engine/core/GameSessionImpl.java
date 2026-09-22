@@ -61,7 +61,8 @@ public final class GameSessionImpl implements GameSession, GameContext {
         int w = game.descriptor().requiredWidth();
         int h = game.descriptor().requiredHeight();
         this.boardChannel = new BoardChannel(w, h, gateway, ColorTileCodec.instance());
-        this.features = FeatureBundle.create(w, h, players, sessionId, touchHistoryMaxSize, this::publishBoard);
+        this.features = FeatureBundle.create(w, h, players, sessionId, touchHistoryMaxSize,
+                this::publishBoard, this::publishGameEvent);
         if (tickInterval != null && !tickInterval.isZero()) {
             this.tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, tickThreadName));
             long millis = tickInterval.toMillis();
@@ -100,6 +101,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         features.reactionSpeed().record(event);
         try {
             game.onTileEvent(this, event);
+            eventBus.publish(GameEvent.of(GameEventType.TILE_TOUCHED, sessionId, gameId(), snapshotForSse()));
         } catch (RuntimeException e) {
             log.warn("onTileEvent threw in session {}", sessionId, e);
             handleGameError(e);
@@ -162,6 +164,18 @@ public final class GameSessionImpl implements GameSession, GameContext {
     public void publishBoard(Board<TileColor> board) {
         boardChannel.publish(board);
         eventBus.publish(GameEvent.of(GameEventType.BOARD_UPDATED, sessionId, gameId(), snapshotForSse()));
+    }
+
+    /**
+     * Invoked by the {@link FeatureBundle} systems (score/health/level/combo/timer)
+     * whenever their internal state actually changes, so those changes reach SSE
+     * subscribers the same way board and lifecycle events do. Without this hook the
+     * corresponding {@link GameEventType} values (SCORE_CHANGED, HEALTH_CHANGED,
+     * LEVEL_UP, COMBO_HIT, TIMER_EXPIRED) were defined and mapped for SSE serialization
+     * but never actually published - the root cause of "game events don't come over SSE".
+     */
+    private void publishGameEvent(GameEventType type) {
+        eventBus.publish(GameEvent.of(type, sessionId, gameId(), snapshotForSse()));
     }
 
     @Override

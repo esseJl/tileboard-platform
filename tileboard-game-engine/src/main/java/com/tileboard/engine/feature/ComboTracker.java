@@ -6,7 +6,22 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class ComboTracker {
 
     private final AtomicReference<ComboState> state = new AtomicReference<>(ComboState.INITIAL);
+    private final Runnable onChange;
     private volatile long timeoutMillis = 2_000L;
+
+    public ComboTracker() {
+        this(() -> {
+        });
+    }
+
+    /**
+     * @param onChange invoked (on the caller's thread) every time a hit lands, so
+     *                 callers such as the engine can publish a {@code COMBO_HIT}
+     *                 game event.
+     */
+    public ComboTracker(Runnable onChange) {
+        this.onChange = java.util.Objects.requireNonNull(onChange, "onChange");
+    }
 
     public void setComboTimeout(long millis) {
         this.timeoutMillis = millis;
@@ -25,6 +40,7 @@ public final class ComboTracker {
             int max = Math.max(prev.maxCombo(), combo);
             return new ComboState(combo, max, now);
         });
+        onChange.run();
         return next.combo();
     }
 

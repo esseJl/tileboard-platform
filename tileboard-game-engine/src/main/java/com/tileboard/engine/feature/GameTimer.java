@@ -2,6 +2,8 @@ package com.tileboard.engine.feature;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -11,13 +13,33 @@ import java.util.concurrent.atomic.AtomicReference;
 public final class GameTimer {
 
     private final AtomicReference<Runnable> onExpire = new AtomicReference<>();
+    private final AtomicBoolean expiryNotified = new AtomicBoolean(false);
+    private final Runnable engineExpiryNotifier;
     private volatile Instant startedAt;
     private volatile Instant stoppedAt;
     private volatile Duration countdownTarget;
 
+    public GameTimer() {
+        this(() -> {
+        });
+    }
+
+    /**
+     * @param engineExpiryNotifier invoked (on the caller's thread, exactly once per
+     *                             expiry) the first time {@link #checkExpiry()} observes
+     *                             the countdown has run out, so callers such as the
+     *                             engine can publish a {@code TIMER_EXPIRED} game event.
+     *                             This fires independently of the per-countdown callback
+     *                             passed to {@link #startCountdown(Duration, Runnable)}.
+     */
+    public GameTimer(Runnable engineExpiryNotifier) {
+        this.engineExpiryNotifier = Objects.requireNonNull(engineExpiryNotifier, "engineExpiryNotifier");
+    }
+
     public void start() {
         startedAt = Instant.now();
         stoppedAt = null;
+        expiryNotified.set(false);
     }
 
     public void stop() {
@@ -48,6 +70,9 @@ public final class GameTimer {
 
     public void checkExpiry() {
         if (!isExpired()) return;
+        if (expiryNotified.compareAndSet(false, true)) {
+            engineExpiryNotifier.run();
+        }
         Runnable cb = onExpire.getAndSet(null);
         if (cb != null) cb.run();
     }
@@ -57,5 +82,6 @@ public final class GameTimer {
         stoppedAt = null;
         countdownTarget = null;
         onExpire.set(null);
+        expiryNotified.set(false);
     }
 }

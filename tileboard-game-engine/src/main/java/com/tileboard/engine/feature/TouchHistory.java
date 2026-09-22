@@ -1,6 +1,5 @@
 package com.tileboard.engine.feature;
 
-import com.tileboard.engine.event.GameEventBusImpl;
 import com.tileboard.engine.model.TileEvent;
 import com.tileboard.engine.model.TouchSequence;
 import com.tileboard.serial.board.Position;
