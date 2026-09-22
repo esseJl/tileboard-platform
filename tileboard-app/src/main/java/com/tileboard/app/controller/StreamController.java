@@ -18,12 +18,12 @@ public class StreamController {
         this.publisher = publisher;
     }
 
-    @GetMapping(path = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(path = "/board", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamAllEvents() {
         return publisher.global();
     }
 
-    @GetMapping(path = "/events/{sessionId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @GetMapping(path = "/board/{sessionId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamSessionEvents(@PathVariable String sessionId) {
         return publisher.forSession(sessionId);
     }
