@@ -1,20 +1,20 @@
 package com.tileboard.engine.feature;
 
+import com.tileboard.engine.event.GameEventBusImpl;
 import com.tileboard.engine.model.TileEvent;
 import com.tileboard.engine.model.TouchSequence;
 import com.tileboard.serial.board.Position;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
-import java.util.ArrayDeque;
-import java.util.ArrayList;
-import java.util.Deque;
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public final class TouchHistory {
+    private static final Logger log = LoggerFactory.getLogger(TouchHistory.class);
 
+    private final String sessionId;
     private final int maxSize;
     private final Deque<TileEvent> history = new ArrayDeque<>();
     private final Object lock = new Object();
@@ -26,7 +26,12 @@ public final class TouchHistory {
 
     public TouchHistory(String sessionId, int maxSize) {
         if (maxSize <= 0) throw new IllegalArgumentException("maxSize must be > 0");
+        this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.maxSize = maxSize;
+    }
+
+    public String sessionId() {
+        return sessionId;
     }
 
     public void record(TileEvent event) {
@@ -83,5 +88,6 @@ public final class TouchHistory {
             history.clear();
             totalTouches = 0;
         }
+        log.debug("TouchHistory reset for session {}", sessionId);
     }
 }

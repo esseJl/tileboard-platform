@@ -46,7 +46,6 @@ public final class GameEventSseEmitter {
     public static SseEmitter build(GameEventBus bus, GameEventType type, String sessionId,
                                    ScheduledExecutorService heartbeats) {
         SseEmitter emitter = new SseEmitter(0L);
-
         AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
         AtomicReference<ScheduledFuture<?>> heartbeatRef = new AtomicReference<>();
 
@@ -57,19 +56,19 @@ public final class GameEventSseEmitter {
             if (hb != null) hb.cancel(false);
         };
 
+        // Register completion hooks FIRST so no event/heartbeat can race ahead of teardown wiring.
+        emitter.onCompletion(teardown);
+        emitter.onTimeout(teardown);
+        emitter.onError(ex -> teardown.run());
+
         SubscriptionOptions options = SubscriptionOptions.defaults(PER_CLIENT_QUEUE_CAPACITY)
                 .withPolicy(EventOverflowPolicy.DROP_OLDEST);
         if (type != null) options = options.withType(type);
         if (sessionId != null) options = options.withSession(sessionId);
 
         unsubscribeRef.set(bus.subscribe(event -> push(emitter, event, teardown), options));
-
         heartbeatRef.set(heartbeats.scheduleAtFixedRate(
                 () -> sendComment(emitter, teardown), HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS));
-
-        emitter.onCompletion(teardown);
-        emitter.onTimeout(teardown);
-        emitter.onError(ex -> teardown.run());
 
         return emitter;
     }

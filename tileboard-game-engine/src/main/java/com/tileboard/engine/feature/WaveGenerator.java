@@ -26,6 +26,7 @@ public final class WaveGenerator implements AutoCloseable {
     private final AtomicLong generation = new AtomicLong(0);
     private final Object runLock = new Object();
     private volatile Future<?> currentTask;
+    private volatile CompletableFuture<Void> currentResult;
 
     public WaveGenerator(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
         this.width = width;
@@ -91,22 +92,33 @@ public final class WaveGenerator implements AutoCloseable {
         });
     }
 
+
     public void cancelCurrent() {
         synchronized (runLock) {
             generation.incrementAndGet();
             Future<?> task = currentTask;
             if (task != null) task.cancel(true);
+            CompletableFuture<Void> res = currentResult;
+            if (res != null) res.cancel(false);
             currentTask = null;
+            currentResult = null;
         }
     }
 
     private CompletableFuture<Void> run(Consumer<WaveToken> body) {
         CompletableFuture<Void> result = new CompletableFuture<>();
         synchronized (runLock) {
-            Future<?> previous = currentTask;
-            if (previous != null) previous.cancel(true);
+            Future<?> previousTask = currentTask;
+            CompletableFuture<Void> previousResult = currentResult;
+            if (previousTask != null) {
+                previousTask.cancel(true);
+            }
+            if (previousResult != null) {
+                previousResult.cancel(false);
+            }
             long myGeneration = generation.incrementAndGet();
             WaveToken token = new WaveToken(myGeneration);
+            currentResult = result;
             try {
                 Future<?> submitted = executor.submit(() -> {
                     try {

@@ -49,7 +49,7 @@ class GameSessionImplTest {
     @Test
     void tickIsProcessedAfterStart() {
         GameSessionImpl session = new GameSessionImpl("s1", game, List.of(Player.solo("A")),
-                gateway, Duration.ofMillis(10), bus, teardown, 100);
+                gateway, Duration.ofMillis(10), bus, teardown, 100, null);
         session.start();
 
         verify(game, timeout(500).atLeastOnce()).onTick(session);
@@ -58,7 +58,7 @@ class GameSessionImplTest {
     @Test
     void touchEventIsProcessedAfterStart() {
         GameSessionImpl session = new GameSessionImpl("s1", game, List.of(Player.solo("A")),
-                gateway, null, bus, teardown, 100);
+                gateway, null, bus, teardown, 100, null);
         session.start();
 
         session.handleTileEvent(TileEvent.touch(new Position(0, 0), "s1"));
@@ -72,7 +72,7 @@ class GameSessionImplTest {
         bus.subscribeSession("s1", events::add);
 
         GameSessionImpl session = new GameSessionImpl("s1", game, List.of(Player.solo("A")),
-                gateway, Duration.ofMillis(10), bus, teardown, 100);
+                gateway, Duration.ofMillis(10), bus, teardown, 100, null);
         session.start();
         session.stop();
 
@@ -94,7 +94,7 @@ class GameSessionImplTest {
     @Test
     void doubleStopIsIdempotentAndSafe() {
         GameSessionImpl session = new GameSessionImpl("s1", game, List.of(Player.solo("A")),
-                gateway, null, bus, teardown, 100);
+                gateway, null, bus, teardown, 100, null);
         session.start();
         session.stop();
         assertDoesNotThrow(session::stop);

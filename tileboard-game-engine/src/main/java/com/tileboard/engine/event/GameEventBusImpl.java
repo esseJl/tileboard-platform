@@ -138,7 +138,12 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
             ringLock.lock();
             try {
                 while (ring.size() >= options.queueCapacity()) {
-                    if (ring.pollFirst() != null) droppedEvents.incrementAndGet();
+                    if (ring.pollFirst() != null) {
+                        droppedEvents.incrementAndGet();
+                        // Consume the permit that was issued for the item we just evicted,
+                        // so ringAvailable.availablePermits() always matches ring.size().
+                        ringAvailable.tryAcquire();
+                    }
                 }
                 ring.addLast(event);
             } finally {

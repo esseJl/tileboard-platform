@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 public final class GameSessionImpl implements GameSession, GameContext {
 
@@ -40,11 +41,12 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final ScheduledFuture<?> tickFuture;
     private final ExecutorService teardownExecutor;
     private final SessionLifecycle lifecycle = new SessionLifecycle();
+    private final Consumer<GameSessionImpl> onTerminated;
     private volatile GameResult result;
 
     public GameSessionImpl(String sessionId, Game game, List<Player> players,
                            TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus,
-                           ExecutorService teardownExecutor, int touchHistoryMaxSize) {
+                           ExecutorService teardownExecutor, int touchHistoryMaxSize, Consumer<GameSessionImpl> onTerminated) {
         this.sessionId = Objects.requireNonNull(sessionId, "sessionId");
         this.teardownExecutor = Objects.requireNonNull(teardownExecutor, "teardownExecutor");
         this.tickThreadName = "tileboard-tick-" + sessionId;
@@ -52,12 +54,11 @@ public final class GameSessionImpl implements GameSession, GameContext {
         this.players = List.copyOf(Objects.requireNonNull(players, "players"));
         Objects.requireNonNull(gateway, "gateway");
         this.eventBus = Objects.requireNonNull(sharedEventBus, "sharedEventBus");
-
+        this.onTerminated = onTerminated; // nullable: engine always supplies one, tests may pass null
         int w = game.descriptor().requiredWidth();
         int h = game.descriptor().requiredHeight();
         this.boardChannel = new BoardChannel(w, h, gateway, ColorTileCodec.instance());
         this.features = FeatureBundle.create(w, h, players, sessionId, touchHistoryMaxSize, this::publishBoard);
-
         if (tickInterval != null && !tickInterval.isZero()) {
             this.tickExecutor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, tickThreadName));
             long millis = tickInterval.toMillis();
@@ -67,6 +68,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
             this.tickFuture = null;
         }
     }
+
 
     void start() {
         if (!lifecycle.start()) throw new GameSessionException("Session " + sessionId + " already started");
@@ -98,6 +100,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private void runTick() {
         if (lifecycle.current() != GameStatus.RUNNING) return;
         try {
+            features.timer().checkExpiry(); // built-in: fire countdown expiry callback automatically every tick
             game.onTick(this);
             eventBus.publish(GameEvent.of(GameEventType.TICK, sessionId, gameId(), snapshotForSse()));
         } catch (RuntimeException e) {
@@ -288,13 +291,16 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
+        // SessionLifecycle.finish() is a CAS -> this block runs EXACTLY ONCE per session,
+        // so it's safe to treat onTerminated as an idempotent, single-shot hook.
         if (!lifecycle.finish(finalStatus)) return;
 
         features.timer().stop();
         cancelTick();
         features.closeAll();
 
-        GameResult finalResult = new GameResult(sessionId, gameId(), finalStatus, winners,
+        GameResult finalResult = new GameResult(
+                sessionId, gameId(), finalStatus, winners,
                 features.scores().allScores(), features.timer().elapsed(), Instant.now());
         this.result = finalResult;
 
@@ -309,6 +315,17 @@ public final class GameSessionImpl implements GameSession, GameContext {
             log.warn("Could not clear board on session end (gateway may be disconnected): {}", e.getMessage());
         }
 
+        // Critical, reliable, synchronous cleanup - MUST NOT depend on the best-effort event bus.
+        if (onTerminated != null) {
+            try {
+                onTerminated.accept(this);
+            } catch (RuntimeException e) {
+                log.error("onTerminated callback failed for session {}", sessionId, e);
+            }
+        }
+
+        // Best-effort notification for external observers (SSE, metrics...). Losing this
+        // event is acceptable for observers, but must never be relied on for engine state.
         eventBus.publish(GameEvent.of(
                 finalStatus == GameStatus.FINISHED ? GameEventType.SESSION_FINISHED : GameEventType.SESSION_STOPPED,
                 sessionId, gameId(), snapshotForSse()));

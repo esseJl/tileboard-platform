@@ -32,6 +32,7 @@ public final class AnimationSystem {
     private final AtomicLong generation = new AtomicLong(0);
     private final Object runLock = new Object();
     private volatile Future<?> currentTask;
+    private volatile CompletableFuture<Void> currentResult;
 
     public AnimationSystem(int width, int height, Consumer<Board<TileColor>> boardPublisher) {
         this(width, height, boardPublisher, new Random());
@@ -59,10 +60,16 @@ public final class AnimationSystem {
     private CompletableFuture<Void> run(Consumer<RunToken> body) {
         CompletableFuture<Void> result = new CompletableFuture<>();
         synchronized (runLock) {
-            Future<?> previous = currentTask;
-            if (previous != null) previous.cancel(true);
+
+            Future<?> previousTask = currentTask;
+            CompletableFuture<Void> previousResult = currentResult;
+
+            if (previousTask != null) previousTask.cancel(true);
+            if (previousResult != null) previousResult.cancel(false);
+
             long myGeneration = generation.incrementAndGet();
             RunToken token = new RunToken(myGeneration);
+            currentResult = result;
             try {
                 Future<?> submitted = executor.submit(() -> {
                     try {
@@ -96,7 +103,10 @@ public final class AnimationSystem {
             generation.incrementAndGet();
             Future<?> task = currentTask;
             if (task != null) task.cancel(true);
+            CompletableFuture<Void> res = currentResult;
+            if (res != null) res.cancel(false);
             currentTask = null;
+            currentResult = null;
         }
     }
 
@@ -180,22 +190,22 @@ public final class AnimationSystem {
 
     private void playSimpleCountdown(RunToken token, long digitDurationMs) {
         TileColor[] colors = {TileColor.RED, TileColor.YELLOW, TileColor.GREEN};
-        for (int i = 3; i > 0 && token.sleep(0); i--) {
-            boardPublisher.accept(new Board<>(width, height, colors[3 - i]));
+        for (int i = 3; i > 0; i--) {
+            token.show(new Board<>(width, height, colors[3 - i]));
             if (!token.sleep(digitDurationMs)) return;
         }
-        clearBoard();
+        token.clear();
     }
 
     private void playScalableCountdown(RunToken token, long digitDurationMs) {
         for (int digit = 3; digit >= 1; digit--) {
-            boardPublisher.accept(renderDigit(digit));
+            token.show(renderDigit(digit));
             if (!token.sleep(digitDurationMs)) return;
         }
         for (int i = 0; i < 3; i++) {
-            boardPublisher.accept(new Board<>(width, height, TileColor.GREEN));
+            token.show(new Board<>(width, height, TileColor.GREEN));
             if (!token.sleep(150)) return;
-            clearBoard();
+            token.clear();
             if (!token.sleep(150)) return;
         }
     }
@@ -250,7 +260,7 @@ public final class AnimationSystem {
         token.pause(500);
         token.clear();
     }
-    
+
 
     private void playRainbowSweep(RunToken token) {
         TileColor[] rainbow = {TileColor.RED, TileColor.YELLOW, TileColor.GREEN,
@@ -280,10 +290,10 @@ public final class AnimationSystem {
             for (int i = 0; i < sparks; i++) {
                 board.set(rng.nextInt(height), rng.nextInt(width), colors[rng.nextInt(colors.length)]);
             }
-            boardPublisher.accept(board);
+            token.show(board);
             if (!token.sleep(120)) return;
         }
-        clearBoard();
+        token.clear();
     }
 
     private void playFireworks(RunToken token) {
@@ -314,15 +324,15 @@ public final class AnimationSystem {
         for (int phase = 0; phase < 3; phase++) {
             for (int row = 0; row < height; row++) {
                 for (int col = 0; col < width; col++) {
-                    if (rng.nextDouble() < 0.3) board.set(row, col, TileColor.RED); // was Math.random()
+                    if (rng.nextDouble() < 0.3) board.set(row, col, TileColor.RED);
                 }
             }
-            boardPublisher.accept(board.copy());
+            token.show(board.copy());
             if (!token.sleep(300)) return;
         }
         board.fill(TileColor.RED);
-        boardPublisher.accept(board);
-        if (token.sleep(1000)) clearBoard();
+        token.show(board);
+        if (token.sleep(1000)) token.clear();
     }
 
     // ------------------------------------------------------------------ lose
@@ -465,11 +475,13 @@ public final class AnimationSystem {
     }
 
     private void playRandomTwinkle(RunToken token) {
-        while (token.sleep(300)) { // runs forever, ~300ms per frame, until cancelCurrent() is called
+        while (token.sleep(300)) {
             Board<TileColor> board = new Board<>(width, height, TileColor.OFF);
             int twinkles = 2 + rng.nextInt(3);
-            for (int i = 0; i < twinkles; i++) board.set(rng.nextInt(height), rng.nextInt(width), TileColor.WHITE);
-            boardPublisher.accept(board);
+            for (int i = 0; i < twinkles; i++) {
+                board.set(rng.nextInt(height), rng.nextInt(width), TileColor.WHITE);
+            }
+            token.show(board);
         }
     }
 
