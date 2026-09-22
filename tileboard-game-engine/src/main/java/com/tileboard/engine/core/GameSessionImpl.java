@@ -44,8 +44,8 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final ExecutorService teardownExecutor;
     private final SessionLifecycle lifecycle = new SessionLifecycle();
     private final Consumer<GameSessionImpl> onTerminated;
+    private final TileGatewayClient gateway;
     private volatile GameResult result;
-    private TileGatewayClient gateway;
 
     public GameSessionImpl(String sessionId, Game game, List<Player> players,
                            TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus,
@@ -79,9 +79,9 @@ public final class GameSessionImpl implements GameSession, GameContext {
         try {
             try {
                 gateway.send(Command.START, CommandType.SET);
-                log.info("sent START to hardware for session: {}",sessionId);
-            }catch (RuntimeException e){
-                log.warn("failed to sent START command for session: {} (gateway may be disconnected)",sessionId);
+                log.info("sent START to hardware for session: {}", sessionId);
+            } catch (RuntimeException e) {
+                log.warn("failed to sent START command for session: {} (gateway may be disconnected)", sessionId);
             }
             game.onStart(this);
             eventBus.publish(GameEvent.of(GameEventType.SESSION_STARTED, sessionId, gameId(), snapshotForSse()));
@@ -324,9 +324,9 @@ public final class GameSessionImpl implements GameSession, GameContext {
         }
 
         try {
-            gateway.send(Command.STOP,CommandType.SET);
-            log.info("sent STOP to hardware for session: {}",sessionId);
-        }catch (RuntimeException e){
+            gateway.send(Command.STOP, CommandType.SET);
+            log.info("sent STOP to hardware for session: {}", sessionId);
+        } catch (RuntimeException e) {
             log.warn("Could not send STOP on session end (gateway may be disconnected)");
         }
 
