@@ -263,7 +263,7 @@ public class SequentialTouchGame implements Game {
 
     @Override
     public void onStop(GameContext ctx, GameResult result) {
-        log.info("[{}] SequentialTouchGame onStop - status={}, scores={}", ctx.sessionId(), result.finalStatus(), result.finalScores());
+        log.info("[{}] SequentialTouchGame onStop - status={}, scores={}", ctx.sessionId(), result.finalStatus(), result.scoreByPlayerId().get(0));
 
         // Turn board off (best-effort)
         try {
