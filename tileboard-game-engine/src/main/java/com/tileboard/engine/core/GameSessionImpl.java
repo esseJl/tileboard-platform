@@ -19,6 +19,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -175,11 +177,16 @@ public final class GameSessionImpl implements GameSession, GameContext {
     @Override
     public void setTile(int row, int col, TileColor color) {
         boardChannel.setTile(row, col, color);
+        // Previously silent: a single-tile change never reached SSE subscribers until the
+        // next TICK. Now every real board mutation is observable immediately, matching
+        // publishBoard()'s behaviour.
+        eventBus.publish(GameEvent.of(GameEventType.BOARD_UPDATED, sessionId, gameId(), snapshotForSse()));
     }
 
     @Override
     public void fillBoard(TileColor color) {
         boardChannel.fill(color);
+        eventBus.publish(GameEvent.of(GameEventType.BOARD_UPDATED, sessionId, gameId(), snapshotForSse()));
     }
 
     @Override
@@ -389,7 +396,24 @@ public final class GameSessionImpl implements GameSession, GameContext {
                 features.scores().allScores(),
                 features.levels().currentLevel(),
                 lifecycle.current().name(),
-                features.timer().elapsed().toSeconds()
+                features.timer().elapsed().toSeconds(),
+                readableBoard()
         );
+    }
+
+    /**
+     * Renders the current board as a row-major grid of {@link TileColor} names
+     * (e.g. {@code "RED"}, {@code "OFF"}) so it's legible in raw JSON without
+     * anyone needing to decode the wire protocol.
+     */
+    private List<List<String>> readableBoard() {
+        int h = boardHeight();
+        int w = boardWidth();
+        List<List<String>> rows = new ArrayList<>(h);
+        for (int r = 0; r < h; r++) {
+            rows.add(new ArrayList<>(Collections.nCopies(w, TileColor.OFF.name())));
+        }
+        boardChannel.snapshot().forEach((row, col, tile) -> rows.get(row).set(col, tile.name()));
+        return rows;
     }
 }
