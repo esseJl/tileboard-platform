@@ -1,9 +1,6 @@
 package com.tileboard.app.controller;
 
-import com.tileboard.app.dto.GameDescriptorResponse;
-import com.tileboard.app.dto.GameSessionResponse;
-import com.tileboard.app.dto.PlayerRequest;
-import com.tileboard.app.dto.StartGameRequest;
+import com.tileboard.app.dto.*;
 import com.tileboard.app.exception.NoActiveGameException;
 import com.tileboard.engine.core.GameEngine;
 import com.tileboard.engine.core.GameRegistry;
@@ -45,10 +42,11 @@ public class GameController {
 
     /** Every registered game type. Available even before the board is connected. */
     @GetMapping
-    public List<GameDescriptorResponse> listGames() {
-        return registry.listAll().stream()
+    public ResponseEntity<ApiResponse> listGames() {
+        List<GameDescriptorResponse> games = registry.listAll().stream()
                 .map(GameDescriptorResponse::from)
                 .toList();
+        return ApiResponses.ok(games);
     }
 
     /** Starts a new session. Requires the gateway to be connected (see {@code /api/v1/ports/connect}). */

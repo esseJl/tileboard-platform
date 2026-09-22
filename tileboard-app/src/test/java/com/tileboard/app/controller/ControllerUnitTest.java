@@ -77,7 +77,7 @@ class ControllerUnitTest {
         when(session.status()).thenReturn(GameStatus.RUNNING);
 
         GameController controller = new GameController(registry, manager);
-        assertEquals("g1", controller.listGames().get(0).gameId());
+        assertEquals("g1", ((List<GameDescriptorResponse>)controller.listGames().getBody().data()).get(0).gameId());
         StartGameRequest request = new StartGameRequest("g1", List.of(new PlayerRequest("Alice", PlayerRole.PLAYER_ONE)));
         assertEquals("s1", controller.startGame(request).getBody().sessionId());
         assertEquals(1, controller.activeSessions().size());
