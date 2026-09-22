@@ -1,5 +1,6 @@
 package com.tileboard.engine.spring;
 
+import com.tileboard.engine.core.BoardFrameBroadcaster;
 import com.tileboard.engine.core.GameEngine;
 import com.tileboard.engine.core.GameEngineImpl;
 import com.tileboard.engine.core.GameRegistry;
@@ -46,6 +47,7 @@ public class GameEngineManager {
 
     private final GameRegistry registry;
     private final GameEventBus eventBus;
+    private final BoardFrameBroadcaster boardFrameBroadcaster;
     private final Duration tickInterval;
     private final Duration sessionTtl;
     private final Duration frameReassemblyTimeout;
@@ -53,8 +55,19 @@ public class GameEngineManager {
     private volatile GameEngineImpl engine;
 
     public GameEngineManager(GameRegistry registry, GameEventBus eventBus, TileboardEngineProperties props) {
+        this(registry, eventBus, null, props);
+    }
+
+    /**
+     * @param boardFrameBroadcaster shared, long-lived broadcaster (nullable) that every
+     *                              {@code GameEngineImpl} this manager creates/rebinds will be
+     *                              wired to, so board-frame subscribers survive gateway reconnects
+     */
+    public GameEngineManager(GameRegistry registry, GameEventBus eventBus,
+                             BoardFrameBroadcaster boardFrameBroadcaster, TileboardEngineProperties props) {
         this.registry = registry;
         this.eventBus = eventBus;
+        this.boardFrameBroadcaster = boardFrameBroadcaster;
         this.tickInterval = props.getTickInterval();
         this.sessionTtl = props.getSessionTtl();
         this.frameReassemblyTimeout = props.getFrameReassemblyTimeout();
@@ -68,7 +81,7 @@ public class GameEngineManager {
                     + "(missing disconnect event?) - stopping its sessions before rebinding");
             shutdownCurrentEngine();
         }
-        engine = new GameEngineImpl(registry, event.client(), eventBus, tickInterval, sessionTtl,
+        engine = new GameEngineImpl(registry, event.client(), eventBus, boardFrameBroadcaster, tickInterval, sessionTtl,
                 frameReassemblyTimeout, touchHistoryMaxSize, event.boardWidth(), event.boardHeight());
         log.info("Game engine bound to the newly connected tile gateway ({}x{})",
                 event.boardWidth(), event.boardHeight());

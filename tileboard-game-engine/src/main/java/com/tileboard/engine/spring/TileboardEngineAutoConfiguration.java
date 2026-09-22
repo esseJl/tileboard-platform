@@ -1,5 +1,6 @@
 package com.tileboard.engine.spring;
 
+import com.tileboard.engine.core.BoardFrameBroadcaster;
 import com.tileboard.engine.core.DefaultGameRegistry;
 import com.tileboard.engine.core.Game;
 import com.tileboard.engine.core.GameRegistry;
@@ -35,6 +36,12 @@ public class TileboardEngineAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean
+    public BoardFrameBroadcaster boardFrameBroadcaster() {
+        return new BoardFrameBroadcaster();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
     public GameRegistry gameRegistry(@Autowired(required = false) List<Game> games) {
         GameRegistry registry = new DefaultGameRegistry();
         if (games == null || games.isEmpty()) {
@@ -54,8 +61,9 @@ public class TileboardEngineAutoConfiguration {
     @ConditionalOnMissingBean
     @DependsOn("gameEventBus")
     public GameEngineManager gameEngineManager(GameRegistry registry, GameEventBus eventBus,
+                                               BoardFrameBroadcaster boardFrameBroadcaster,
                                                TileboardEngineProperties props) {
-        return new GameEngineManager(registry, eventBus, props);
+        return new GameEngineManager(registry, eventBus, boardFrameBroadcaster, props);
     }
 
     @Bean

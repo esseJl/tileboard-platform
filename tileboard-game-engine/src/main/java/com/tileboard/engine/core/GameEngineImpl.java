@@ -21,6 +21,7 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     private final GameRegistry registry;
     private final TileGatewayClient gateway;
     private final GameEventBus eventBus;
+    private final BoardFrameBroadcaster boardFrameBroadcaster;
     private final Duration tickInterval;
     private final Duration sessionTtl;
     private final int touchHistoryMaxSize;
@@ -38,9 +39,18 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     public GameEngineImpl(GameRegistry registry, TileGatewayClient gateway, GameEventBus eventBus,
                           Duration tickInterval, Duration sessionTtl, Duration frameReassemblyTimeout,
                           int touchHistoryMaxSize, int boardWidth, int boardHeight) {
+        this(registry, gateway, eventBus, null, tickInterval, sessionTtl, frameReassemblyTimeout,
+                touchHistoryMaxSize, boardWidth, boardHeight);
+    }
+
+    public GameEngineImpl(GameRegistry registry, TileGatewayClient gateway, GameEventBus eventBus,
+                          BoardFrameBroadcaster boardFrameBroadcaster,
+                          Duration tickInterval, Duration sessionTtl, Duration frameReassemblyTimeout,
+                          int touchHistoryMaxSize, int boardWidth, int boardHeight) {
         this.registry = Objects.requireNonNull(registry);
         this.gateway = Objects.requireNonNull(gateway);
         this.eventBus = Objects.requireNonNull(eventBus);
+        this.boardFrameBroadcaster = boardFrameBroadcaster;
         this.tickInterval = tickInterval != null ? tickInterval : Duration.ofMillis(100);
         this.sessionTtl = (sessionTtl != null && !sessionTtl.isZero()) ? sessionTtl : Duration.ofHours(1);
         this.touchHistoryMaxSize = touchHistoryMaxSize > 0 ? touchHistoryMaxSize : 2_000;
@@ -112,7 +122,7 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
         GameSessionImpl session;
         try {
             session = new GameSessionImpl(sessionId, game, players, gateway, tickInterval, eventBus,
-                    teardownExecutor, touchHistoryMaxSize, this::handleSessionTerminated);
+                    teardownExecutor, touchHistoryMaxSize, this::handleSessionTerminated, boardFrameBroadcaster);
         } catch (RuntimeException e) {
             exclusiveSessionId.compareAndSet(sessionId, null);
             throw e;

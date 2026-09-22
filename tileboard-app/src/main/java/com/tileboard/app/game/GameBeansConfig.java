@@ -62,25 +62,5 @@ public class GameBeansConfig {
         // - lose (fade to red / descending curtain) on wrong touch or timeout
         return new SequentialTouchGame(width, height);
     }
-
-    /**
-     * Second example: small 4x4 version for quick testing on small board or simulator
-     * To enable this Bean, uncomment @Bean annotation.
-     * Note: gameId must be unique, so you need to give different gameId in SequentialTouchGame constructor
-     * or create a separate class.
-     */
-    // @Bean
-    // public Game sequentialTouchGame4x4() {
-    //     return new SequentialTouchGame(4, 4) {
-    //         @Override
-    //         public com.tileboard.engine.core.GameDescriptor descriptor() {
-    //             return com.tileboard.engine.core.GameDescriptor.builder("sequential-touch-4x4", "Sequential Touch 4x4 (Test)")
-    //                     .category("TUTORIAL")
-    //                     .description("4x4 version for quick testing - 16 tiles light up sequentially")
-    //                     .boardSize(4, 4)
-    //                     .players(1, 1)
-    //                     .build();
-    //         }
-    //     };
-    // }
+    
 }

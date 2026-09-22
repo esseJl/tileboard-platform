@@ -29,6 +29,8 @@ public final class BoardChannel {
     private final int height;
     private final TileGatewayClient gateway;
     private final TileCodec<TileColor> codec;
+    private final BoardFrameBroadcaster frameBroadcaster;
+    private final String sessionId;
 
     private final ReentrantLock stateLock = new ReentrantLock();
     private final Object gatewayWriteLock = new Object();
@@ -36,10 +38,23 @@ public final class BoardChannel {
     private Board<TileColor> lastSentBoard;
 
     public BoardChannel(int width, int height, TileGatewayClient gateway, TileCodec<TileColor> codec) {
+        this(width, height, gateway, codec, null, null);
+    }
+
+    /**
+     * @param frameBroadcaster optional (nullable) shared broadcaster to notify, once per
+     *                         board actually written to the gateway (see {@link #sendLatest()})
+     * @param sessionId        optional (nullable) id of the session this channel belongs to,
+     *                         forwarded to {@code frameBroadcaster} for context
+     */
+    public BoardChannel(int width, int height, TileGatewayClient gateway, TileCodec<TileColor> codec,
+                        BoardFrameBroadcaster frameBroadcaster, String sessionId) {
         this.width = width;
         this.height = height;
         this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.codec = Objects.requireNonNull(codec, "codec");
+        this.frameBroadcaster = frameBroadcaster;
+        this.sessionId = sessionId;
         this.buffer = new Board<>(width, height, TileColor.OFF);
     }
 
@@ -112,12 +127,23 @@ public final class BoardChannel {
     }
 
     private Board<TileColor> sendLatest() {
+        Board<TileColor> latest;
+        boolean actuallySent;
         synchronized (gatewayWriteLock) {
-            Board<TileColor> latest = snapshot();
-            if (latest.equals(lastSentBoard)) return latest;
-            gateway.sendBoard(Command.DATA_OUT, CommandType.SET, latest, codec);
-            lastSentBoard = latest;
-            return latest;
+            latest = snapshot();
+            if (latest.equals(lastSentBoard)) {
+                actuallySent = false;
+            } else {
+                gateway.sendBoard(Command.DATA_OUT, CommandType.SET, latest, codec);
+                lastSentBoard = latest;
+                actuallySent = true;
+            }
         }
+        // Notified outside gatewayWriteLock on purpose: listeners (e.g. an SSE broadcaster
+        // fanning out to many subscribers) must never be able to stall the hardware write path.
+        if (actuallySent && frameBroadcaster != null) {
+            frameBroadcaster.dispatch(sessionId, latest);
+        }
+        return latest;
     }
 }
