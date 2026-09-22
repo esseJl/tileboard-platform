@@ -1,8 +1,9 @@
 package com.tileboard.app.controller;
 
-import com.tileboard.app.service.streaming.BoardStateBroadcaster;
+import com.tileboard.engine.spring.SseGameEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -11,15 +12,19 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 @RequestMapping("/api/v1/stream")
 public class StreamController {
 
-    private final BoardStateBroadcaster broadcaster;
+    private final SseGameEventPublisher publisher;
 
-    public StreamController(BoardStateBroadcaster broadcaster) {
-        this.broadcaster = broadcaster;
+    public StreamController(SseGameEventPublisher publisher) {
+        this.publisher = publisher;
     }
 
-    /** Live mirror of whatever is currently being sent to the physical board. */
-    @GetMapping(path = "/board", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamBoardState() {
-        return broadcaster.subscribe();
+    @GetMapping(path = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamAllEvents() {
+        return publisher.global();
+    }
+
+    @GetMapping(path = "/events/{sessionId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter streamSessionEvents(@PathVariable String sessionId) {
+        return publisher.forSession(sessionId);
     }
 }
