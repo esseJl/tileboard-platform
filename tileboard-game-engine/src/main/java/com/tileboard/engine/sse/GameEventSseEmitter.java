@@ -17,6 +17,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 public final class GameEventSseEmitter {
 
@@ -49,26 +50,39 @@ public final class GameEventSseEmitter {
         AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
         AtomicReference<ScheduledFuture<?>> heartbeatRef = new AtomicReference<>();
 
-        Runnable teardown = () -> {
+        // --- cleanup فقط منابع داخلی ما را آزاد می‌کند (idempotent) ---
+        Runnable releaseResources = () -> {
             Runnable unsub = unsubscribeRef.getAndSet(null);
             if (unsub != null) unsub.run();
             ScheduledFuture<?> hb = heartbeatRef.getAndSet(null);
             if (hb != null) hb.cancel(false);
         };
 
-        // Register completion hooks FIRST so no event/heartbeat can race ahead of teardown wiring.
-        emitter.onCompletion(teardown);
-        emitter.onTimeout(teardown);
-        emitter.onError(ex -> teardown.run());
+        Runnable onCompletionHandler = releaseResources; // completion یعنی از قبل کامل شده، فقط cleanup کافیست
+
+        Runnable onTimeoutHandler = () -> {
+            releaseResources.run();
+            safeComplete(emitter);
+        };
+
+        Consumer<Throwable> onErrorHandler = ex -> {
+            releaseResources.run();
+            safeCompleteWithError(emitter, (Exception) ex);
+        };
+
+        emitter.onCompletion(onCompletionHandler);
+        emitter.onTimeout(onTimeoutHandler);
+        emitter.onError(onErrorHandler::accept);
 
         SubscriptionOptions options = SubscriptionOptions.defaults(PER_CLIENT_QUEUE_CAPACITY)
                 .withPolicy(EventOverflowPolicy.DROP_OLDEST);
         if (type != null) options = options.withType(type);
         if (sessionId != null) options = options.withSession(sessionId);
 
-        unsubscribeRef.set(bus.subscribe(event -> push(emitter, event, teardown), options));
+        unsubscribeRef.set(bus.subscribe(event -> push(emitter, event, releaseResources), options));
         heartbeatRef.set(heartbeats.scheduleAtFixedRate(
-                () -> sendComment(emitter, teardown), HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS));
+                () -> sendComment(emitter, releaseResources),
+                HEARTBEAT_SECONDS, HEARTBEAT_SECONDS, TimeUnit.SECONDS));
 
         return emitter;
     }
@@ -110,5 +124,11 @@ public final class GameEventSseEmitter {
         } catch (IllegalStateException ignored) {
             // already completed
         }
+    }
+
+    private static void safeComplete(SseEmitter emitter) {
+        try {
+            emitter.complete();
+        } catch (IllegalStateException alreadyCompleted) {}
     }
 }
