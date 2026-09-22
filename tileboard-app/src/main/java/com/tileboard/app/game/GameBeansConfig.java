@@ -9,23 +9,23 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * ثبت بازی‌های نمونه به عنوان Spring Bean
+ * Register sample games as Spring Beans
  *
  * <p>
- * هر Bean از نوع {@link Game} توسط {@link com.tileboard.engine.spring.TileboardEngineAutoConfiguration#gameRegistry}
- * به صورت خودکار در {@link com.tileboard.engine.core.GameRegistry} ثبت می‌شود (auto-registration).
- * این یعنی کافی است بازی را به عنوان Bean تعریف کنیم تا در لیست بازی‌ها ({@code GET /api/v1/games}) ظاهر شود
- * و قابل شروع باشد ({@code POST /api/v1/games/sessions}).
+ * Every Bean of type {@link Game} is auto-registered into {@link com.tileboard.engine.core.GameRegistry}
+ * by {@link com.tileboard.engine.spring.TileboardEngineAutoConfiguration#gameRegistry}.
+ * That means defining a game as a Bean is enough for it to appear in game list
+ * ({@code GET /api/v1/games}) and be startable ({@code POST /api/v1/games/sessions}).
  * </p>
  *
- * <h2>نکات concurrency و lifecycle</h2>
+ * <h2>Concurrency and Lifecycle Notes</h2>
  * <ul>
- *   <li>این کلاس یک بار در startup توسط Spring ساخته می‌شود (singleton).</li>
- *   <li>متد sequentialTouchGame() یک instance از بازی می‌سازد که طبق قرارداد Game باید stateless باشد
- *       و در تمام session ها reuse می‌شود (مشابه Servlet singleton).</li>
- *   <li>اگر بازی نیاز به state در سطح instance داشته باشد، باید با GameFactory ثبت شود، نه به صورت singleton Bean.</li>
- *   <li>ما سایز برد را از DeviceConfigurationService می‌خوانیم تا بازی با برد متصل هماهنگ باشد.
- *       اگر هنوز دستگاه کانفیگ نشده، پیش‌فرض 8x8 استفاده می‌شود.</li>
+ *   <li>This class is created once at startup by Spring (singleton).</li>
+ *   <li>Method sequentialTouchGame() creates a game instance that per Game contract must be stateless
+ *       and is reused across all sessions (similar to Servlet singleton).</li>
+ *   <li>If a game needs per-instance construction state, it should be registered with GameFactory, not as singleton Bean.</li>
+ *   <li>We read board size from DeviceConfigurationService so game matches connected board.
+ *       If device not yet configured, default 8x8 is used.</li>
  * </ul>
  */
 @Configuration
@@ -41,7 +41,7 @@ public class GameBeansConfig {
 
     @Bean
     public Game sequentialTouchGame() {
-        // سعی کن سایز برد فعلی را از کانفیگ بخوانی
+        // Try to read current board size from config
         int width = 8;
         int height = 8;
 
@@ -55,19 +55,19 @@ public class GameBeansConfig {
             log.info("No device config yet, creating SequentialTouchGame with default {}x{}", width, height);
         }
 
-        // بازی نمونه آموزشی که شامل تمام انیمیشن‌های درخواستی است:
-        // - countdown قبل از شروع
-        // - standby در ابتدا
-        // - win (radial burst) در پایان موفق
-        // - lose (fade to red / descending curtain) در لمس اشتباه یا timeout
+        // Tutorial sample game containing all requested animations:
+        // - countdown before start
+        // - standby at beginning
+        // - win (radial burst) on successful finish
+        // - lose (fade to red / descending curtain) on wrong touch or timeout
         return new SequentialTouchGame(width, height);
     }
 
     /**
-     * مثال دوم: نسخه کوچک 4x4 برای تست سریع روی برد کوچک یا شبیه‌ساز
-     * اگر بخواهی این Bean را فعال کنی، کافی است کامنت @Bean را برداری.
-     * توجه: gameId باید یکتا باشد، پس باید در سازنده SequentialTouchGame یک gameId متفاوت بدهی
-     * یا یک کلاس جدا بسازی.
+     * Second example: small 4x4 version for quick testing on small board or simulator
+     * To enable this Bean, uncomment @Bean annotation.
+     * Note: gameId must be unique, so you need to give different gameId in SequentialTouchGame constructor
+     * or create a separate class.
      */
     // @Bean
     // public Game sequentialTouchGame4x4() {
@@ -76,7 +76,7 @@ public class GameBeansConfig {
     //         public com.tileboard.engine.core.GameDescriptor descriptor() {
     //             return com.tileboard.engine.core.GameDescriptor.builder("sequential-touch-4x4", "Sequential Touch 4x4 (Test)")
     //                     .category("TUTORIAL")
-    //                     .description("نسخه 4x4 برای تست سریع - 16 تایل به ترتیب روشن می‌شوند")
+    //                     .description("4x4 version for quick testing - 16 tiles light up sequentially")
     //                     .boardSize(4, 4)
     //                     .players(1, 1)
     //                     .build();

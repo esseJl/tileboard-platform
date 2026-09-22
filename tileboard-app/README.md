@@ -1,30 +1,30 @@
-# tileboard-app - مستندات جامع اپلیکیشن Spring Boot بک‌اند
+# tileboard-app - Comprehensive Spring Boot Backend Documentation
 
-> **ماموریت ماژول:** اپلیکیشن Spring Boot که برد LED تایل را از طریق سریال کنترل می‌کند. روی `tileboard-serial-protocol` و `tileboard-game-engine` ساخته شده. شامل REST API برای کانفیگ دستگاه، مدیریت پورت‌های سریال، کنترل بازی‌ها و استریم SSE است. این ماژول نقطه اتصال سخت‌افزار به دنیای وب است.
-
----
-
-## فهرست مطالب
-1. [معماری کلی و جایگاه در پلتفرم](#معماری-کلی)
-2. [تکنولوژی‌ها](#تکنولوژیها)
-3. [ساختار پکیج‌ها](#ساختار-پکیجها)
-4. [کانفیگ - application.yml و TileboardProperties](#کانفیگ)
-5. [DeviceConfiguration - هندسه برد](#deviceconfiguration)
-6. [SerialGatewayConfig - انتزاع سخت‌افزار](#serialgatewayconfig)
-7. [سرویس‌ها - لایه بیزینس](#سرویسها)
-8. [کنترلرها - REST API](#کنترلرها)
-9. [استریم SSE - BoardStateBroadcaster](#استریم-sse)
-10. [GameEngineManager - پل Spring و موتور](#gameenginemanager)
-11. [مدیریت خطا - GlobalExceptionHandler](#مدیریت-خطا)
-12. [آموزش گام به گام اجرا و استفاده از API](#آموزش-گام-به-گام)
-13. [آموزش جامع ساخت بازی - مثال عملی SequentialTouchGame](#آموزش-جامع-ساخت-بازی)
-14. [استفاده از انیمیشن‌های win/lose/standby/countdown](#انیمیشنها)
-15. [بررسی کدهای پیچیده - Concurrency و Complex Logic](#بررسی-کدهای-پیچیده)
-16. [تست‌ها و اجرا](#تستها-و-اجرا)
+> **Module Mission:** Spring Boot application that drives an LED tile board over serial. Built on top of `tileboard-serial-protocol` and `tileboard-game-engine`. Includes REST API for device configuration, serial port management, game control, and SSE streaming. This module is the bridge between hardware and the web world.
 
 ---
 
-## معماری کلی
+## Table of Contents
+1. [Overall Architecture and Platform Position](#overall-architecture)
+2. [Tech Stack](#tech-stack)
+3. [Package Structure](#package-structure)
+4. [Configuration - application.yml and TileboardProperties](#configuration)
+5. [DeviceConfiguration - Board Geometry](#deviceconfiguration)
+6. [SerialGatewayConfig - Hardware Abstraction](#serialgatewayconfig)
+7. [Services - Business Layer](#services)
+8. [Controllers - REST API](#controllers)
+9. [SSE Streaming - BoardStateBroadcaster](#sse-streaming)
+10. [GameEngineManager - Spring and Engine Bridge](#gameenginemanager)
+11. [Error Handling - GlobalExceptionHandler](#error-handling)
+12. [Step-by-Step Run and API Usage Tutorial](#step-by-step-tutorial)
+13. [Comprehensive Game Creation Tutorial - SequentialTouchGame Practical Example](#comprehensive-game-tutorial)
+14. [Using win/lose/standby/countdown Animations](#using-animations)
+15. [Deep Dive - Concurrency and Complex Logic](#deep-dive)
+16. [Tests and Execution](#tests-and-execution)
+
+---
+
+## Overall Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -62,48 +62,48 @@
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**جریان داده معمول:**
+**Typical Data Flow:**
 
-1. Operator دستگاه را کانفیگ می‌کند: `POST /devices/configure {width, height}`
-2. پورت‌های سریال را لیست می‌کند: `GET /ports`
-3. پورت‌ها را assign می‌کند: `POST /ports/assign {role, portName}`
-4. وصل می‌شود: `POST /ports/connect` → `DefaultSerialConnectionManager.connect()` → `TileGatewayClient` ساخته می‌شود → `GatewayConnectedEvent` publish می‌شود → `GameEngineManager` یک `GameEngineImpl` جدید می‌سازد
-5. بازی‌ها را لیست می‌کند: `GET /games` (از `GameRegistry`)
-6. بازی را شروع می‌کند: `POST /games/sessions {gameId, players}` → `GameEngine.startGame()` → `GameSessionImpl` ساخته می‌شود → `onStart()` بازی صدا زده می‌شود
-7. SSE وصل می‌شود: `GET /stream/board` یا `/games/events` → برد و امتیاز و رویدادها به صورت real-time
-8. بازیکن تایل‌ها را لمس می‌کند → `TileGatewayClient` فریم `DATA_IN` می‌گیرد → `EngineFrameRouter` → `TouchFrameRouter` → `GameSessionImpl.handleTileEvent` → `game.onTileEvent`
-9. بازی برد/باخت می‌شود → `winSession`/`loseSession` → `finishSession` → `GameResult` → برد خاموش → SSE `SESSION_FINISHED`
+1. Operator configures device: `POST /devices/configure {width, height}`
+2. Lists serial ports: `GET /ports`
+3. Assigns ports: `POST /ports/assign {role, portName}`
+4. Connects: `POST /ports/connect` → `DefaultSerialConnectionManager.connect()` → `TileGatewayClient` created → `GatewayConnectedEvent` published → `GameEngineManager` creates new `GameEngineImpl`
+5. Lists games: `GET /games` (from `GameRegistry`)
+6. Starts game: `POST /games/sessions {gameId, players}` → `GameEngine.startGame()` → `GameSessionImpl` created → game's `onStart()` called
+7. Connects SSE: `GET /stream/board` or `/games/events` → board and scores and events real-time
+8. Player touches tiles → `TileGatewayClient` receives `DATA_IN` frame → `EngineFrameRouter` → `TouchFrameRouter` → `GameSessionImpl.handleTileEvent` → `game.onTileEvent`
+9. Game wins/loses → `winSession`/`loseSession` → `finishSession` → `GameResult` → board off → SSE `SESSION_FINISHED`
 
 ---
 
-## تکنولوژی‌ها
+## Tech Stack
 
 - **Java 17**, **Spring Boot 3.3.4**, **Spring MVC**, **Spring Actuator**
-- **jSerialComm 2.11.0** برای ارتباط سریال
-- **springdoc-openapi 2.6.0** برای Swagger UI
-- **Jackson** برای JSON
-- **SLF4J** برای لاگ
-- **Maven** برای بیلد
+- **jSerialComm 2.11.0** for serial communication
+- **springdoc-openapi 2.6.0** for Swagger UI
+- **Jackson** for JSON
+- **SLF4J** for logging
+- **Maven** for build
 
 ---
 
-## ساختار پکیج‌ها
+## Package Structure
 
-| پکیج | مسئولیت |
+| Package | Responsibility |
 |------|---------|
 | `com.tileboard.app` | `TileboardApplication` (main) |
 | `config` | `TileboardProperties`, `DeviceConfiguration`, `SerialGatewayConfig`, `GeneralConfiguration` (CORS) |
 | `controller` | REST controllers: `DeviceController`, `SerialPortController`, `GameController`, `StreamController` |
-| `dto` | DTO های API: `DeviceConfigurationRequest`, `AssignPortRequest`, `StartGameRequest`, `GameSessionResponse`, `ApiResponse`, ... |
+| `dto` | API DTOs: `DeviceConfigurationRequest`, `AssignPortRequest`, `StartGameRequest`, `GameSessionResponse`, `ApiResponse`, ... |
 | `service.device` | `DeviceConfigurationService` + `InMemoryDeviceConfigurationService` |
 | `service.serial` | `SerialConnectionManager` + `DefaultSerialConnectionManager`, `PortRole`, `ConnectionState` |
 | `service.streaming` | `BoardStateBroadcaster` + `SseBoardStateBroadcaster` |
-| `exception` | `ApiException` و زیرکلاس‌ها + `GlobalExceptionHandler` |
-| `game` | **بازی‌های نمونه**: `SequentialTouchGame`, `GameBeansConfig` (جدید) |
+| `exception` | `ApiException` and subclasses + `GlobalExceptionHandler` |
+| `game` | **Sample games**: `SequentialTouchGame`, `GameBeansConfig` (new) |
 
 ---
 
-## کانفیگ
+## Configuration
 
 ### application.yml
 
@@ -144,14 +144,14 @@ logging:
 ### application-prod.yml
 
 ```yaml
-# با --spring.profiles.active=prod فعال می‌شود
+# Activated with --spring.profiles.active=prod
 logging:
   level:
     root: INFO
     com.tileboard: INFO
 ```
 
-**چرا DEBUG در dev؟** چون `JSerialCommTransport` در سطح DEBUG بایت‌های TX/RX را با hex لاگ می‌کند، که برای دیباگ پروتکل مفید است اما در production پر سر و صدا.
+**Why DEBUG in dev?** Because `JSerialCommTransport` logs TX/RX bytes in hex at DEBUG level, useful for protocol debugging but noisy in production.
 
 ### TileboardProperties
 
@@ -173,8 +173,8 @@ public record TileboardProperties(
 }
 ```
 
-- `record` با compact constructor برای اعمال defaults
-- `@ConfigurationPropertiesScan` در `TileboardApplication` آن را فعال می‌کند
+- `record` with compact constructor for defaults
+- Enabled via `@ConfigurationPropertiesScan` in `TileboardApplication`
 
 ---
 
@@ -190,9 +190,9 @@ public record DeviceConfiguration(int width, int height) {
 }
 ```
 
-- هندسه فیزیکی برد: چند تایل عرض و ارتفاع
-- محدودیت 255 از `DeviceAddress` می‌آید که تعداد کل تایل‌ها را در یک بایت کد می‌کند (سقف پروتکل)
-- این تنها اطلاعاتی است که هر ماژول دیگر (handshake، game engine) قبل از هر کار مفید نیاز دارد
+- Physical geometry of board: how many tiles wide and tall
+- Limit 255 comes from `DeviceAddress` encoding total tile count in one byte (protocol ceiling)
+- This is the one piece of information every other module (handshake, game engine) needs before doing anything useful
 
 ---
 
@@ -208,11 +208,11 @@ public class SerialGatewayConfig {
 }
 ```
 
-**این تنها جایی در کل اپلیکیشن است که می‌داند `JSerialCommPortRegistry` استفاده می‌شود.** اگر بخواهی کتابخانه سریال را عوض کنی (یا یک Mock برای demo بدون سخت‌افزار بسازی)، فقط همین Bean را عوض می‌کنی. بقیه کد فقط `SerialPortRegistry` interface را می‌شناسد.
+**This is the only place in the whole app that knows `JSerialCommPortRegistry` is used.** If you want to swap serial library (or build a Mock for hardware-less demo), you only change this Bean. Rest of code only knows `SerialPortRegistry` interface.
 
 ---
 
-## سرویس‌ها
+## Services
 
 ### DeviceConfigurationService
 
@@ -237,9 +237,9 @@ public class InMemoryDeviceConfigurationService implements DeviceConfigurationSe
 }
 ```
 
-- `AtomicReference` → thread-safe بدون synchronized، چون فقط یک value را نگه می‌دارد
-- `Optional` برای حالت "هنوز کانفیگ نشده"
-- TODO: در آینده با یک implementation مبتنی بر repository (DB) جایگزین شود، چون تمام consumer ها فقط interface را می‌شناسند
+- `AtomicReference` -> thread-safe without synchronized, because it holds just one value
+- `Optional` for "not yet configured" state
+- TODO: Replace with DB-backed implementation in future, since all consumers only know interface
 
 ### SerialConnectionManager
 
@@ -259,7 +259,7 @@ public record PortAssignment(Optional<String> inPort, Optional<String> outPort) 
 public record SerialPortSummary(String systemName, String description) {}
 ```
 
-#### DefaultSerialConnectionManager - پیاده‌سازی
+#### DefaultSerialConnectionManager - Implementation
 
 ```java
 @Service
@@ -355,42 +355,42 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 }
 ```
 
-**نکات concurrency و complex logic:**
+**Concurrency and complex logic notes:**
 
-1. **synchronized روی متدهای mutating:** `assign`, `connectionState`, `connect`, `disconnect` همگی `synchronized` هستند. چون این‌ها عملیات admin هستند (operator-driven) و نباید همزمان از چند thread صدا زده شوند، synchronized ساده کافی است و از پیچیدگی lock های دیگر جلوگیری می‌کند.
+1. **synchronized on mutating methods:** `assign`, `connectionState`, `connect`, `disconnect` are all `synchronized`. Since these are admin operations (operator-driven) and shouldn't be called concurrently from many threads, simple synchronized is enough and avoids complexity of other locks.
 
-2. **EnumMap:** برای `assignedPorts` و `openTransports` از `EnumMap` استفاده شده که برای کلیدهای enum بهینه است (آرایه داخلی، نه hash).
+2. **EnumMap:** For `assignedPorts` and `openTransports`, `EnumMap` is used which is optimized for enum keys (internal array, not hash).
 
-3. **دو توپولوژی شفاف:**
-   - اگر IN و OUT یک نام داشته باشند → یک `SerialTransport` shared باز می‌شود و با `builder.transport(shared)` استفاده می‌شود (full-duplex)
-   - اگر جدا باشند → دو transport جدا باز می‌شوند
-   - اگر فقط OUT assign شده باشد → هشدار لاگ می‌شود که "OUTPUT ONLY" است و لمس‌ها هرگز دریافت نمی‌شوند. این بهتر از سکوت و نیمه‌کار کردن است.
+3. **Two topologies transparently:**
+   - If IN and OUT have same name -> one shared `SerialTransport` opened and used with `builder.transport(shared)` (full-duplex)
+   - If separate -> two separate transports opened
+   - If only OUT assigned -> warning logged that it's "OUTPUT ONLY" and touches will never be received. Better loud and explicit than silently half-working.
 
-4. **Rollback در صورت شکست connect:**
+4. **Rollback on failed connect:**
    ```java
    Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>();
    boolean success = false;
    try {
-       // باز کردن پورت‌ها
+       // open ports
        success = true;
    } finally {
        if (!success) closeQuietly(openedThisAttempt.values());
    }
    ```
-   - `openedThisAttempt` فقط transport هایی که در این تلاش باز شده‌اند را نگه می‌دارد
-   - اگر باز کردن پورت دوم fail شد، `finally` transport اولی را می‌بندد تا OS handle leak نشود. بدون این، یک `connect` ناموفق handle پورت را برای همیشه باز نگه می‌داشت و تلاش بعدی `connect` دوباره fail می‌شد چون پورت هنوز توسط JVM قبلی اشغال است.
+   - `openedThisAttempt` only holds transports opened in this attempt
+   - If opening second port fails, `finally` closes first transport so OS handle doesn't leak. Without this, a failed `connect` would hold port handle open forever with nothing referencing it, and next `connect` attempt would fail again trying to reopen same physical port.
 
-5. **ترتیب handshake و start:**
+5. **Handshake and start ordering:**
    ```java
-   enableHandshakeIfDeviceKnown(newClient); // اول listener ها را ثبت کن
+   enableHandshakeIfDeviceKnown(newClient); // first register listeners
    // ...
-   newClient.start(); // بعد input pipe را باز کن
+   newClient.start(); // then open input pipe
    ```
-   - اگر `start()` اول صدا زده شود، اولین فریم‌های برد (مثلا درخواست اولیه handshake ID/CLEAR) ممکن است قبل از ثبت `HandshakeCoordinator` برسند و چون `TileGatewayClient.dispatch()` فقط listener هایی که تا آن لحظه ثبت شده‌اند را notify می‌کند، آن فریم‌ها بی‌صدا drop می‌شوند.
+   - If `start()` called first, board's very first frames (e.g., initial ID/CLEAR handshake request) could arrive before `HandshakeCoordinator` is registered and since `TileGatewayClient.dispatch()` only notifies listeners registered by the time a frame is decoded, those frames would be silently dropped.
 
-6. **Event publishing:** بعد از ساخت client، `GatewayConnectedEvent` publish می‌شود که `GameEngineManager` را بیدار می‌کند تا engine بسازد. سپس `client.start()` صدا زده می‌شود تا دیتا شروع به آمدن کند.
+6. **Event publishing:** After client built, `GatewayConnectedEvent` published which wakes `GameEngineManager` to build engine. Then `client.start()` called so data starts flowing.
 
-7. **closeQuietly:** حتی اگر `close()` یک transport exception دهد، بقیه transport ها بسته می‌شوند.
+7. **closeQuietly:** Even if `close()` of one transport throws, other transports are closed.
 
 ### BoardStateBroadcaster
 
@@ -406,11 +406,11 @@ public class SseBoardStateBroadcaster implements BoardStateBroadcaster {
 }
 ```
 
-این سرویس برد را به تمام SSE client های متصل broadcast می‌کند.
+This service broadcasts board to all connected SSE clients.
 
 ---
 
-## کنترلرها
+## Controllers
 
 ### DeviceController
 
@@ -420,11 +420,11 @@ Body: { "width": 8, "height": 8 }
 Response: { "width": 8, "height": 8, "tileCount": 64 }
 
 GET /api/v1/devices/configuration
-Response: { "width": 8, "height": 8, ... } یا 404 اگر کانفیگ نشده
+Response: { "width": 8, "height": 8, ... } or 404 if not configured
 ```
 
-- `DeviceConfigurationRequest` با validation (`@Min(1)`, `@Max(255)`)
-- `DeviceConfigurationResponse` از `DeviceConfiguration`
+- `DeviceConfigurationRequest` with validation (`@Min(1)`, `@Max(255)`)
+- `DeviceConfigurationResponse` from `DeviceConfiguration`
 
 ### SerialPortController
 
@@ -433,7 +433,7 @@ GET /api/v1/ports
 Response: [{ "systemName": "COM3", "description": "USB Serial Port" }, ...]
 
 POST /api/v1/ports/assign
-Body: { "role": "OUT", "portName": "COM3" }  # role = IN یا OUT
+Body: { "role": "OUT", "portName": "COM3" }  # role = IN or OUT
 Response: { "inPort": "COM3", "outPort": "COM3" }
 
 GET /api/v1/ports/assignment
@@ -446,7 +446,7 @@ POST /api/v1/ports/disconnect
 Response: 204 No Content
 
 GET /api/v1/ports/status
-Response: { "status": "CONNECTED" یا "DISCONNECTED", "assignment": {...} }
+Response: { "status": "CONNECTED" or "DISCONNECTED", "assignment": {...} }
 ```
 
 ### GameController
@@ -454,24 +454,24 @@ Response: { "status": "CONNECTED" یا "DISCONNECTED", "assignment": {...} }
 ```
 GET /api/v1/games
 Response: [{ "gameId": "sequential-touch", "displayName": "Sequential Touch Challenge", "category": "TUTORIAL", ... }, ...]
-# حتی قبل از connect برد هم کار می‌کند (از GameRegistry)
+# Works even before board connected (from GameRegistry)
 
 POST /api/v1/games/sessions
 Body: { "gameId": "sequential-touch", "players": [{ "name": "Ali" }] }
 Response: { "sessionId": "uuid", "gameId": "sequential-touch", "status": "RUNNING", "players": [...], "scores": {...} }
 
 GET /api/v1/games/sessions
-Response: لیست session های فعال
+Response: list of active sessions
 
 GET /api/v1/games/sessions/{sessionId}
-Response: یک session
+Response: single session
 
 POST /api/v1/games/sessions/{sessionId}/stop
 Response: 204
 ```
 
-- `engineManager.require()` → اگر engine هنوز bound نشده (برد وصل نیست)، `EngineNotReadyException` می‌دهد که توسط `GlobalExceptionHandler` به 409 Conflict تبدیل می‌شود
-- `StartGameRequest` با validation
+- `engineManager.require()` -> if engine not yet bound (board not connected), throws `EngineNotReadyException` which `GlobalExceptionHandler` converts to 409 Conflict
+- `StartGameRequest` with validation
 
 ### StreamController
 
@@ -486,12 +486,12 @@ Event: event: SESSION_STARTED, BOARD_UPDATED, SCORE_UPDATED, TICK, SESSION_FINIS
        data: {...}
 ```
 
-- از `SseEmitter` Spring استفاده می‌کند
-- Heartbeat هر 15 ثانیه برای جلوگیری از timeout proxy
+- Uses Spring `SseEmitter`
+- Heartbeat every 15 seconds to prevent proxy timeout
 
 ---
 
-## مدیریت خطا
+## Error Handling
 
 ```java
 @RestControllerAdvice
@@ -525,27 +525,27 @@ public class GlobalExceptionHandler {
 }
 ```
 
-تمام خطاها به فرمت یکسان `ApiResponse` برمی‌گردند:
+All errors return same `ApiResponse` format:
 
 ```json
 {
   "status": "ERROR",
-  "message": "توضیح خطا",
+  "message": "Error description",
   "data": null
 }
 ```
 
 ---
 
-## آموزش گام به گام
+## Step-by-Step Tutorial
 
-### پیش‌نیازها
+### Prerequisites
 
 - Java 17+
 - Maven 3.8+
-- یک برد Tileboard متصل به USB (یا Mock برای تست بدون سخت‌افزار)
+- Tileboard board connected via USB (or Mock for testing without hardware)
 
-### گام 1: بیلد
+### Step 1: Build
 
 ```bash
 git clone <repo>
@@ -553,25 +553,25 @@ cd tileboard-platform
 mvn clean install -DskipTests
 ```
 
-### گام 2: اجرا
+### Step 2: Run
 
 ```bash
 cd tileboard-app
 mvn spring-boot:run
-# یا
+# or
 java -jar target/tileboard-app-1.0.0.jar
 
-# با پروفایل prod:
+# with prod profile:
 java -jar target/tileboard-app-1.0.0.jar --spring.profiles.active=prod
 ```
 
-اپلیکیشن روی `http://localhost:8080` بالا می‌آید.
+App runs on `http://localhost:8080`.
 
 Swagger UI: `http://localhost:8080/swagger-ui.html`
 
 Actuator: `http://localhost:8080/actuator/health`
 
-### گام 3: کانفیگ دستگاه
+### Step 3: Configure Device
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/devices/configure \
@@ -579,7 +579,7 @@ curl -X POST http://localhost:8080/api/v1/devices/configure \
   -d '{"width":8,"height":8}'
 ```
 
-پاسخ:
+Response:
 ```json
 {
   "status": "SUCCESS",
@@ -587,13 +587,13 @@ curl -X POST http://localhost:8080/api/v1/devices/configure \
 }
 ```
 
-### گام 4: لیست پورت‌ها
+### Step 4: List Ports
 
 ```bash
 curl http://localhost:8080/api/v1/ports
 ```
 
-پاسخ:
+Response:
 ```json
 {
   "status": "SUCCESS",
@@ -604,9 +604,9 @@ curl http://localhost:8080/api/v1/ports
 }
 ```
 
-### گام 5: Assign پورت‌ها
+### Step 5: Assign Ports
 
-اگر برد شما یک پورت full-duplex دارد (معمول):
+If your board has single full-duplex port (common):
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/ports/assign \
@@ -618,20 +618,20 @@ curl -X POST http://localhost:8080/api/v1/ports/assign \
   -d '{"role":"IN","portName":"COM3"}'
 ```
 
-اگر دو آداپتور half-duplex دارید:
+If you have two half-duplex adapters:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/ports/assign -d '{"role":"OUT","portName":"COM3"}'
 curl -X POST http://localhost:8080/api/v1/ports/assign -d '{"role":"IN","portName":"COM4"}'
 ```
 
-### گام 6: Connect
+### Step 6: Connect
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/ports/connect
 ```
 
-پاسخ:
+Response:
 ```json
 {
   "status": "SUCCESS",
@@ -639,20 +639,20 @@ curl -X POST http://localhost:8080/api/v1/ports/connect
 }
 ```
 
-در لاگ‌ها باید ببینی:
+Logs should show:
 ```
 Enabling id handshake for a 8x8 board (minimumSequence=2)
 Tile board gateway connected (in=COM3, out=COM3)
 Game engine bound to the newly connected tile gateway (8x8)
 ```
 
-### گام 7: لیست بازی‌ها
+### Step 7: List Games
 
 ```bash
 curl http://localhost:8080/api/v1/games
 ```
 
-پاسخ:
+Response:
 ```json
 {
   "status": "SUCCESS",
@@ -661,7 +661,7 @@ curl http://localhost:8080/api/v1/games
       "gameId": "sequential-touch",
       "displayName": "Sequential Touch Challenge",
       "category": "TUTORIAL",
-      "description": "به ترتیب هر تایل روشن می‌شود؛ با لمس آن امتیاز بگیر...",
+      "description": "Tiles light up sequentially; touch to score...",
       "requiredWidth": 8,
       "requiredHeight": 8,
       "minPlayers": 1,
@@ -671,7 +671,7 @@ curl http://localhost:8080/api/v1/games
 }
 ```
 
-### گام 8: شروع بازی
+### Step 8: Start Game
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/games/sessions \
@@ -682,7 +682,7 @@ curl -X POST http://localhost:8080/api/v1/games/sessions \
   }'
 ```
 
-پاسخ:
+Response:
 ```json
 {
   "status": "SUCCESS",
@@ -696,20 +696,20 @@ curl -X POST http://localhost:8080/api/v1/games/sessions \
 }
 ```
 
-در این لحظه روی برد:
-1. انیمیشن standby (BREATHING) 2 ثانیه
-2. انیمیشن countdown (3→2→1) حدود 2.1 ثانیه
-3. اولین تایل روشن می‌شود (مثلا (0,0) قرمز)
+At this moment on board:
+1. Standby animation (BREATHING) 2 seconds
+2. Countdown animation (3→2→1) ~2.1 seconds
+3. First tile lights up (e.g., (0,0) red)
 
-### گام 9: SSE - دیدن برد به صورت real-time
+### Step 9: SSE - Real-time Board View
 
-در یک ترمینال دیگر:
+In another terminal:
 
 ```bash
 curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/games/events
 ```
 
-یا با JS در مرورگر:
+Or with JS in browser:
 
 ```javascript
 const eventSource = new EventSource('/api/v1/games/events');
@@ -723,20 +723,20 @@ eventSource.addEventListener('SESSION_FINISHED', e => {
 });
 ```
 
-### گام 10: بازی کردن
+### Step 10: Play
 
-- تایل روشن را لمس کن → امتیاز +10، تایل خاموش، تایل بعدی روشن
-- اگر تایل اشتباه لمس کنی → انیمیشن FADE_TO_RED کوتاه، سپس تایل درست دوباره روشن
-- اگر 90 ثانیه طول بدهی → انیمیشن DESCENDING_CURTAIN و باخت
-- اگر همه 64 تایل را به ترتیب لمس کنی → انیمیشن RADIAL_BURST و برد
+- Touch lit tile → +10 points, tile off, next tile lights
+- If wrong tile touched → FADE_TO_RED short animation, then correct tile re-lights
+- If 90 seconds pass → DESCENDING_CURTAIN animation and loss
+- If all 64 tiles touched sequentially → RADIAL_BURST animation and win
 
-### گام 11: توقف بازی
+### Step 11: Stop Game
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/games/sessions/{sessionId}/stop
 ```
 
-### گام 12: Disconnect
+### Step 12: Disconnect
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/ports/disconnect
@@ -744,17 +744,17 @@ curl -X POST http://localhost:8080/api/v1/ports/disconnect
 
 ---
 
-## آموزش جامع ساخت بازی
+## Comprehensive Game Tutorial
 
-این بخش مهم‌ترین بخش مستندات است و به صورت گام به گام ساخت بازی **SequentialTouchGame** را که تمام انیمیشن‌های درخواستی را دارد توضیح می‌دهد.
+This is the most important section and explains step-by-step how to build **SequentialTouchGame** that includes all requested animations.
 
-### سناریو بازی
+### Game Scenario
 
-> به ترتیب هر تایل با رنگی روشن شود و به محض لمس شدن با اضافه شدن امتیاز بازیکن همراه شود و نوبت تایل بعدی بشود تا وقتی که همه‌ی تایل‌ها روشن و تاچ شوند سپس بازی خاتمه یابد. همچنین از انیمیشن‌های lose, win, standby در بازی و قبل از شروع بازی انیمیشن countdown استفاده کن.
+> Each tile lights up sequentially with a color; as soon as it is touched, player gets points and next tile's turn comes, until all tiles are lit and touched, then game ends. Also use lose, win, stand-by animations in game and before game start use countDown animation.
 
-### گام 1: ساخت کلاس بازی
+### Step 1: Create Game Class
 
-فایل: `src/main/java/com/tileboard/app/game/SequentialTouchGame.java`
+File: `src/main/java/com/tileboard/app/game/SequentialTouchGame.java`
 
 ```java
 package com.tileboard.app.game;
@@ -779,11 +779,9 @@ public class SequentialTouchGame implements Game {
 
     private static final Logger log = LoggerFactory.getLogger(SequentialTouchGame.class);
 
-    // کلیدهای GameState
     private static final String KEY_POSITIONS = "sequential.positions";
     private static final String KEY_INDEX = "sequential.index";
 
-    // پالت رنگی
     private static final TileColor[] PALETTE = {
         TileColor.RED, TileColor.GREEN, TileColor.BLUE,
         TileColor.YELLOW, TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.WHITE
@@ -794,7 +792,7 @@ public class SequentialTouchGame implements Game {
     public SequentialTouchGame() {
         this.descriptor = GameDescriptor.builder("sequential-touch", "Sequential Touch Challenge")
             .category("TUTORIAL")
-            .description("به ترتیب هر تایل روشن می‌شود؛ با لمس آن امتیاز بگیر و به تایل بعدی برو. شامل countdown، standby، win و lose انیمیشن.")
+            .description("Tiles light up sequentially; touch to score and advance. Includes countdown, standby, win and lose animations.")
             .boardSize(8, 8)
             .players(1, 1)
             .build();
@@ -803,7 +801,7 @@ public class SequentialTouchGame implements Game {
     public SequentialTouchGame(int width, int height) {
         this.descriptor = GameDescriptor.builder("sequential-touch", "Sequential Touch Challenge")
             .category("TUTORIAL")
-            .description("به ترتیب هر تایل روشن می‌شود؛ با لمس آن امتیاز بگیر و به تایل بعدی برو.")
+            .description("Tiles light up sequentially; touch to score and advance.")
             .boardSize(width, height)
             .players(1, 1)
             .build();
@@ -812,41 +810,39 @@ public class SequentialTouchGame implements Game {
     @Override public GameDescriptor descriptor() { return descriptor; }
 ```
 
-### گام 2: پیاده‌سازی onStart - شامل standby و countdown
+### Step 2: Implement onStart - Including standby and countdown
 
 ```java
     @Override
     public void onStart(GameContext ctx) {
         log.info("[{}] Game onStart - board {}x{}", ctx.sessionId(), ctx.boardWidth(), ctx.boardHeight());
 
-        // برد را خاموش و امتیاز را ریست کن
         ctx.fillBoard(TileColor.OFF);
         ctx.scores().resetAll();
         ctx.state().clear();
 
-        // 1. انیمیشن standby: BREATHING به مدت 2 ثانیه
-        // این انیمیشن بی‌نهایت است تا cancel شود
+        // 1. Standby animation: BREATHING for 2 seconds
+        // This animation is infinite until cancelled
         try {
             log.info("[{}] Playing STANDBY (BREATHING) for 2 seconds...", ctx.sessionId());
             ctx.animations().playStandbyAnimation(AnimationSystem.StandbyAnimationType.BREATHING)
                 .get(2, TimeUnit.SECONDS);
         } catch (Exception e) {
-            // Timeout → انیمیشن هنوز در حال اجراست، cancel کن
             ctx.animations().cancelCurrent();
             log.info("[{}] Standby cancelled, moving to countdown", ctx.sessionId());
         }
 
-        // 2. انیمیشن countdown: 3 → 2 → 1 → چشمک سبز
-        // playCountdown روی SingleThreadExecutor انیمیشن اجرا می‌شود
-        // join() تا پایان countdown صبر می‌کند
+        // 2. Countdown animation: 3 -> 2 -> 1 -> green blink
+        // playCountdown runs on animation SingleThreadExecutor
+        // join() waits until countdown ends
         try {
             log.info("[{}] Playing COUNTDOWN...", ctx.sessionId());
-            ctx.animations().playCountdown(700).join(); // هر رقم 700ms
+            ctx.animations().playCountdown(700).join(); // 700ms per digit
         } catch (Exception e) {
             log.warn("[{}] Countdown interrupted", ctx.sessionId(), e);
         }
 
-        // 3. لیست تمام موقعیت‌ها row-major
+        // 3. List all positions row-major
         List<Position> allPositions = new ArrayList<>();
         for (int r = 0; r < ctx.boardHeight(); r++) {
             for (int c = 0; c < ctx.boardWidth(); c++) {
@@ -857,16 +853,16 @@ public class SequentialTouchGame implements Game {
         ctx.state().put(KEY_POSITIONS, allPositions);
         ctx.state().put(KEY_INDEX, 0);
 
-        // 4. تایمر کلی: اگر در 90 ثانیه تمام نشد، باخت
-        // GameTimer از AtomicReference<Runnable> برای onExpire استفاده می‌کند
-        // checkExpiry() هر tick (100ms) توسط GameSessionImpl.runTick() صدا زده می‌شود
+        // 4. Global timer: if not finished in 90 seconds, lose
+        // GameTimer uses AtomicReference<Runnable> for onExpire
+        // checkExpiry() called every tick (100ms) by GameSessionImpl.runTick()
         ctx.timer().startCountdown(Duration.ofSeconds(90), () -> {
             log.info("[{}] Timer expired - LOST", ctx.sessionId());
             ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.DESCENDING_CURTAIN)
                 .thenRun(() -> ctx.loseSession());
         });
 
-        // 5. اولین تایل را روشن کن
+        // 5. Light first tile
         lightCurrentTile(ctx);
 
         log.info("[{}] Game started with {} tiles", ctx.sessionId(), allPositions.size());
@@ -881,26 +877,26 @@ public class SequentialTouchGame implements Game {
         Position pos = positions.get(index);
         TileColor color = PALETTE[index % PALETTE.length];
 
-        // BoardChannel.setTile thread-safe است:
-        // - stateLock (ReentrantLock) برای بافر داخلی
-        // - gatewayWriteLock (synchronized) برای سریالایز کردن write روی سیم
+        // BoardChannel.setTile is thread-safe:
+        // - stateLock (ReentrantLock) for internal buffer
+        // - gatewayWriteLock (synchronized) for serializing writes on wire
         ctx.setTile(pos.row(), pos.col(), color);
     }
 ```
 
-**توضیحات concurrency در onStart:**
+**Concurrency notes in onStart:**
 
-- `onStart` روی thread ای که `startGame` را صدا زده اجرا می‌شود (معمولا HTTP request thread). پس `get(2, SECONDS)` و `join()` که بلاک می‌کنند مشکلی ندارند چون tick thread را بلاک نمی‌کنند.
-- `ctx.state()` یک `GameState` است که تمام متدهایش `synchronized` هستند → thread-safe
-- `ctx.animations()` یک `AnimationSystem` است که فقط یک انیمیشن همزمان دارد و با generation-based cancellation کار می‌کند
-- `ctx.timer()` یک `GameTimer` است که `volatile` و `AtomicReference` دارد
+- `onStart` runs on thread calling `startGame` (usually HTTP request thread). So `get(2, SECONDS)` and `join()` blocking is fine because it doesn't block tick thread.
+- `ctx.state()` is `GameState` where all methods are `synchronized` -> thread-safe
+- `ctx.animations()` is `AnimationSystem` that has only one animation at a time with generation-based cancellation
+- `ctx.timer()` is `GameTimer` with `volatile` and `AtomicReference`
 
-### گام 3: پیاده‌سازی onTileEvent - منطق اصلی بازی
+### Step 3: Implement onTileEvent - Core Game Logic
 
 ```java
     @Override
     public void onTileEvent(GameContext ctx, TileEvent event) {
-        // فقط وقتی RUNNING است صدا زده می‌شود (چک در GameSessionImpl.handleTileEvent)
+        // Only called when RUNNING (check in GameSessionImpl.handleTileEvent)
 
         @SuppressWarnings("unchecked")
         List<Position> positions = ctx.state().get(KEY_POSITIONS, List.class).orElse(List.of());
@@ -923,16 +919,14 @@ public class SequentialTouchGame implements Game {
     private void handleCorrectTouch(GameContext ctx, int currentIndex, List<Position> positions) {
         String playerId = ctx.players().get(0).id();
 
-        // ScoreSystem از ConcurrentHashMap<String, AtomicInteger> استفاده می‌کند
-        // add() با AtomicInteger.addAndGet thread-safe است
+        // ScoreSystem uses ConcurrentHashMap<String, AtomicInteger>
+        // add() with AtomicInteger.addAndGet is thread-safe
         int newScore = ctx.scores().add(playerId, 10);
         log.info("[{}] Correct! Tile {}/{} touched, score={}", ctx.sessionId(), currentIndex+1, positions.size(), newScore);
 
-        // تایل فعلی را خاموش کن
         Position justTouched = positions.get(currentIndex);
         ctx.setTile(justTouched.row(), justTouched.col(), TileColor.OFF);
 
-        // برو تایل بعدی
         int nextIndex = currentIndex + 1;
         ctx.state().put(KEY_INDEX, nextIndex);
 
@@ -946,9 +940,6 @@ public class SequentialTouchGame implements Game {
     private void handleWrongTouch(GameContext ctx) {
         log.info("[{}] Wrong tile touched!", ctx.sessionId());
 
-        // انیمیشن lose کوتاه: FADE_TO_RED
-        // چون AnimationSystem فقط یک انیمیشن همزمان دارد، این تایل فعلی را موقتا override می‌کند
-        // بعد از اتمام، دوباره تایل جاری را روشن می‌کنیم
         ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.FADE_TO_RED)
             .thenRun(() -> lightCurrentTile(ctx));
     }
@@ -957,15 +948,15 @@ public class SequentialTouchGame implements Game {
         log.info("[{}] All tiles touched! WINS", ctx.sessionId());
         ctx.timer().stop();
 
-        // انیمیشن win: RADIAL_BURST
-        // سپس winSession که باعث finishSession در GameSessionImpl می‌شود
-        // finishSession با CAS تضمین می‌کند فقط یک بار اجرا شود
+        // Win animation: RADIAL_BURST
+        // Then winSession which triggers finishSession in GameSessionImpl
+        // finishSession with CAS guarantees it runs only once
         ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.RADIAL_BURST)
             .thenRun(() -> ctx.winSession(ctx.players()));
     }
 ```
 
-### گام 4: پیاده‌سازی onStop و onError
+### Step 4: Implement onStop and onError
 
 ```java
     @Override
@@ -994,25 +985,14 @@ public class SequentialTouchGame implements Game {
 }
 ```
 
-### گام 5: ثبت به عنوان Spring Bean
+### Step 5: Register as Spring Bean
 
-فایل: `src/main/java/com/tileboard/app/game/GameBeansConfig.java`
+File: `src/main/java/com/tileboard/app/game/GameBeansConfig.java`
 
 ```java
-package com.tileboard.app.game;
-
-import com.tileboard.app.config.DeviceConfiguration;
-import com.tileboard.app.service.device.DeviceConfigurationService;
-import com.tileboard.engine.core.Game;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-
 @Configuration
 public class GameBeansConfig {
 
-    private static final Logger log = LoggerFactory.getLogger(GameBeansConfig.class);
     private final DeviceConfigurationService deviceConfigService;
 
     public GameBeansConfig(DeviceConfigurationService deviceConfigService) {
@@ -1027,16 +1007,13 @@ public class GameBeansConfig {
             DeviceConfiguration cfg = current.get();
             width = cfg.width();
             height = cfg.height();
-            log.info("Creating SequentialTouchGame with device size {}x{} from current config", width, height);
-        } else {
-            log.info("No device config yet, creating SequentialTouchGame with default {}x{}", width, height);
         }
         return new SequentialTouchGame(width, height);
     }
 }
 ```
 
-**چرا این کار می‌کند؟** چون `TileboardEngineAutoConfiguration.gameRegistry()` تمام Bean های نوع `Game` را auto-register می‌کند:
+**Why this works?** Because `TileboardEngineAutoConfiguration.gameRegistry()` auto-registers all Beans of type `Game`:
 
 ```java
 @Bean
@@ -1050,9 +1027,9 @@ public GameRegistry gameRegistry(@Autowired(required=false) List<Game> games) {
 }
 ```
 
-پس کافی است بازی را به عنوان `@Bean` تعریف کنی تا در `GET /api/v1/games` ظاهر شود.
+So just defining game as `@Bean` makes it appear in `GET /api/v1/games`.
 
-### گام 6: بیلد و اجرا
+### Step 6: Build and Run
 
 ```bash
 mvn clean install -DskipTests
@@ -1060,73 +1037,58 @@ cd tileboard-app
 mvn spring-boot:run
 ```
 
-### گام 7: تست بازی
+### Step 7: Test Game
 
 ```bash
-# کانفیگ دستگاه
 curl -X POST http://localhost:8080/api/v1/devices/configure -H "Content-Type: application/json" -d '{"width":8,"height":8}'
-
-# لیست پورت‌ها
 curl http://localhost:8080/api/v1/ports
-
-# assign و connect (فرض COM3)
 curl -X POST http://localhost:8080/api/v1/ports/assign -H "Content-Type: application/json" -d '{"role":"OUT","portName":"COM3"}'
 curl -X POST http://localhost:8080/api/v1/ports/assign -H "Content-Type: application/json" -d '{"role":"IN","portName":"COM3"}'
 curl -X POST http://localhost:8080/api/v1/ports/connect
-
-# لیست بازی‌ها - باید sequential-touch را ببینی
 curl http://localhost:8080/api/v1/games
-
-# شروع بازی
 curl -X POST http://localhost:8080/api/v1/games/sessions -H "Content-Type: application/json" -d '{"gameId":"sequential-touch","players":[{"name":"Ali"}]}'
-
-# SSE برای دیدن رویدادها
 curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/games/events
 ```
 
-### جریان کامل بازی از دید بازیکن
+### Full Game Flow from Player Perspective
 
-1. **Standby (BREATHING):** گوشه‌های برد با آبی روشن/تیره چشمک می‌زنند (2 ثانیه) - حالت انتظار
-2. **Countdown:** 
-   - برد کامل قرمز (3)
-   - برد کامل زرد (2)
-   - برد کامل سبز (1)
-   - چشمک سبز 3 بار (GO!)
-3. **بازی:** تایل (0,0) قرمز روشن می‌شود
-4. بازیکن (0,0) را لمس می‌کند → امتیاز 10، (0,0) خاموش، (0,1) سبز روشن
-5. بازیکن (0,1) را لمس می‌کند → امتیاز 20، (0,1) خاموش، (0,2) آبی روشن
-6. ... تا (7,7)
-7. اگر بازیکن تایل اشتباه لمس کند → انیمیشن FADE_TO_RED (برد کم‌کم قرمز می‌شود) → دوباره تایل درست روشن
-8. اگر 90 ثانیه طول بدهد → DESCENDING_CURTAIN (پرده قرمز از بالا به پایین) → باخت
-9. اگر همه 64 تایل درست لمس شوند → RADIAL_BURST (موج رنگی از مرکز) → برد
+1. **Standby (BREATHING):** Board corners blink blue (2 seconds) - idle state
+2. **Countdown:** Whole board red (3) -> yellow (2) -> green (1) -> green blink 3 times (GO!)
+3. **Game:** Tile (0,0) lights red
+4. Player touches (0,0) -> +10 points, (0,0) off, (0,1) lights green
+5. Player touches (0,1) -> +10 points, (0,1) off, (0,2) lights blue
+6. ... until (7,7)
+7. If wrong tile touched -> FADE_TO_RED short animation -> correct tile re-lights
+8. If 90 seconds pass -> DESCENDING_CURTAIN -> loss
+9. If all 64 tiles correctly touched -> RADIAL_BURST -> win
 
 ---
 
-## انیمیشن‌ها
+## Using Animations
 
-### لیست انیمیشن‌های موجود
+### Available Animations
 
 #### Countdown
 
 ```java
-ctx.animations().playCountdown() // پیش‌فرض 1000ms هر رقم
-ctx.animations().playCountdown(700) // سفارشی 700ms
+ctx.animations().playCountdown() // default 1000ms per digit
+ctx.animations().playCountdown(700) // custom 700ms
 ```
 
-- اگر برد کوچکتر از 3x5 باشد: کل برد به رنگ‌های قرمز، زرد، سبز روشن می‌شود (simple)
-- اگر برد بزرگتر باشد: رقم‌های 3،2،1 با الگوی 5x3 در مرکز رندر می‌شوند و سپس چشمک سبز
+- If board smaller than 3x5: whole board lights red, yellow, green (simple)
+- If larger: digits 3,2,1 rendered with 5x3 pattern centered then green blink
 
 #### Win
 
 ```java
 public enum WinAnimationType {
-    RADIAL_BURST,    // موج رنگی از مرکز به بیرون
-    RAINBOW_SWEEP,   // جاروی رنگین‌کمانی ستونی
-    SPARKLE,         // جرقه‌های تصادفی
-    FIREWORKS        // آتش‌بازی در نقاط تصادفی
+    RADIAL_BURST,    // colored wave from center outward
+    RAINBOW_SWEEP,   // rainbow column sweep
+    SPARKLE,         // random sparkles
+    FIREWORKS        // fireworks at random points
 }
 
-ctx.animations().playWinAnimation() // پیش‌فرض RADIAL_BURST
+ctx.animations().playWinAnimation() // default RADIAL_BURST
 ctx.animations().playWinAnimation(WinAnimationType.FIREWORKS)
 ```
 
@@ -1134,10 +1096,10 @@ ctx.animations().playWinAnimation(WinAnimationType.FIREWORKS)
 
 ```java
 public enum LoseAnimationType {
-    FADE_TO_RED,          // محو شدن به قرمز با نویز
-    DESCENDING_CURTAIN,   // پرده قرمز از بالا
-    CRUMBLE,              // فروپاشی از زرد به قرمز
-    PULSE_RED             // چشمک قرمز
+    FADE_TO_RED,          // fade to red with noise
+    DESCENDING_CURTAIN,   // red curtain from top
+    CRUMBLE,              // crumble from yellow to red
+    PULSE_RED             // red pulse blink
 }
 
 ctx.animations().playLoseAnimation()
@@ -1148,42 +1110,33 @@ ctx.animations().playLoseAnimation(LoseAnimationType.CRUMBLE)
 
 ```java
 public enum StandbyAnimationType {
-    BREATHING,      // گوشه‌ها و مرز با تنفس آبی
-    CORNER_PULSE,   // پالس رنگی در گوشه‌ها
-    WAVE_BORDER,    // موج روی مرز
-    RANDOM_TWINKLE  // چشمک تصادفی سفید
+    BREATHING,      // corners and border breathing blue
+    CORNER_PULSE,   // colored pulse in corners
+    WAVE_BORDER,    // wave on border
+    RANDOM_TWINKLE  // random white twinkle
 }
 
 ctx.animations().playStandbyAnimation()
 ctx.animations().playStandbyAnimation(StandbyAnimationType.WAVE_BORDER)
 ```
 
-**ویژگی خاص standby:** این انیمیشن‌ها بی‌نهایت اجرا می‌شوند تا cancel شوند. برای استفاده به عنوان "حالت انتظار قبل از شروع" باید:
+**Special feature of standby:** These animations run infinitely until cancelled. To use as "idle before start":
 
 ```java
 try {
     ctx.animations().playStandbyAnimation(StandbyAnimationType.BREATHING)
-        .get(2, TimeUnit.SECONDS); // 2 ثانیه اجرا
+        .get(2, TimeUnit.SECONDS); // run 2 seconds
 } catch (TimeoutException e) {
     ctx.animations().cancelCurrent(); // cancel
 }
 ```
 
-یا:
+### Technical Implementation of Animations
+
+All animations run on a `SingleThreadExecutor` named `tileboard-animation`. Each new animation cancels previous one with generation-based cooperative cancellation pattern (detailed in game engine README).
 
 ```java
-CompletableFuture<Void> standby = ctx.animations().playStandbyAnimation(...);
-Thread.sleep(2000);
-standby.cancel(false);
-ctx.animations().cancelCurrent();
-```
-
-### پیاده‌سازی فنی انیمیشن‌ها
-
-تمام انیمیشن‌ها روی یک `SingleThreadExecutor` به نام `tileboard-animation` اجرا می‌شوند. هر انیمیشن جدید انیمیشن قبلی را با الگوی generation-based cooperative cancellation کنسل می‌کند (توضیح کامل در README موتور بازی).
-
-```java
-// داخل AnimationSystem
+// Inside AnimationSystem
 private final AtomicLong generation = new AtomicLong(0);
 
 private CompletableFuture<Void> run(Consumer<RunToken> body) {
@@ -1204,13 +1157,13 @@ public final class RunToken {
 }
 ```
 
-این یعنی انیمیشن‌ها به صورت cooperative چک می‌کنند که آیا کنسل شده‌اند و اگر بله، خودشان تمیز خارج می‌شوند بدون اینکه thread را force kill کنیم.
+Animations cooperatively check if cancelled and if so exit cleanly without force-killing thread.
 
-### استفاده از انیمیشن در اپ اسپرینگ
+### Using Animations in Spring App
 
-در اپ اسپرینگ، انیمیشن‌ها از طریق `GameContext.animations()` در دسترس هستند که در `FeatureBundle` ساخته می‌شود و `boardPublisher` آن همان `BoardChannel.publish` است که در نهایت به `TileGatewayClient.sendBoard` می‌رسد.
+In Spring app, animations are available via `GameContext.animations()` which is created in `FeatureBundle` and its `boardPublisher` is same as `BoardChannel.publish` which eventually goes to `TileGatewayClient.sendBoard`.
 
-برای استفاده خارج از بازی (مثلا در یک کنترلر ادمین برای تست برد):
+For use outside games (e.g., in admin controller for board testing):
 
 ```java
 @RestController
@@ -1221,31 +1174,31 @@ public class AdminAnimationController {
     @PostMapping("/api/v1/admin/animations/countdown")
     public void playCountdown() {
         GameEngine engine = engineManager.require();
-        // گرفتن یک session فعال یا ساخت یک session موقت برای تست
+        // get active session or create temp session for testing
         // ...
     }
 }
 ```
 
-اما توصیه می‌شود انیمیشن‌ها فقط داخل بازی‌ها استفاده شوند، چون `AnimationSystem` per-session است.
+But recommended to use animations only inside games, because `AnimationSystem` is per-session.
 
 ---
 
-## بررسی کدهای پیچیده
+## Deep Dive
 
 ### 1. DefaultSerialConnectionManager - synchronized + rollback + dual topology
 
-**مشکل:** `connect()` ممکن است از چند thread همزمان صدا زده شود (دو ادمین همزمان). همچنین باز کردن پورت‌ها ممکن است نیمه‌کاره fail شود (پورت اول باز می‌شود، دومی fail).
+**Problem:** `connect()` may be called concurrently from multiple threads (two admins at same time). Also opening ports may partially fail (first port opens, second fails).
 
-**راه حل:**
+**Solution:**
 
-- `synchronized` روی `connect()`, `disconnect()`, `assign()` → فقط یک thread در یک لحظه می‌تواند state را تغییر دهد
-- `openedThisAttempt` + `finally` rollback → اگر هر مرحله fail شد، تمام transport هایی که در این تلاش باز شده‌اند بسته می‌شوند تا OS handle leak نشود
-- `EnumMap` برای `assignedPorts` → بهینه برای enum keys
-- `shared transport` detection: اگر IN و OUT یک نام باشند، فقط یک بار باز می‌شود
+- `synchronized` on `connect()`, `disconnect()`, `assign()` -> only one thread can change state at a time
+- `openedThisAttempt` + `finally` rollback -> if any step fails, all transports opened in this attempt are closed so OS handle doesn't leak
+- `EnumMap` for `assignedPorts` -> optimized for enum keys
+- `shared transport` detection: if IN and OUT same name, opened only once
 
 ```java
-Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>(PortRole.class);
+Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>();
 boolean success = false;
 try {
     if (inPort != null && inPort.equals(outPort)) {
@@ -1253,7 +1206,7 @@ try {
         openedThisAttempt.put(OUT, shared);
         builder.transport(shared);
     } else {
-        // باز کردن OUT و IN جدا
+        // open OUT and IN separately
     }
     newClient = builder.build();
     enableHandshakeIfDeviceKnown(newClient);
@@ -1279,9 +1232,9 @@ public DeviceConfiguration configure(int width, int height) {
 }
 ```
 
-- `AtomicReference` بدون `synchronized` thread-safe است برای یک value
-- `get()` و `set()` هر دو اتمی و visible بین thread ها هستند
-- `Optional` برای حالت "هنوز کانفیگ نشده" (null)
+- `AtomicReference` thread-safe without synchronized for single value
+- `get()` and `set()` both atomic and visible across threads
+- `Optional` for "not yet configured" (null)
 
 ### 3. GameEngineManager - volatile + synchronized + null-before-close
 
@@ -1300,7 +1253,7 @@ public synchronized void onGatewayConnected(GatewayConnectedEvent event) {
 private void shutdownCurrentEngine() {
     GameEngineImpl current = this.engine;
     if (current == null) return;
-    this.engine = null; // فوری visible
+    this.engine = null; // immediately visible
     try { current.close(); } catch (RuntimeException e) { log.warn }
 }
 
@@ -1309,18 +1262,18 @@ public synchronized Optional<GameEngine> current() {
 }
 ```
 
-- `volatile` برای `engine` → خواندن بدون synchronized هم visibility دارد
-- `synchronized` برای نوشتن → جلوگیری از race بین connect و disconnect همزمان
-- `engine = null` قبل از `close()` → `current()`/`require()` هرگز engine نیمه-bسته را نمی‌بینند (اگر اول close و سپس null کنیم، بین این دو لحظه یک thread دیگر ممکن است engine نیمه-bسته را بگیرد)
-- `shutdownCurrentEngine` null-safe و idempotent → اگر دو بار disconnect بیاید، NPE نمی‌دهد
+- `volatile` for `engine` -> lock-free visibility for reads, but writes synchronized
+- `synchronized` for writes -> prevents race between concurrent connect and disconnect
+- `engine = null` before `close()` -> `current()`/`require()` never see half-closed engine (if we close then null, between those moments another thread could get half-closed engine)
+- `shutdownCurrentEngine` null-safe and idempotent -> duplicate disconnect events don't NPE
 
 ### 4. BoardChannel - ReentrantLock + gatewayWriteLock + coalescing
 
-توضیح کامل در README موتور بازی داده شد. خلاصه:
+Detailed in game engine README. Summary:
 
-- `stateLock` (ReentrantLock) از `buffer` محافظت می‌کند
-- `gatewayWriteLock` (synchronized Object) write ها روی سیم را سریالایز می‌کند
-- `sendLatest()` دوباره `snapshot()` می‌خواند → coalescing semantics: آخرین وضعیت سازگار ارسال می‌شود، نه وضعیت قدیمی
+- `stateLock` (ReentrantLock) protects `buffer`
+- `gatewayWriteLock` (synchronized Object) serializes writes on wire
+- `sendLatest()` re-reads `snapshot()` -> coalescing semantics: latest consistent state sent, not old
 
 ### 5. GameState - synchronized HashMap
 
@@ -1332,12 +1285,12 @@ public final class GameState {
 }
 ```
 
-- `HashMap` معمولی با `synchronized` روی متدها → thread-safe برای دسترسی همزمان tick thread و callback thread
-- `snapshot()` یک کپی unmodifiable برمی‌گرداند برای SSE
+- Plain `HashMap` with `synchronized` methods -> thread-safe for concurrent access from tick thread and callback thread
+- `snapshot()` returns unmodifiable copy for SSE
 
 ### 6. AnimationSystem - generation + CompletableFuture + SingleThreadExecutor
 
-توضیح کامل در README موتور بازی.
+Detailed in game engine README.
 
 ### 7. ScoreSystem - ConcurrentHashMap + AtomicInteger
 
@@ -1347,9 +1300,9 @@ public int add(String playerId, int delta) { return getOrCreate(playerId).addAnd
 private AtomicInteger getOrCreate(String playerId) { return scores.computeIfAbsent(playerId, k -> new AtomicInteger(0)); }
 ```
 
-- `ConcurrentHashMap` برای خواندن/نوشتن همزمان thread-safe
-- `computeIfAbsent` اتمی
-- `AtomicInteger.addAndGet` با CAS، بدون lock سراسری
+- `ConcurrentHashMap` thread-safe for concurrent read/write
+- `computeIfAbsent` atomic
+- `AtomicInteger.addAndGet` with CAS, no global lock
 
 ### 8. GameTimer - volatile + AtomicReference
 
@@ -1363,8 +1316,8 @@ public void checkExpiry() {
 }
 ```
 
-- `volatile` برای visibility بدون lock
-- `getAndSet(null)` تضمین می‌کند callback فقط یک بار اجرا شود
+- `volatile` for visibility without lock
+- `getAndSet(null)` guarantees callback runs only once
 
 ### 9. CORS Filter - FilterRegistrationBean
 
@@ -1383,41 +1336,41 @@ public FilterRegistrationBean<CorsFilter> simpleCorsFilter() {
 }
 ```
 
-- `HIGHEST_PRECEDENCE` → CORS قبل از هر فیلتر دیگری چک می‌شود
-- `*` برای origins, methods, headers → برای development آسان، در production باید محدود شود
+- `HIGHEST_PRECEDENCE` -> CORS checked before any other filter
+- `*` for origins, methods, headers -> easy for development, should be restricted in production
 
 ---
 
-## تست‌ها و اجرا
+## Tests and Execution
 
-### تست
+### Tests
 
 ```bash
 mvn test -pl tileboard-app
 ```
 
 - `TileboardApplicationTests`: contextLoads
-- `TileboardPropertiesTest`: تست defaults و validation
-- `ControllerUnitTest`: تست unit کنترلرها با MockMvc
-- `InMemoryDeviceGeneralConfigurationServiceTest`: تست AtomicReference
-- `DefaultSerialConnectionManagerTest`: تست connect/disconnect, rollback, dual topology
+- `TileboardPropertiesTest`: defaults and validation
+- `ControllerUnitTest`: controller unit tests with MockMvc
+- `InMemoryDeviceGeneralConfigurationServiceTest`: AtomicReference test
+- `DefaultSerialConnectionManagerTest`: connect/disconnect, rollback, dual topology
 
-### اجرا
+### Execution
 
 ```bash
 mvn spring-boot:run -pl tileboard-app
-# یا
+# or
 mvn clean package -DskipTests
 java -jar tileboard-app/target/tileboard-app-1.0.0.jar
 
-# با prod profile
+# with prod profile
 java -jar tileboard-app/target/tileboard-app-1.0.0.jar --spring.profiles.active=prod
 
-# با پورت سفارشی
+# with custom port
 java -jar tileboard-app/target/tileboard-app-1.0.0.jar --server.port=9090
 ```
 
-### Docker (اختیاری)
+### Docker (Optional)
 
 ```dockerfile
 FROM openjdk:17-jdk-slim
@@ -1433,14 +1386,14 @@ docker run -p 8080:8080 --device=/dev/ttyUSB0 tileboard-app
 
 ---
 
-## API Reference کامل
+## Full API Reference
 
 ### Device
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
 | POST | /api/v1/devices/configure | {width, height} | DeviceConfigurationResponse |
-| GET | /api/v1/devices/configuration | - | DeviceConfigurationResponse یا 404 |
+| GET | /api/v1/devices/configuration | - | DeviceConfigurationResponse or 404 |
 
 ### Ports
 
@@ -1479,21 +1432,21 @@ docker run -p 8080:8080 --device=/dev/ttyUSB0 tileboard-app
 
 ---
 
-## جمع‌بندی
+## Summary
 
-این اپلیکیشن:
+This application:
 
-1. **سخت‌افزار را انتزاع می‌کند:** فقط `SerialPortRegistry` interface را می‌شناسد، نه jSerialComm را
-2. **Thread-safe است:** از `AtomicReference`, `synchronized`, `ConcurrentHashMap`, `volatile`, `CAS` به درستی استفاده می‌کند
-3. **قابل توسعه است:** اضافه کردن بازی جدید فقط یک `@Bean` است
-4. **Production-ready است:** TTL برای session ها، rollback برای connect، idempotent disconnect، CORS، Actuator، Swagger، logging قابل تنظیم
-5. **آموزشی است:** بازی نمونه `SequentialTouchGame` تمام انیمیشن‌ها و الگوهای concurrency را نشان می‌دهد
+1. **Abstracts hardware:** Only knows `SerialPortRegistry` interface, not jSerialComm
+2. **Is thread-safe:** Correctly uses `AtomicReference`, `synchronized`, `ConcurrentHashMap`, `volatile`, `CAS`
+3. **Is extensible:** Adding new game is just a `@Bean`
+4. **Is production-ready:** TTL for sessions, rollback for connect, idempotent disconnect, CORS, Actuator, Swagger, configurable logging
+5. **Is educational:** Sample game `SequentialTouchGame` shows all animations and concurrency patterns
 
-برای سوالات بیشتر، README های ماژول‌های `tileboard-serial-protocol` و `tileboard-game-engine` را ببینید.
+For more questions, see READMEs of `tileboard-serial-protocol` and `tileboard-game-engine` modules.
 
 ---
 
-**نویسنده:** تیم Tileboard Platform  
-**نسخه:** 1.0.0  
-**جاوا:** 17+  
+**Author:** Tileboard Platform Team  
+**Version:** 1.0.0  
+**Java:** 17+  
 **Spring Boot:** 3.3.4

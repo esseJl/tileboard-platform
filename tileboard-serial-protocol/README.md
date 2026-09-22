@@ -1,26 +1,26 @@
-# tileboard-serial-protocol - مستندات جامع ماژول پروتکل سریال
+# tileboard-serial-protocol - Comprehensive Module Documentation
 
-> **ماموریت ماژول:** این ماژول یک کتابخانه **transport-agnostic** و **framework-free** است که پروتکل سیم‌کشی Tileboard را پیاده‌سازی می‌کند. هیچ وابستگی به Spring، هیچ hardcode برای سایز برد، هیچ رنگ پیش‌فرض - فقط یک هسته خالص که می‌تواند در هر پروژه JVM (CLI، دسکتاپ، Spring، Android) استفاده شود.
-
----
-
-## فهرست مطالب
-1. [معماری کلی](#معماری-کلی)
-2. [ساختار پکیج‌ها](#ساختار-پکیجها)
-3. [لایه پروتکل - فریم‌بندی](#لایه-پروتکل---فریمبندی)
-4. [Board - ساختار داده عمومی تایل](#board---ساختار-داده-عمومی-تایل)
-5. [TileCodec - پل بین دامنه و سیم](#tilecodec---پل-بین-دامنه-و-سیم)
-6. [SerialTransport - انتزاع سخت‌افزار](#serialtransport---انتزاع-سختافزار)
-7. [TileGatewayClient - قلب ماژول](#tilegatewayclient---قلب-ماژول)
-8. [Handshake - احراز هویت و آدرس‌دهی تایل‌ها](#handshake---احراز-هویت-و-آدرسدهی-تایلها)
-9. [آموزش گام به گام استفاده](#آموزش-گام-به-گام-استفاده)
-10. [بررسی کدهای پیچیده - Concurrency و Thread-Safety](#بررسی-کدهای-پیچیده---concurrency-و-thread-safety)
-11. [تست‌ها](#تستها)
-12. [نکات پیشرفته](#نکات-پیشرفته)
+> **Module Mission:** This is a **transport-agnostic** and **framework-free** Java library implementing the Tileboard serial wire protocol. It has zero dependency on Spring, no hardcoded board size, no hardcoded color palette - just a pure core that can be dropped into any JVM project (CLI, desktop, Spring, Android, etc.).
 
 ---
 
-## معماری کلی
+## Table of Contents
+1. [Overall Architecture](#overall-architecture)
+2. [Package Structure](#package-structure)
+3. [Protocol Layer - Framing](#protocol-layer---framing)
+4. [Board - Generic Tile Data Structure](#board---generic-tile-data-structure)
+5. [TileCodec - Bridge Between Domain and Wire](#tilecodec---bridge-between-domain-and-wire)
+6. [SerialTransport - Hardware Abstraction](#serialtransport---hardware-abstraction)
+7. [TileGatewayClient - Heart of the Module](#tilegatewayclient---heart-of-the-module)
+8. [Handshake - Tile Addressing and Identity](#handshake---tile-addressing-and-identity)
+9. [Step-by-Step Usage Tutorial](#step-by-step-usage-tutorial)
+10. [Deep Dive - Concurrency and Thread-Safety](#deep-dive---concurrency-and-thread-safety)
+11. [Tests](#tests)
+12. [Advanced Topics](#advanced-topics)
+
+---
+
+## Overall Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -44,27 +44,27 @@
 └─────────────────────────────────────────────────────────┘
 ```
 
-**اصل طراحی:** هر لایه فقط به لایه پایین‌تر از طریق interface وابسته است. برای مثال، `TileGatewayClient` فقط `SerialTransport` می‌شناسد، نه `JSerialCommTransport`. این یعنی می‌توانید با پیاده‌سازی `SerialTransport`، از RXTX، jSSC، یک Mock برای تست، یا حتی یک پل شبکه استفاده کنید بدون تغییر یک خط از لایه پروتکل.
+**Design Principle:** Each layer depends only on the layer below through an interface. For example, `TileGatewayClient` only knows `SerialTransport`, not `JSerialCommTransport`. This means you can implement `SerialTransport` with RXTX, jSSC, a Mock for tests, or even a network bridge without changing a single line in the protocol layer.
 
 ---
 
-## ساختار پکیج‌ها
+## Package Structure
 
-| پکیج | مسئولیت | کلاس‌های کلیدی |
+| Package | Responsibility | Key Classes |
 |------|---------|---------------|
-| `com.tileboard.serial.board` | ساختار داده برد عمومی | `Board<T>`, `Position`, `TileCodec`, `TileEncoder`, `TileDecoder` |
-| `com.tileboard.serial.protocol` | فریم‌بندی سیم | `ProtocolConstants`, `Frame`, `Command`, `CommandType`, `DefaultFrameCodec`, `TileTouchCodec` |
-| `com.tileboard.serial.transport` | انتزاع پورت سریال | `SerialTransport`, `SerialPortRegistry`, `SerialPortConfig`, `SerialPortInfo`, `DataListener` |
-| `com.tileboard.serial.transport.jserialcomm` | پیاده‌سازی jSerialComm | `JSerialCommTransport`, `JSerialCommPortRegistry` |
-| `com.tileboard.serial.gateway` | کلاینت سطح بالا | `TileGatewayClient`, `FrameListener`, `BoardListener`, `BoardFrameListener` |
-| `com.tileboard.serial.gateway.handshake` | هندشیک آدرس‌دهی | `HandshakeCoordinator`, `DeviceAddress`, `AddressResolver`, `SequenceValidator` |
-| `com.tileboard.serial.exception` | استثناها | `ProtocolException`, `BoardException`, `SerialTransportException` |
+| `com.tileboard.serial.board` | Generic board data structure | `Board<T>`, `Position`, `TileCodec`, `TileEncoder`, `TileDecoder` |
+| `com.tileboard.serial.protocol` | Wire framing | `ProtocolConstants`, `Frame`, `Command`, `CommandType`, `DefaultFrameCodec`, `TileTouchCodec` |
+| `com.tileboard.serial.transport` | Serial port abstraction | `SerialTransport`, `SerialPortRegistry`, `SerialPortConfig`, `SerialPortInfo`, `DataListener` |
+| `com.tileboard.serial.transport.jserialcomm` | jSerialComm implementation | `JSerialCommTransport`, `JSerialCommPortRegistry` |
+| `com.tileboard.serial.gateway` | High-level client | `TileGatewayClient`, `FrameListener`, `BoardListener`, `BoardFrameListener` |
+| `com.tileboard.serial.gateway.handshake` | Addressing handshake | `HandshakeCoordinator`, `DeviceAddress`, `AddressResolver`, `SequenceValidator` |
+| `com.tileboard.serial.exception` | Exceptions | `ProtocolException`, `BoardException`, `SerialTransportException` |
 
 ---
 
-## لایه پروتکل - فریم‌بندی
+## Protocol Layer - Framing
 
-### فرمت فریم روی سیم
+### Wire Frame Format
 
 ```
 Byte 0: START_BYTE      = 0xFC
@@ -77,14 +77,14 @@ Byte 6..n-2: Payload (0..N bytes)
 Byte n-1: END_BYTE      = '#' (0x23)
 ```
 
-- **Overhead ثابت:** 7 بایت (START + SEP + CMD + TYPE + LEN(2) + END)
-- **Max payload:** 65535 بایت (فیلد 16 بیتی) اما در عمل بردها حداکثر چند صد بایت هستند (محدودیت پروتکل آدرس‌دهی: 255 تایل)
+- **Fixed overhead:** 7 bytes (START + SEP + CMD + TYPE + LEN(2) + END)
+- **Max payload:** 65535 bytes (16-bit field) but in practice boards are at most a few hundred bytes (protocol addressing limit: 255 tiles)
 
-### DefaultFrameCodec - پیاده‌سازی مرجع
+### DefaultFrameCodec - Reference Implementation
 
-این کلاس هم `FrameEncoder` و هم `FrameDecoder` را پیاده می‌کند.
+This class implements both `FrameEncoder` and `FrameDecoder`.
 
-#### encode - stateless و خالص
+#### encode - stateless and pure
 ```java
 public byte[] encode(Frame frame) {
     byte[] payload = frame.payload();
@@ -101,48 +101,48 @@ public byte[] encode(Frame frame) {
 }
 ```
 
-#### decode - stateful و مقاوم به نویز
-`decode` باید سه حالت را همزمان مدیریت کند:
-1. **فریم تکه‌تکه شده:** نیمی از فریم در یک read و نیم دیگر در read بعدی می‌آید
-2. **چند فریم در یک read:** یک read ممکن است 3 فریم کامل را با هم بیاورد
-3. **نویز خط:** بایت‌های تصادفی که شبیه START هستند اما فریم واقعی نیستند
+#### decode - stateful and noise-resistant
+`decode` must handle three cases simultaneously:
+1. **Fragmented frame:** Half of a frame arrives in one read, the other half in the next read
+2. **Multiple frames in one read:** One read may contain 3 complete frames together
+3. **Line noise:** Random bytes that look like START but are not real frames
 
-برای همین `DefaultFrameCodec` یک `ByteArrayOutputStream buffer` داخلی دارد که بایت‌ها را بین فراخوانی‌ها نگه می‌دارد.
+That's why `DefaultFrameCodec` has an internal `ByteArrayOutputStream buffer` that retains bytes between calls.
 
-**الگوریتم resynchronization:**
+**Resynchronization algorithm:**
 ```java
 synchronized List<Frame> decode(byte[] chunk) {
     buffer.writeBytes(chunk);
     byte[] data = buffer.toByteArray();
     int consumedUpTo = 0;
     while (true) {
-        int start = indexOfFrameStart(data, consumedUpTo); // پیدا کردن 0xFC ':'
+        int start = indexOfFrameStart(data, consumedUpTo); // find 0xFC ':'
         if (start < 0) { consumedUpTo = data.length; break; }
-        if (available < 6) { consumedUpTo = start; break; } // هنوز طول payload را نداریم
+        if (available < 6) { consumedUpTo = start; break; } // don't have length yet
         int payloadLength = ((data[start+4] & 0xFF) << 8) | (data[start+5] & 0xFF);
-        if (payloadLength > 4096) { consumedUpTo = start+1; continue; } // سقف منطقی، نویز است
+        if (payloadLength > 4096) { consumedUpTo = start+1; continue; } // plausible ceiling, noise
         int total = payloadLength + 7;
-        if (available < total) { consumedUpTo = start; break; } // فریم هنوز کامل نشده
-        if (data[endIndex] != END_BYTE) { consumedUpTo = start+1; continue; } // END ناهماهنگ → نویز
-        try { Command, CommandType را parse کن } catch { consumedUpTo = start+1; continue; }
-        // فریم معتبر → به لیست اضافه کن
+        if (available < total) { consumedUpTo = start; break; } // frame not complete yet
+        if (data[endIndex] != END_BYTE) { consumedUpTo = start+1; continue; } // END mismatch -> noise
+        try { parse Command, CommandType } catch { consumedUpTo = start+1; continue; }
+        // valid frame -> add to list
         consumedUpTo = start + total;
     }
-    buffer.reset(); // همیشه trim کن، حتی اگر exception شد
+    buffer.reset(); // always trim, even if exception
     if (consumedUpTo < data.length) buffer.write(remaining);
     return frames;
 }
 ```
 
-**نکته concurrency:** متد `decode` با `synchronized` محافظت می‌شود چون `buffer` stateful است و ممکن است از thread های مختلف (callback سریال و تست) صدا زده شود.
+**Concurrency note:** `decode` is `synchronized` because `buffer` is stateful and could be called from different threads (serial callback thread and test thread).
 
-**سقف 4096:** `MAX_PAYLOAD_LENGTH = 65535` از نظر فنی بی‌فایده است چون فیلد طول خودش 16 بیتی است و هر مقدار 2 بایتی ≤ 65535 است. اما بردهای واقعی حداکثر 255 تایل دارند (محدودیت آدرس‌دهی یک بایتی در `DeviceAddress`). پس اگر نویز تصادفی یک START کاذب بسازد که طول 30000 را نشان دهد، دیکودر نباید برای همیشه منتظر 30000 بایت بماند و تمام فریم‌های واقعی بعدی را به عنوان بخشی از آن فریم کاذب ببلعد. سقف 4096 این مشکل را حل می‌کند.
+**Ceiling 4096:** `MAX_PAYLOAD_LENGTH = 65535` is technically useless as a guard because the length field itself is 16-bit and any 2-byte value is <= 65535. But real boards have at most 255 tiles (one-byte addressing limit in `DeviceAddress`). So if random noise creates a fake START that declares length 30000, the decoder should not wait forever for 30000 bytes and swallow all subsequent real frames as part of that bogus frame. The 4096 ceiling solves this.
 
 ---
 
-## Board - ساختار داده عمومی تایل
+## Board - Generic Tile Data Structure
 
-`Board<T>` یک گرید mutable به ابعاد `height x width` است که روی `Object[][]` ذخیره می‌شود (برای جلوگیری از نیاز به Class token برای T).
+`Board<T>` is a mutable grid of `height x width` stored on `Object[][]` (to avoid needing a Class token for T).
 
 ```java
 public final class Board<T> {
@@ -163,18 +163,18 @@ public final class Board<T> {
 }
 ```
 
-**چرا generic؟** چون کتابخانه نباید رنگ را hardcode کند. یک برنامه ممکن است تایل را به صورت `enum Color { RED, GREEN, BLUE }` ببیند، برنامه دیگر به صورت `Boolean` (لمس شده/نشده)، یا حتی یک کلاس سفارشی با شدت روشنایی. `Board<T>` این را ممکن می‌کند.
+**Why generic?** Because the library should not hardcode color. One app may see a tile as `enum Color { RED, GREEN, BLUE }`, another as `Boolean` (touched/not touched), or even a custom class with brightness. `Board<T>` makes this possible.
 
-**متدهای کلیدی:**
-- `positionsWhere(Boolean.TRUE::equals)` → پیدا کردن تایل‌های لمس شده از یک `Board<Boolean>`
-- `toWireBytes(codec)` → تبدیل برد به آرایه بایت row-major برای ارسال روی سیم
-- `fromWireBytes` → ساخت برد از payload دریافتی
+**Key methods:**
+- `positionsWhere(Boolean.TRUE::equals)` -> find touched tiles from a `Board<Boolean>`
+- `toWireBytes(codec)` -> convert board to row-major byte array for wire
+- `fromWireBytes` -> build board from received payload
 
-**Position:** یک `record` ساده با اعتبارسنجی `row >=0 && col >=0`.
+**Position:** A simple `record` with validation `row >=0 && col >=0`.
 
 ---
 
-## TileCodec - پل بین دامنه و سیم
+## TileCodec - Bridge Between Domain and Wire
 
 ```java
 public final class TileCodec<T> {
@@ -187,14 +187,12 @@ public final class TileCodec<T> {
 }
 ```
 
-**TileEncoder / TileDecoder:** هر دو `@FunctionalInterface` هستند.
+**TileEncoder / TileDecoder:** Both are `@FunctionalInterface`.
 
-**مثال کاربرد:**
+**Example:**
 ```java
-// تعریف رنگ‌های خودتان
 enum MyColor { OFF, RED, GREEN, BLUE }
 
-// Codec برای تبدیل MyColor به بایت سیم
 TileCodec<MyColor> myCodec = TileCodec.of(
     color -> switch(color) { case OFF -> 0; case RED -> 1; case GREEN -> 2; case BLUE -> 3; },
     wire -> switch(wire) { case 1 -> MyColor.RED; case 2 -> MyColor.GREEN; case 3 -> MyColor.BLUE; default -> MyColor.OFF; }
@@ -205,18 +203,18 @@ board.set(0, 0, MyColor.RED);
 byte[] wireBytes = board.toWireBytes(myCodec); // [1, 0, 0, 0, ...]
 ```
 
-**booleanState:** برای payload های `DATA_IN` که نشان می‌دهند کدام تایل لمس شده، یک Codec آماده دارد: `0` = false، غیرصفر = true.
+**booleanState:** For `DATA_IN` payloads indicating which tile was touched, a ready-made Codec: `0` = false, non-zero = true.
 
 ---
 
-## SerialTransport - انتزاع سخت‌افزار
+## SerialTransport - Hardware Abstraction
 
 ```java
 public interface SerialTransport extends AutoCloseable {
     String portName();
     boolean isOpen();
-    void write(byte[] data); // ممکن است بلاک کند تا OS driver تحویل بگیرد
-    void setDataListener(DataListener listener); // فقط یک listener، fan-out به عهده caller
+    void write(byte[] data); // may block until OS driver accepts
+    void setDataListener(DataListener listener); // only one listener, fan-out is caller's responsibility
     void close();
 }
 
@@ -230,13 +228,13 @@ public interface SerialPortRegistry {
 }
 ```
 
-**SerialPortConfig:** Builder برای baudRate, dataBits, stopBits, parity, flowControl, timeouts.
+**SerialPortConfig:** Builder for baudRate, dataBits, stopBits, parity, flowControl, timeouts.
 
-**چرا دو interface جدا؟** `SerialPortRegistry` کل سیستم را enumerate می‌کند (نیاز به دسترسی سراسری)، در حالی که `SerialTransport` یک اتصال باز را نشان می‌دهد. این جداسازی تست‌پذیری را بالا می‌برد: می‌توانید Registry را mock کنید بدون نیاز به mock کردن Transport.
+**Why two separate interfaces?** `SerialPortRegistry` enumerates the whole system (needs global access), while `SerialTransport` represents an already-open connection. This separation improves testability: you can mock Registry without mocking Transport.
 
-### JSerialComm پیاده‌سازی آماده
+### JSerialComm Ready-Made Implementation
 
-این ماژول یک پیاده‌سازی آماده با کتابخانه `com.fazecast:jSerialComm` دارد، اما وابستگی آن `optional` است:
+This module ships a ready-made implementation with `com.fazecast:jSerialComm`, but its dependency is `optional`:
 
 ```xml
 <dependency>
@@ -246,33 +244,33 @@ public interface SerialPortRegistry {
 </dependency>
 ```
 
-اگر شما `SerialTransport` خودتان را پیاده کنید (مثلا با RXTX یا یک Mock برای تست)، اصلا نیازی به jSerialComm روی classpath ندارید.
+If you implement your own `SerialTransport` (e.g., with RXTX or a Mock for tests), you don't need jSerialComm on the classpath at all.
 
 **JSerialCommTransport:**
-- `write`: بایت‌ها را با `HexFormat` لاگ می‌کند اگر DEBUG فعال باشد، سپس `writeBytes` را صدا می‌زند و short write را چک می‌کند
-- `setDataListener`: یک `SerialPortDataListener` داخلی می‌سازد که `bytesAvailable` را می‌خواند و به `DataListener` شما تحویل می‌دهد. `synchronized` است تا listener قبلی را درست حذف کند.
-- `close`: listener را detach می‌کند سپس پورت را می‌بندد
+- `write`: logs bytes with `HexFormat` if DEBUG enabled, then calls `writeBytes` and checks short write
+- `setDataListener`: creates an internal `SerialPortDataListener` that reads `bytesAvailable` and delivers to your `DataListener`. It's `synchronized` to correctly remove previous listener.
+- `close`: detaches listener then closes port
 
 **JSerialCommPortRegistry:**
-- `listPorts()`: `SerialPort.getCommPorts()` را به `SerialPortInfo` تبدیل می‌کند
-- `open()`: وجود پورت را چک می‌کند (PortNotFoundException)، پارامترها را set می‌کند (baud, dataBits, stopBits, parity, flowControl, timeouts)، `openPort()` را صدا می‌زند، DTR/RTS را clear می‌کند (با لاگ هشدار اگر موفق نشود)
+- `listPorts()`: converts `SerialPort.getCommPorts()` to `SerialPortInfo`
+- `open()`: checks existence (PortNotFoundException), sets parameters, calls `openPort()`, clears DTR/RTS (logs warning if fails)
 
 ---
 
-## TileGatewayClient - قلب ماژول
+## TileGatewayClient - Heart of the Module
 
-کلاینت سطح بالا که transport، codec و listener ها را به هم وصل می‌کند.
+High-level client wiring transport, codec, and listeners.
 
-### ویژگی‌های کلیدی
+### Key Features
 
-- **دو توپولوژی را پشتیبانی می‌کند:**
-  - تک پورت full-duplex: یک `SerialTransport` برای هر دو جهت (با `builder.transport(shared)`)
-  - دو پورت half-duplex: یک پورت IN و یک پورت OUT جدا (با `builder.inputTransport(in).outputTransport(out)`)
+- **Supports two topologies:**
+  - Single full-duplex port: one `SerialTransport` for both directions (`builder.transport(shared)`)
+  - Two half-duplex ports: separate IN and OUT ports (`builder.inputTransport(in).outputTransport(out)`)
 
 - **Thread-safe:**
-  - `writeLock = new Object()` → `send()` و `sendBoard()` از هر thread (caller thread و callback thread بازی) ممکن است صدا زده شوند. بدون `synchronized(writeLock)`، دو write همزمان می‌توانند بایت‌هایشان را روی سیم interleave کنند و هر دو فریم را خراب کنند.
-  - `listeners = new CopyOnWriteArrayList<>()` → مناسب برای سناریوی read-heavy, write-rare: اضافه/حذف listener نادر است اما iteration برای dispatch فریم‌ها مکرر است. COWAL بدون lock برای خواندن کار می‌کند.
-  - `callbackExecutor`: به صورت پیش‌فرض یک daemon thread به نام `tileboard-gateway-callback`. تمام `FrameListener` ها روی این executor اجرا می‌شوند، نه روی serial reader thread. این یعنی یک listener کند یا buggy هرگز thread خواندن سریال را بلاک نمی‌کند.
+  - `writeLock = new Object()` -> `send()` and `sendBoard()` may be called from both caller thread and callback thread (game code via GameContext.publish). Without `synchronized(writeLock)`, two concurrent writes could interleave their bytes on the wire and corrupt both frames.
+  - `listeners = new CopyOnWriteArrayList<>()` -> optimized for read-heavy, write-rare: adding/removing listener is rare but iterating for dispatch is frequent. COWAL is lock-free for reading.
+  - `callbackExecutor`: by default a daemon thread named `tileboard-gateway-callback`. All `FrameListener`s run on this executor, not on the serial reader thread. So a slow or buggy listener never blocks the serial reader thread.
 
 - **Lifecycle:**
   ```java
@@ -281,25 +279,25 @@ public interface SerialPortRegistry {
       .build();
   client.addFrameListener(frame -> System.out.println(frame));
   client.enableIdHandshake(() -> DeviceAddress.forBoard(8, 8));
-  client.start(); // setDataListener روی inputTransport
+  client.start(); // setDataListener on inputTransport
   // ...
-  client.close(); // هر دو transport و executor را می‌بندد
+  client.close(); // closes both transports and executor
   ```
 
-- **متدهای ارسال:**
-  - `sendFrame(Frame)` → encode و write
-  - `send(Command, CommandType, payload)` → ساخت Frame و ارسال
-  - `sendBoard(Command, CommandType, Board<T>, TileCodec<T>)` → flatten برد با codec و ارسال به عنوان payload
+- **Send methods:**
+  - `sendFrame(Frame)` -> encode and write
+  - `send(Command, CommandType, payload)` -> build Frame and send
+  - `sendBoard(Command, CommandType, Board<T>, TileCodec<T>)` -> flatten board with codec and send as payload
 
-- **متدهای دریافت:**
-  - `addFrameListener(FrameListener)` → برای هر فریم
-  - `addBoardListener(Command, width, height, codec, BoardListener)` → فیلتر بر اساس Command و decode خودکار payload به Board
+- **Receive methods:**
+  - `addFrameListener(FrameListener)` -> for every frame
+  - `addBoardListener(Command, width, height, codec, BoardListener)` -> filter by Command and auto-decode payload to Board
 
 ### Builder
 
 ```java
 public static final class Builder {
-    public Builder transport(SerialTransport transport) { /* هر دو جهت */ }
+    public Builder transport(SerialTransport transport) { /* both directions */ }
     public Builder inputTransport(SerialTransport in) { ... }
     public Builder outputTransport(SerialTransport out) { ... }
     public Builder frameEncoder(FrameEncoder e) { ... }
@@ -312,7 +310,7 @@ public static final class Builder {
 }
 ```
 
-### close() - تمیزکاری مقاوم
+### close() - Robust Cleanup
 
 ```java
 public synchronized void close() {
@@ -322,35 +320,35 @@ public synchronized void close() {
 }
 ```
 
-هر مرحله حتی اگر مرحله قبلی exception داد اجرا می‌شود، وگرنه یک `transport.close()` buggy می‌توانست handle پورت دیگر و thread executor را برای همیشه leak کند.
+Each step runs even if previous step throws, otherwise a buggy `transport.close()` could leak the other transport's OS handle and the callback executor thread forever.
 
 ---
 
-## Handshake - احراز هویت و آدرس‌دهی تایل‌ها
+## Handshake - Tile Addressing and Identity
 
-وقتی برد روشن می‌شود، باید به هر تایل فیزیکی یک آدرس منطقی اختصاص داده شود. این کار از طریق handshake انجام می‌شود:
+When the board powers on, each physical tile must be assigned a logical address. This is done via handshake:
 
-1. برد فریم `ID` (یا `CLEAR`) می‌فرستد
-2. `HandshakeCoordinator` (که یک `FrameListener` است) آن را دریافت می‌کند
-3. از `AddressResolver` می‌پرسد: "برای برد MxN، آدرس‌ها چه باید باشند؟" → `DeviceAddress.forBoard(width, height)`
-4. فریم پاسخ را با `sendFrame` برمی‌گرداند
-5. `SequenceValidator` (مثلا `SequentialIdSequenceValidator`) چک می‌کند که توالی گزارش شده توسط برد معتبر است (حداقل طول، ترتیب صعودی)
+1. Board sends `ID` (or `CLEAR`) frame
+2. `HandshakeCoordinator` (a `FrameListener`) receives it
+3. Asks `AddressResolver`: "For MxN board, what should addresses be?" -> `DeviceAddress.forBoard(width, height)`
+4. Sends response frame with `sendFrame`
+5. `SequenceValidator` (e.g., `SequentialIdSequenceValidator`) checks that reported sequence is valid (minimum length, ascending order)
 
 ```java
 client.enableIdHandshake(() -> DeviceAddress.forBoard(8, 8));
-// معادل:
+// equivalent to:
 client.enableIdHandshake(addressResolver, new SequentialIdSequenceValidator(minimumSequence));
 ```
 
-**DeviceAddress:** آدرس کل برد را در یک بایت کد می‌کند (محدودیت 255 تایل).
+**DeviceAddress:** Encodes whole board address in one byte (255 tile limit).
 
-**SequentialIdSequenceValidator:** چک می‌کند که توالی ID ها حداقل `minimumSequence` طول داشته باشد و ترتیبی باشد.
+**SequentialIdSequenceValidator:** Checks that ID sequence has at least `minimumSequence` length and is ordered.
 
 ---
 
-## آموزش گام به گام استفاده
+## Step-by-Step Usage Tutorial
 
-### گام 1: وابستگی Maven
+### Step 1: Maven Dependency
 
 ```xml
 <dependency>
@@ -358,7 +356,7 @@ client.enableIdHandshake(addressResolver, new SequentialIdSequenceValidator(mini
     <artifactId>tileboard-serial-protocol</artifactId>
     <version>1.0.0</version>
 </dependency>
-<!-- اگر می‌خواهی از پیاده‌سازی آماده jSerialComm استفاده کنی: -->
+<!-- If you want ready-made jSerialComm impl: -->
 <dependency>
     <groupId>com.fazecast</groupId>
     <artifactId>jSerialComm</artifactId>
@@ -366,16 +364,14 @@ client.enableIdHandshake(addressResolver, new SequentialIdSequenceValidator(mini
 </dependency>
 ```
 
-### گام 2: کشف و باز کردن پورت
+### Step 2: Discover and Open Port
 
 ```java
 SerialPortRegistry registry = new JSerialCommPortRegistry();
 
-// لیست پورت‌های موجود
 List<SerialPortInfo> ports = registry.listPorts();
 ports.forEach(p -> System.out.println(p.systemName() + " - " + p.description()));
 
-// باز کردن پورت
 SerialPortConfig config = SerialPortConfig.builder()
     .baudRate(115200)
     .dataBits(8)
@@ -385,22 +381,20 @@ SerialPortConfig config = SerialPortConfig.builder()
     .writeTimeoutMillis(50)
     .build();
 
-SerialTransport transport = registry.open("COM3", config); // یا /dev/ttyUSB0
+SerialTransport transport = registry.open("COM3", config); // or /dev/ttyUSB0
 ```
 
-### گام 3: ساخت کلاینت و ثبت Listener
+### Step 3: Build Client and Register Listeners
 
 ```java
 TileGatewayClient client = TileGatewayClient.builder()
     .transport(transport)
     .build();
 
-// Listener برای فریم‌های خام
 client.addFrameListener(frame -> {
     System.out.println("Received: " + frame.command() + " " + frame.commandType() + " len=" + frame.payload().length);
 });
 
-// Listener برای برد لمس شده (DATA_IN)
 TileCodec<Boolean> touchCodec = TileCodec.booleanState();
 client.addBoardListener(Command.DATA_IN, 8, 8, touchCodec, touchBoard -> {
     List<Position> touched = touchBoard.positionsWhere(Boolean.TRUE::equals);
@@ -411,10 +405,9 @@ client.enableIdHandshake(() -> DeviceAddress.forBoard(8, 8));
 client.start();
 ```
 
-### گام 4: ارسال برد به سخت‌افزار
+### Step 4: Send Board to Hardware
 
 ```java
-// تعریف رنگ‌ها
 enum TileColor { OFF(0), RED(1), GREEN(2), BLUE(3); 
     final int code; TileColor(int c){code=c;}
 }
@@ -431,16 +424,15 @@ board.set(7, 7, TileColor.BLUE);
 client.sendBoard(Command.DATA_OUT, CommandType.SET, board, colorCodec);
 ```
 
-### گام 5: بستن
+### Step 5: Close
 
 ```java
-client.close(); // transport ها و thread callback را می‌بندد
+client.close(); // closes transports and callback thread
 ```
 
-### مثال Mock برای تست بدون سخت‌افزار
+### Mock Example for Testing Without Hardware
 
 ```java
-// یک Transport جعلی که write را لاگ می‌کند و می‌تواند data جعلی inject کند
 class MockTransport implements SerialTransport {
     DataListener listener;
     public String portName() { return "MOCK"; }
@@ -456,7 +448,6 @@ TileGatewayClient client = TileGatewayClient.builder().transport(mock).build();
 client.addFrameListener(f -> System.out.println("RX frame: " + f));
 client.start();
 
-// شبیه‌سازی فریم دریافتی
 DefaultFrameCodec codec = new DefaultFrameCodec();
 Frame fakeFrame = Frame.of(Command.DATA_IN, CommandType.SET, new byte[]{1,0,0});
 byte[] wire = codec.encode(fakeFrame);
@@ -465,13 +456,13 @@ mock.injectRx(wire);
 
 ---
 
-## بررسی کدهای پیچیده - Concurrency و Thread-Safety
+## Deep Dive - Concurrency and Thread-Safety
 
-### 1. DefaultFrameCodec.decode - synchronized و stateful buffer
+### 1. DefaultFrameCodec.decode - synchronized and stateful buffer
 
-**مشکل:** سریال دیتا به صورت chunk های تصادفی می‌آید. یک فریم ممکن است بین دو chunk نصف شود. اگر `decode` همزمان از دو thread صدا زده شود، `buffer` خراب می‌شود.
+**Problem:** Serial data arrives in random chunks. A frame may be split between two chunks. If `decode` is called concurrently from two threads, `buffer` gets corrupted.
 
-**راه حل:**
+**Solution:**
 ```java
 public synchronized List<Frame> decode(byte[] chunk) {
     buffer.writeBytes(chunk);
@@ -482,12 +473,12 @@ public synchronized List<Frame> decode(byte[] chunk) {
     }
 }
 ```
-- `synchronized` تضمین می‌کند فقط یک thread در یک لحظه buffer را تغییر دهد.
-- `finally` تضمین می‌کند حتی اگر exception غیرمنتظره رخ داد، buffer trim شود وگرنه همان بایت‌های خراب برای همیشه هر فراخوانی بعدی را fail می‌کنند.
+- `synchronized` guarantees only one thread mutates buffer at a time.
+- `finally` guarantees even if unexpected exception occurs, buffer is trimmed, otherwise same bad bytes would fail every future call forever.
 
-**Resynchronization logic:** وقتی START پیدا می‌شود اما END هماهنگ نیست یا payloadLength غیرمنطقی است، `consumedUpTo = start+1` و `continue` → یک بایت جلوتر دوباره دنبال START بگرد. این از گیر کردن decoder در حلقه بی‌نهایت جلوگیری می‌کند.
+**Resynchronization logic:** When START is found but END mismatches or payloadLength is implausible, `consumedUpTo = start+1` and `continue` -> look for START one byte later. This prevents decoder from getting stuck in infinite loop.
 
-### 2. TileGatewayClient - writeLock و CopyOnWriteArrayList
+### 2. TileGatewayClient - writeLock and CopyOnWriteArrayList
 
 **writeLock:**
 ```java
@@ -499,17 +490,17 @@ public void sendFrame(Frame frame) {
     }
 }
 ```
-- `send()` ممکن است از thread اصلی (کاربر) و از callback thread (کد بازی از طریق GameContext.publish) همزمان صدا زده شود.
-- بدون `writeLock`، دو write می‌توانند بایت‌هایشان را interleave کنند: مثلا نیمی از فریم A، سپس نیمی از فریم B → هر دو فریم روی سیم خراب.
+- `send()` may be called from main thread (user) and callback thread (game code via GameContext.publish) concurrently.
+- Without `writeLock`, two writes could interleave bytes: half of frame A, then half of frame B -> both corrupted on wire.
 
-**CopyOnWriteArrayList برای listeners:**
-- سناریو: اضافه/حذف listener نادر است (در startup و shutdown)، اما iteration برای dispatch فریم‌ها بسیار مکرر است (هر بار که دیتا می‌آید).
-- COWAL برای خواندن بدون lock است (iteration روی snapshot)، و فقط هنگام write کل آرایه را کپی می‌کند. این برای این الگو بهینه است.
-- جایگزین `synchronizedList` برای هر dispatch نیاز به lock داشت و throughput را پایین می‌آورد.
+**CopyOnWriteArrayList for listeners:**
+- Scenario: adding/removing listener is rare (at startup/shutdown), but iterating for dispatch is frequent (every time data arrives).
+- COWAL is lock-free for reading (iteration on snapshot), and only copies whole array on write. Optimal for this pattern.
+- Alternative `synchronizedList` would need lock for every dispatch and lower throughput.
 
 **callbackExecutor:**
-- به صورت پیش‌فرض `newSingleThreadExecutor(daemon thread)`. این تضمین می‌کند listener ها به ترتیب دریافت فریم‌ها اجرا شوند (single thread) و هرگز thread خواندن سریال (که توسط jSerialComm مدیریت می‌شود) را بلاک نکنند.
-- اگر یک listener کند باشد یا exception دهد، فقط executor کند می‌شود، نه transport.
+- By default `newSingleThreadExecutor(daemon thread)`. Guarantees listeners run in order of frame arrival (single thread) and never block serial reader thread (managed by jSerialComm).
+- If a listener is slow or throws, only executor slows, not transport.
 
 ### 3. JSerialCommTransport.setDataListener - synchronized
 
@@ -521,27 +512,27 @@ public synchronized void setDataListener(DataListener listener) {
     delegate.addDataListener(activeListener);
 }
 ```
-- `synchronized` است تا دو فراخوانی همزمان `setDataListener` باعث نشود یک listener حذف نشود و leak کند.
-- `activeListener` را نگه می‌دارد تا بتواند `removeDataListener` کند.
+- `synchronized` so two concurrent `setDataListener` calls don't leave one listener not removed and leaked.
+- Holds `activeListener` to be able to `removeDataListener`.
 
-### 4. HandshakeCoordinator - بدون state اضافی
+### 4. HandshakeCoordinator - No Extra State
 
-این کلاس stateless است و فقط به `AddressResolver` و `SequenceValidator` delegate می‌کند. چون `TileGatewayClient` تضمین می‌کند callback ها روی یک thread (callbackExecutor) اجرا شوند، نیازی به synchronized اضافی نیست.
+This class is stateless and just delegates to `AddressResolver` and `SequenceValidator`. Since `TileGatewayClient` guarantees callbacks run on one thread (callbackExecutor), no extra synchronization needed.
 
 ---
 
-## تست‌ها
+## Tests
 
 ```bash
 mvn test -pl tileboard-serial-protocol
 ```
 
-- `BoardTest`: تست Board generic، copy، positionsWhere، wireBytes
-- `DefaultFrameCodecTest`: تست encode/decode، تکه‌تکه شدن فریم، نویز، resync
-- `TileGatewayClientTest`: تست dispatch، listener، writeLock
-- `HandshakeCoordinatorTest`: تست handshake
-- `BoardFrameListenerTest`: تست فیلتر Command و decode به Board
-- `TileboardHardwareIT`: تست یکپارچه با سخت‌افزار واقعی (فقط با پروفایل `hardware-tests`)
+- `BoardTest`: generic Board, copy, positionsWhere, wireBytes
+- `DefaultFrameCodecTest`: encode/decode, fragmented frame, noise, resync
+- `TileGatewayClientTest`: dispatch, listener, writeLock
+- `HandshakeCoordinatorTest`: handshake
+- `BoardFrameListenerTest`: Command filtering and Board decoding
+- `TileboardHardwareIT`: integration with real hardware (only with `hardware-tests` profile)
 
 ```bash
 mvn verify -P hardware-tests -pl tileboard-serial-protocol
@@ -549,21 +540,21 @@ mvn verify -P hardware-tests -pl tileboard-serial-protocol
 
 ---
 
-## نکات پیشرفته
+## Advanced Topics
 
-### استفاده بدون jSerialComm
+### Using Without jSerialComm
 
 ```java
 SerialTransport myTransport = new MyCustomTransport("/dev/ttyUSB0");
 TileGatewayClient client = TileGatewayClient.builder()
     .transport(myTransport)
-    .frameEncoder(new MyCustomFrameEncoder()) // حتی می‌توانی codec را هم عوض کنی
+    .frameEncoder(new MyCustomFrameEncoder())
     .build();
 ```
 
-### توپولوژی دو پورت
+### Two-Port Topology
 
-برخی بردها از دو آداپتور half-duplex استفاده می‌کنند (یکی فقط TX، یکی فقط RX):
+Some boards use two half-duplex adapters (one TX-only, one RX-only):
 
 ```java
 SerialTransport in = registry.open("COM4", config);
@@ -574,13 +565,13 @@ TileGatewayClient client = TileGatewayClient.builder()
     .build();
 ```
 
-### تنظیمات پیشرفته FrameCodec
+### Advanced FrameCodec Settings
 
-`DefaultFrameCodec` یک سقف 4096 برای payload دارد. اگر برد شما payload بزرگتر دارد (مثلا 10x10=100 بایت، هنوز زیر 4096)، مشکلی نیست. اگر پروتکل شما payload های بزرگتر دارد، می‌توانید `FrameDecoder` خودتان را پیاده کنید.
+`DefaultFrameCodec` has a 4096 payload ceiling. If your board has larger payload (e.g., 10x10=100 bytes, still below 4096), no problem. If your protocol has larger payloads, implement your own `FrameDecoder`.
 
 ---
 
-**نویسنده:** تیم Tileboard Platform  
-**نسخه:** 1.0.0  
-**جاوا:** 17+  
-**لایسنس:** داخلی
+**Author:** Tileboard Platform Team  
+**Version:** 1.0.0  
+**Java:** 17+  
+**License:** Internal

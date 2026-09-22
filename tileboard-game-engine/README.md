@@ -1,28 +1,28 @@
-# tileboard-game-engine - مستندات جامع موتور بازی
+# tileboard-game-engine - Comprehensive Game Engine Documentation
 
-> **ماموریت ماژول:** یک موتور بازی **production-ready**، **transport-agnostic** و **framework-free** که روی `tileboard-serial-protocol` ساخته شده. امکانات غنی (امتیاز، جان، لول، کمبو، پترن، تایمر، همسایه، SSE، انیمیشن) را بدون وابستگی به فریم‌ورک خاصی فراهم می‌کند؛ یک لایه Spring Boot auto-configuration به صورت optional وجود دارد.
-
----
-
-## فهرست مطالب
-1. [معماری کلی](#معماری-کلی)
-2. [ساختار پکیج‌ها](#ساختار-پکیجها)
-3. [مفاهیم هسته - Game، GameDescriptor، GameContext](#مفاهیم-هسته)
-4. [GameEngine و GameSession - چرخه حیات](#gameengine-و-gamesession---چرخه-حیات)
-5. [BoardChannel - انتشار برد با coalescing](#boardchannel---انتشار-برد-با-coalescing)
-6. [FeatureBundle - تمام قابلیت‌های آماده](#featurebundle---تمام-قابلیتهای-آماده)
-7. [AnimationSystem - انیمیشن‌های win/lose/standby/countdown](#animationsystem---انیمیشنهای-winlosestandbycountdown)
-8. [EventBus - سیستم رویداد thread-safe](#eventbus---سیستم-رویداد-thread-safe)
-9. [EngineFrameRouter و TouchFrameRouter - مسیریابی فریم‌ها](#engineframerouter-و-touchframerouter)
-10. [SSE - استریم به فرانت‌اند](#sse---استریم-به-فرانتاند)
-11. [لایه Spring - AutoConfiguration](#لایه-spring---autoconfiguration)
-12. [آموزش گام به گام ساخت بازی](#آموزش-گام-به-گام-ساخت-بازی)
-13. [بررسی کدهای پیچیده - Concurrency](#بررسی-کدهای-پیچیده---concurrency)
-14. [تست‌ها](#تستها)
+> **Module Mission:** A production-ready, transport-agnostic, framework-free game engine built on top of `tileboard-serial-protocol`. It provides rich built-in features (scoring, health, levels, combos, patterns, timers, neighbors, SSE streaming, animations) while staying framework-free at its core; a Spring Boot auto-configuration layer is included as an optional adapter.
 
 ---
 
-## معماری کلی
+## Table of Contents
+1. [Overall Architecture](#overall-architecture)
+2. [Package Structure](#package-structure)
+3. [Core Concepts - Game, GameDescriptor, GameContext](#core-concepts)
+4. [GameEngine and GameSession - Lifecycle](#gameengine-and-gamesession---lifecycle)
+5. [BoardChannel - Board Publishing with Coalescing](#boardchannel---board-publishing-with-coalescing)
+6. [FeatureBundle - Ready-Made Features](#featurebundle---ready-made-features)
+7. [AnimationSystem - win/lose/standby/countdown Animations](#animationsystem)
+8. [EventBus - Thread-Safe Event System](#eventbus---thread-safe-event-system)
+9. [EngineFrameRouter and TouchFrameRouter - Frame Routing](#engineframerouter-and-touchframerouter)
+10. [SSE - Streaming to Frontend](#sse---streaming-to-frontend)
+11. [Spring Layer - AutoConfiguration](#spring-layer---autoconfiguration)
+12. [Step-by-Step Game Creation Tutorial](#step-by-step-game-creation-tutorial)
+13. [Deep Dive - Concurrency](#deep-dive---concurrency)
+14. [Tests](#tests)
+
+---
+
+## Overall Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -53,29 +53,29 @@
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**اصل stateless بودن Game:** وقتی یک `Game` را با `registry.register(game)` ثبت می‌کنید، **یک instance** برای تمام session های آینده آن `gameId` reuse می‌شود (مثل Servlet). پس **نباید** state قابل تغییر در فیلدهای instance نگه دارید. تمام state جلسه باید در `ctx.state()` (که برای هر session تازه ساخته می‌شود) یا در feature های داخل `FeatureBundle` (که آن‌ها هم per-session هستند) ذخیره شود. اگر واقعا نیاز به ساخت instance جدید برای هر session دارید، از `registry.register(descriptor, factory)` استفاده کنید.
+**Stateless Game Contract:** When you register a `Game` via `registry.register(game)`, a **single instance** is reused across all future sessions of that `gameId` (similar to Servlet singleton model). So you **must not** keep mutable state in instance fields. All session-scoped data must be stored in `ctx.state()` (fresh `GameState` per session) or in feature objects inside `FeatureBundle` (also per-session). If you genuinely need per-instance construction state, register with `registry.register(descriptor, factory)` which creates a brand-new instance per session.
 
 ---
 
-## ساختار پکیج‌ها
+## Package Structure
 
-| پکیج | مسئولیت |
+| Package | Responsibility |
 |------|---------|
-| `core` | قراردادهای اصلی: `Game`, `GameDescriptor`, `GameContext`, `GameEngine`, `GameSession`, `BoardChannel`, `FeatureBundle` |
-| `feature` | قابلیت‌های آماده: `ScoreSystem`, `HealthSystem`, `LevelSystem`, `ComboTracker`, `GameTimer`, `AnimationSystem`, `TouchHistory`, `NeighborFinder`, `WaveGenerator`, `PatternMatcher`, `RandomFeature`, `MemoryFeature`, `ReactionSpeedTracker`, `GraphFeature` |
-| `feature/neighbor` | توپولوژی گرید: `Adjacency`, `GridTopology`, `NeighborFinder` |
+| `core` | Core contracts: `Game`, `GameDescriptor`, `GameContext`, `GameEngine`, `GameSession`, `BoardChannel`, `FeatureBundle` |
+| `feature` | Ready-made features: `ScoreSystem`, `HealthSystem`, `LevelSystem`, `ComboTracker`, `GameTimer`, `AnimationSystem`, `TouchHistory`, `NeighborFinder`, `WaveGenerator`, `PatternMatcher`, `RandomFeature`, `MemoryFeature`, `ReactionSpeedTracker`, `GraphFeature` |
+| `feature/neighbor` | Grid topology: `Adjacency`, `GridTopology`, `NeighborFinder` |
 | `event` | Event Bus: `GameEvent`, `GameEventType`, `GameEventBus`, `GameEventBusImpl`, `SubscriptionOptions`, `EventOverflowPolicy` |
-| `model` | مدل دامنه: `Player`, `TileColor`, `TileEvent`, `TileEventType`, `TouchSequence`, `Team` |
-| `codec` | Codec های رنگ و مسیریابی فریم: `ColorTileCodec`, `EngineFrameRouter` |
+| `model` | Domain model: `Player`, `TileColor`, `TileEvent`, `TileEventType`, `TouchSequence`, `Team` |
+| `codec` | Color codecs and frame routing: `ColorTileCodec`, `EngineFrameRouter` |
 | `sse` | SSE: `GameEventSseEmitter`, `SseGameEvent`, `SseGameEventType` |
-| `spring` | ادغام Spring: `TileboardEngineAutoConfiguration`, `TileboardEngineProperties`, `GameEngineManager`, `SseGameEventPublisher` |
-| `exception` | استثناها |
+| `spring` | Spring integration: `TileboardEngineAutoConfiguration`, `TileboardEngineProperties`, `GameEngineManager`, `SseGameEventPublisher` |
+| `exception` | Exceptions |
 
 ---
 
-## مفاهیم هسته
+## Core Concepts
 
-### GameDescriptor - متادیتای استاتیک بازی
+### GameDescriptor - Static Game Metadata
 
 ```java
 public record GameDescriptor(String gameId, String displayName, String category, 
@@ -85,19 +85,19 @@ public record GameDescriptor(String gameId, String displayName, String category,
     public static Builder builder(String gameId, String displayName) { ... }
 }
 
-// استفاده:
+// Usage:
 GameDescriptor desc = GameDescriptor.builder("my-game", "My Awesome Game")
     .category("ARCADE")
-    .description("توضیح بازی")
+    .description("Game description")
     .boardSize(8, 8)
     .players(1, 4)
     .build();
 ```
 
-- `requiredWidth/Height` باید با برد متصل مطابقت داشته باشد، وگرنه `GameEngineImpl.validateBoardSize` خطا می‌دهد.
-- `min/maxPlayers` در `validatePlayers` چک می‌شود (duplicate player id هم چک می‌شود).
+- `requiredWidth/Height` must match connected board, otherwise `GameEngineImpl.validateBoardSize` throws.
+- `min/maxPlayers` checked in `validatePlayers` (duplicate player id also checked).
 
-### Game - قراردادی که باید پیاده کنید
+### Game - Contract You Implement
 
 ```java
 public interface Game extends GameLifecycle {
@@ -113,11 +113,11 @@ public interface GameLifecycle {
 }
 ```
 
-- `onStart`: روی thread ای که `engine.startGame()` را صدا زده اجرا می‌شود (معمولا HTTP request thread)
-- `onTileEvent`, `onTick`, `onError`, `onStop`: روی callback executor تایل‌گیت‌وی (یا tick executor) اجرا می‌شوند
-- **مهم:** `onTileEvent` فقط وقتی `GameStatus=RUNNING` است صدا زده می‌شود (چک در `GameSessionImpl.handleTileEvent`)
+- `onStart`: Runs on thread calling `engine.startGame()` (usually HTTP request thread)
+- `onTileEvent`, `onTick`, `onError`, `onStop`: Run on gateway callback executor (or tick executor)
+- **Important:** `onTileEvent` only called when `GameStatus=RUNNING` (check in `GameSessionImpl.handleTileEvent`)
 
-### GameContext - پنجره بازی به موتور
+### GameContext - Game's Window to Engine
 
 ```java
 public interface GameContext extends CoreGameContext, FeatureProvider {
@@ -154,7 +154,7 @@ public interface FeatureProvider {
 }
 ```
 
-### GameState - کیف thread-safe برای state جلسه
+### GameState - Thread-Safe Bag for Session State
 
 ```java
 public final class GameState {
@@ -168,11 +168,11 @@ public final class GameState {
 }
 ```
 
-تمام متدها `synchronized` روی خود instance هستند، پس tick thread و callback thread می‌توانند همزمان به state دسترسی داشته باشند بدون race condition.
+All methods are `synchronized` on instance, so tick thread and callback thread can both access state safely.
 
 ---
 
-## GameEngine و GameSession - چرخه حیات
+## GameEngine and GameSession - Lifecycle
 
 ### GameEngineImpl
 
@@ -224,16 +224,16 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
 }
 ```
 
-**نکات concurrency:**
-- `activeSessions` از `ConcurrentHashMap` است → thread-safe برای خواندن/نوشتن همزمان از HTTP thread ها و callback thread
-- `exclusiveSessionId` از `AtomicReference` با `compareAndSet` → تضمین می‌کند فقط یک session در یک لحظه مالک برد باشد، بدون نیاز به synchronized block سراسری. `compareAndSet(null, sessionId)` فقط وقتی موفق است که هیچ session دیگری مالک نباشد.
-- `sessionReaper`: یک `SingleThreadScheduledExecutor` daemon که TTL جلسه را چک می‌کند. اگر جلسه بیش از `sessionTtl` (پیش‌فرض 30 دقیقه) زنده بماند، force stop می‌شود. این از leak جلسه در صورت فراموشی client جلوگیری می‌کند.
-- `teardownExecutor`: `CachedThreadPool` daemon برای کارهای teardown که نباید tick thread را بلاک کنند.
-- `closed`: `AtomicBoolean` برای جلوگیری از double close و برای guard کردن callback های دیررس بعد از close (Bug #4).
+**Concurrency notes:**
+- `activeSessions` is `ConcurrentHashMap` -> thread-safe for concurrent read/write from HTTP threads and callback thread
+- `exclusiveSessionId` is `AtomicReference` with `compareAndSet` -> guarantees only one session owns board at a time, without global synchronized block. `compareAndSet(null, sessionId)` only succeeds if current value is null.
+- `sessionReaper`: `SingleThreadScheduledExecutor` daemon checking session TTL. If session lives longer than `sessionTtl` (default 30 minutes), force stops it. Prevents session leak if client forgets.
+- `teardownExecutor`: `CachedThreadPool` daemon for teardown tasks that shouldn't block tick thread.
+- `closed`: `AtomicBoolean` to prevent double close and to guard late callbacks after close (Bug #4).
 
-**TouchFrameRouter:** فریم‌های `DATA_IN` را به `TileEvent` تبدیل می‌کند و به session مربوطه (یا exclusive owner) می‌فرستد.
+**TouchFrameRouter:** Converts `DATA_IN` frames to `TileEvent` and sends to correct session (or exclusive owner).
 
-**EngineFrameRouter:** یک wrapper دور `BoardFrameListener` که reassembly timeout را مدیریت می‌کند (اگر تایل‌های لمس شده در چند فریم تکه‌تکه بیایند).
+**EngineFrameRouter:** Wrapper around `BoardFrameListener` managing reassembly timeout (if touch tiles arrive fragmented in multiple frames).
 
 ### GameSessionImpl
 
@@ -275,7 +275,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private void finishSession(GameStatus finalStatus, List<Player> winners) {
-        if (!lifecycle.finish(finalStatus)) return; // CAS → فقط یک بار اجرا
+        if (!lifecycle.finish(finalStatus)) return; // CAS -> only once
         features.timer().stop();
         cancelTick();
         features.closeAll();
@@ -289,13 +289,13 @@ public final class GameSessionImpl implements GameSession, GameContext {
 }
 ```
 
-**SessionLifecycle:** یک state machine با CAS (compareAndSet) که تضمین می‌کند `finishSession` دقیقا یک بار اجرا شود، حتی اگر همزمان از چند thread صدا زده شود (مثلا هم `winSession` از بازی و هم TTL reaper).
+**SessionLifecycle:** A state machine with CAS (compareAndSet) guaranteeing `finishSession` runs exactly once, even if called concurrently from multiple threads (e.g., `winSession` from game and TTL reaper at same time).
 
-**tickExecutor:** `SingleThreadScheduledExecutor` با نام `tileboard-tick-<sessionId>` که هر `tickInterval` (پیش‌فرض 100ms) `runTick()` را صدا می‌زند. `tickInterval=0` یعنی بدون tick.
+**tickExecutor:** `SingleThreadScheduledExecutor` named `tileboard-tick-<sessionId>` calling `runTick()` every `tickInterval` (default 100ms). `tickInterval=0` means no ticks.
 
 ---
 
-## BoardChannel - انتشار برد با coalescing
+## BoardChannel - Board Publishing with Coalescing
 
 ```java
 public final class BoardChannel {
@@ -315,7 +315,7 @@ public final class BoardChannel {
 
     private Board<TileColor> sendLatest() {
         synchronized (gatewayWriteLock) {
-            Board<TileColor> latest = snapshot(); // دوباره می‌خواند!
+            Board<TileColor> latest = snapshot(); // reads again!
             if (latest.equals(lastSentBoard)) return latest;
             gateway.sendBoard(DATA_OUT, SET, latest, codec);
             lastSentBoard = latest;
@@ -325,23 +325,23 @@ public final class BoardChannel {
 }
 ```
 
-**چرا دو بار snapshot؟** این عمدی است و **coalescing semantics** نام دارد:
+**Why snapshot twice?** This is intentional and called **coalescing semantics**:
 
-1. Thread A `setTile(0,0,RED)` را صدا می‌زند → `buffer` را به RED تغییر می‌دهد، snapshot می‌گیرد (RED)
-2. قبل از اینکه A به `sendLatest()` برسد، Thread B `setTile(0,1,GREEN)` را صدا می‌زند → `buffer` را به (RED,GREEN) تغییر می‌دهد
-3. A وارد `sendLatest()` می‌شود، اما به جای ارسال snapshot قدیمی (فقط RED)، دوباره `snapshot()` می‌خواند که (RED,GREEN) است → آخرین وضعیت سازگار ارسال می‌شود
+1. Thread A calls `setTile(0,0,RED)` -> changes `buffer` to RED, takes snapshot (RED)
+2. Before A reaches `sendLatest()`, Thread B calls `setTile(0,1,GREEN)` -> changes `buffer` to (RED,GREEN)
+3. A enters `sendLatest()`, but instead of sending old snapshot (only RED), it re-reads `snapshot()` which is (RED,GREEN) -> most recent consistent state is sent
 
-این یعنی caller نباید فرض کند Board ای که `setTile` برمی‌گرداند دقیقا همان چیزی است که روی سیم رفته. گیت‌وی فقط به آخرین برد نیاز دارد، و این از ارسال فریم‌های منسوخ شده و out-of-order جلوگیری می‌کند.
+This means caller must not assume Board returned by `setTile` is byte-for-byte identical to what was transmitted. Gateway only ever needs latest board, and this avoids sending superseded frames out of order.
 
-**نقش lock ها:**
-- `stateLock` (ReentrantLock): از `buffer` (Board mutable) محافظت می‌کند
-- `gatewayWriteLock` (synchronized Object): write ها روی سیم را سریالایز می‌کند، جلوگیری از interleave شدن بایت‌ها
+**Role of locks:**
+- `stateLock` (ReentrantLock): protects `buffer` (mutable Board)
+- `gatewayWriteLock` (synchronized Object): serializes writes to wire, prevents byte interleaving
 
 ---
 
-## FeatureBundle - تمام قابلیت‌های آماده
+## FeatureBundle - Ready-Made Features
 
-`FeatureBundle` یک record است که تمام feature های per-session را نگه می‌دارد:
+`FeatureBundle` is a record holding all per-session features:
 
 ```java
 public record FeatureBundle(
@@ -364,7 +364,7 @@ public record FeatureBundle(
 }
 ```
 
-### ScoreSystem - thread-safe امتیاز
+### ScoreSystem - Thread-Safe Scoring
 
 ```java
 public final class ScoreSystem {
@@ -379,22 +379,22 @@ public final class ScoreSystem {
 }
 ```
 
-- `ConcurrentHashMap` + `AtomicInteger` → `add()` بدون lock سراسری thread-safe است (CAS داخل AtomicInteger)
-- `computeIfAbsent` تضمین می‌کند اگر playerId جدید باشد، AtomicInteger جدید ساخته شود
+- `ConcurrentHashMap` + `AtomicInteger` -> `add()` is thread-safe without global lock (CAS inside AtomicInteger)
+- `computeIfAbsent` guarantees if two threads concurrently `getOrCreate` for new playerId, only one AtomicInteger is created
 
-### HealthSystem - جان بازیکنان
+### HealthSystem - Player Health
 
-مشابه ScoreSystem اما با منطق جان (0 تا maxHealth)، damage، heal.
+Similar to ScoreSystem but with health logic (0 to maxHealth), damage, heal.
 
-### LevelSystem - لول
+### LevelSystem - Levels
 
-ساده: `currentLevel`، `nextLevel()`، `setLevel()`.
+Simple: `currentLevel`, `nextLevel()`, `setLevel()`.
 
-### ComboTracker - کمبو
+### ComboTracker - Combos
 
-تعداد لمس‌های درست پشت سر هم را می‌شمارد، با timeout قابل تنظیم.
+Counts consecutive correct touches with configurable timeout.
 
-### GameTimer - تایمر دیواری
+### GameTimer - Wall-Clock Timer
 
 ```java
 public final class GameTimer {
@@ -415,15 +415,15 @@ public final class GameTimer {
 }
 ```
 
-- `volatile` برای `startedAt`, `stoppedAt`, `countdownTarget` → خواندن بدون lock اما visibility تضمین شده بین thread ها
-- `AtomicReference` برای `onExpire` با `getAndSet(null)` → تضمین می‌کند callback فقط یک بار اجرا شود، حتی اگر `checkExpiry()` همزمان از دو thread صدا زده شود (هرچند در عمل فقط از tick thread صدا زده می‌شود)
-- `checkExpiry()` هر tick توسط `GameSessionImpl.runTick()` صدا زده می‌شود → countdown خودکار بدون نیاز به thread جدا
+- `volatile` for `startedAt`, `stoppedAt`, `countdownTarget` -> lock-free reads but guaranteed visibility across threads
+- `AtomicReference` for `onExpire` with `getAndSet(null)` -> guarantees callback runs only once, even if `checkExpiry()` called concurrently from two threads (though in practice only called from tick thread)
+- `checkExpiry()` called every tick by `GameSessionImpl.runTick()` -> automatic countdown without separate thread
 
-### TouchHistory - تاریخچه لمس‌ها
+### TouchHistory - Touch History
 
-یک لیست با حداکثر سایز (configurable، پیش‌فرض 2000) که تمام `TileEvent` ها را نگه می‌دارد. برای تحلیل، undo، یا نمایش آمار.
+A list with max size (configurable, default 2000) holding all `TileEvent`s. For analytics, undo, or stats display.
 
-### NeighborFinder - همسایه‌یابی
+### NeighborFinder - Neighbor Finding
 
 ```java
 public class NeighborFinder {
@@ -432,30 +432,30 @@ public class NeighborFinder {
 }
 ```
 
-- `Adjacency.FOUR_WAY` (بالا، پایین، چپ، راست) یا `EIGHT_WAY` (شامل قطری)
-- `GridTopology` مرزها را مدیریت می‌کند (wrap یا نه)
+- `Adjacency.FOUR_WAY` (up, down, left, right) or `EIGHT_WAY` (including diagonal)
+- `GridTopology` manages borders (wrap or not)
 
-### WaveGenerator - موج
+### WaveGenerator - Wave Effect
 
-یک افکت موجی که از یک نقطه شروع می‌شود و به بیرون گسترش می‌یابد. از `BoardChannel` برای انتشار استفاده می‌کند.
+A wave effect starting from a point and expanding outward. Uses `BoardChannel` for publishing.
 
-### PatternMatcher - تطبیق الگو
+### PatternMatcher - Pattern Matching
 
-بررسی می‌کند آیا یک الگوی خاص (مثلا خط، مربع، L شکل) روی برد لمس شده است.
+Checks if a specific pattern (e.g., line, square, L-shape) has been touched on board.
 
-### RandomFeature - تصادفی
+### RandomFeature - Random Helpers
 
-متدهای کمکی برای انتخاب موقعیت تصادفی، رنگ تصادفی، shuffle.
+Helpers for random position, random color, shuffle.
 
-### AnimationSystem - در بخش بعدی به تفصیل
+### AnimationSystem - Detailed in next section
 
 ---
 
-## AnimationSystem - انیمیشن‌های win/lose/standby/countdown
+## AnimationSystem
 
-این یکی از پیچیده‌ترین کلاس‌های موتور است و تمام انیمیشن‌های درخواستی شما را پیاده می‌کند.
+This is one of the most complex classes in the engine and implements all requested animations.
 
-### طراحی کلی
+### Overall Design
 
 ```java
 public final class AnimationSystem {
@@ -507,26 +507,26 @@ public final class AnimationSystem {
 }
 ```
 
-**الگوی generation-based cooperative cancellation:**
+**Generation-based cooperative cancellation pattern:**
 
-- هر انیمیشن جدید `generation.incrementAndGet()` می‌کند و `RunToken` با آن generation می‌سازد.
-- `RunToken.isCancelled()` چک می‌کند `generation.get() != myGeneration` → اگر true، یعنی یک انیمیشن جدیدتر شروع شده و این انیمیشن منسوخ شده.
-- `RunToken.sleep(ms)` و `show(board)` قبل از انجام کار `isCancelled()` را چک می‌کنند. اگر cancel شده باشد، `sleep` false برمی‌گرداند و `show` و `pause` `AnimationCancelledException` پرتاب می‌کنند (یک exception ارزان بدون stacktrace).
-- این exception داخل `run` catch می‌شود و future به حالت cancelled می‌رود، نه failed.
-- `cancelCurrent()` هم generation را increment می‌کند و Future را cancel می‌کند (interrupt).
+- Each new animation does `generation.incrementAndGet()` and creates `RunToken` with that generation.
+- `RunToken.isCancelled()` checks `generation.get() != myGeneration` -> if true, a newer animation started and this one is obsolete.
+- `RunToken.sleep(ms)` and `show(board)` check `isCancelled()` before work. If cancelled, `sleep` returns false and `show` and `pause` throw `AnimationCancelledException` (cheap exception without stacktrace).
+- This exception is caught inside `run` and future goes to cancelled state, not failed.
+- `cancelCurrent()` also increments generation and cancels Future (interrupt).
 
-**چرا این الگو؟** چون انیمیشن‌ها روی یک `SingleThreadExecutor` اجرا می‌شوند، و ما نمی‌خواهیم thread را با force kill متوقف کنیم (که ممکن است board را در حالت ناقص رها کند). به جای آن، انیمیشن به صورت cooperative چک می‌کند که آیا cancel شده و اگر بله، خودش به صورت تمیز خارج می‌شود.
+**Why this pattern?** Because animations run on a `SingleThreadExecutor`, and we don't want to force-kill thread (which could leave board in incomplete state). Instead, animation cooperatively checks if cancelled and if so, exits cleanly.
 
-**CompletableFuture:** هر انیمیشن یک `CompletableFuture<Void>` برمی‌گرداند که:
-- وقتی انیمیشن به صورت طبیعی تمام شود، complete می‌شود
-- وقتی supersede شود (انیمیشن جدید شروع شود)، cancelled می‌شود
-- وقتی exception دهد، exceptionally complete می‌شود
+**CompletableFuture:** Each animation returns `CompletableFuture<Void>` that:
+- Completes normally when animation finishes naturally
+- Is cancelled when superseded (new animation starts)
+- Completes exceptionally if it throws
 
-این به بازی اجازه می‌دهد انیمیشن‌ها را chain کند: `playCountdown().thenRun(() -> startGame())`
+This allows chaining: `playCountdown().thenRun(() -> startGame())`
 
-### انواع انیمیشن
+### Animation Types
 
-#### Countdown - قبل از شروع بازی
+#### Countdown - Before Game Start
 
 ```java
 public CompletableFuture<Void> playCountdown(long digitDurationMs) {
@@ -539,7 +539,7 @@ public CompletableFuture<Void> playCountdown(long digitDurationMs) {
 private void playSimpleCountdown(RunToken token, long digitDurationMs) {
     TileColor[] colors = {RED, YELLOW, GREEN};
     for (int i=3; i>0; i--) {
-        token.show(new Board<>(width, height, colors[3-i])); // کل برد یک رنگ
+        token.show(new Board<>(width, height, colors[3-i])); // whole board one color
         if (!token.sleep(digitDurationMs)) return;
     }
     token.clear();
@@ -547,10 +547,10 @@ private void playSimpleCountdown(RunToken token, long digitDurationMs) {
 
 private void playScalableCountdown(RunToken token, long digitDurationMs) {
     for (int digit=3; digit>=1; digit--) {
-        token.show(renderDigit(digit)); // رندر رقم با الگوی 5x3
+        token.show(renderDigit(digit)); // render digit with 5x3 pattern
         if (!token.sleep(digitDurationMs)) return;
     }
-    for (int i=0; i<3; i++) { // چشمک سبز پایان
+    for (int i=0; i<3; i++) { // green blink at end
         token.show(new Board<>(width, height, GREEN));
         if (!token.sleep(150)) return;
         token.clear();
@@ -559,9 +559,9 @@ private void playScalableCountdown(RunToken token, long digitDurationMs) {
 }
 ```
 
-- `renderDigit`: الگوی boolean[][] برای هر رقم (1,2,3) را به مرکز برد می‌کشد با رنگ متفاوت (RED برای 3، YELLOW برای 2، GREEN برای 1)
+- `renderDigit`: boolean[][] pattern for each digit (1,2,3) drawn centered with different color (RED for 3, YELLOW for 2, GREEN for 1)
 
-#### Win - برد
+#### Win - Victory
 
 ```java
 public enum WinAnimationType { RADIAL_BURST, RAINBOW_SWEEP, SPARKLE, FIREWORKS }
@@ -607,7 +607,7 @@ private void playSparkle(RunToken token) {
 }
 ```
 
-#### Lose - باخت
+#### Lose - Defeat
 
 ```java
 public enum LoseAnimationType { FADE_TO_RED, DESCENDING_CURTAIN, CRUMBLE, PULSE_RED }
@@ -637,7 +637,7 @@ private void playDescendingCurtain(RunToken token) {
 }
 ```
 
-#### Standby - حالت انتظار (بی‌نهایت تا cancel)
+#### Standby - Idle (Infinite Until Cancelled)
 
 ```java
 public enum StandbyAnimationType { BREATHING, CORNER_PULSE, WAVE_BORDER, RANDOM_TWINKLE }
@@ -663,14 +663,14 @@ private void playWaveBorder(RunToken token) {
     for (int offset=0; ; offset=(offset+1)%3) {
         Board<TileColor> board = new Board<>(width, height, OFF);
         for (int col=0; col<width; col++) if ((col+offset)%3==0) board.set(0, col, color);
-        // ... سایر مرزها
+        // ... other borders
         token.show(board);
         token.pause(200);
     }
 }
 ```
 
-**نکته:** `BREATHING` و سایر standby ها حلقه بی‌نهایت دارند (`for(;;)` یا `while(true)`) و فقط وقتی `token.isCancelled()` true شود یا `sleep` false برگرداند خارج می‌شوند. این یعنی تا وقتی `cancelCurrent()` یا یک انیمیشن جدید صدا زده نشود، برای همیشه اجرا می‌شوند. برای همین در مثال بازی نمونه، ما `get(2, SECONDS)` می‌کنیم که بعد از 2 ثانیه TimeoutException می‌دهد و سپس `cancelCurrent()` می‌کنیم.
+**Note:** `BREATHING` and other standbys have infinite loops (`for(;;)` or `while(true)`) and only exit when `token.isCancelled()` true or `sleep` returns false. That means they run forever until `cancelCurrent()` or a new animation starts. That's why in sample game we do `get(2, SECONDS)` which throws TimeoutException after 2 seconds and then we `cancelCurrent()`.
 
 ### RunToken
 
@@ -694,9 +694,9 @@ public final class RunToken {
 
 ---
 
-## EventBus - سیستم رویداد thread-safe
+## EventBus - Thread-Safe Event System
 
-### طراحی
+### Design
 
 ```java
 public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
@@ -720,8 +720,8 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
     private final class Subscription {
         private final GameEventListener listener;
         private final SubscriptionOptions options;
-        private final BlockingQueue<GameEvent> blockingQueue; // برای BLOCK policy
-        private final ArrayDeque<GameEvent> ring; // برای DROP_OLDEST
+        private final BlockingQueue<GameEvent> blockingQueue; // for BLOCK policy
+        private final ArrayDeque<GameEvent> ring; // for DROP_OLDEST
         private final ReentrantLock ringLock = new ReentrantLock();
         private final Semaphore ringAvailable = new Semaphore(0);
         private final ExecutorService worker = newSingleThreadExecutor(daemon, "tileboard-eventbus-subscriber");
@@ -747,7 +747,7 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
                 while (ring.size() >= options.queueCapacity()) {
                     if (ring.pollFirst()!=null) {
                         droppedEvents.incrementAndGet();
-                        ringAvailable.tryAcquire(); // permit مربوط به آیتم حذف شده را مصرف کن
+                        ringAvailable.tryAcquire(); // consume permit for evicted item
                     }
                 }
                 ring.addLast(event);
@@ -777,33 +777,33 @@ public final class GameEventBusImpl implements GameEventBus, AutoCloseable {
 }
 ```
 
-### دو سیاست overflow
+### Two Overflow Policies
 
-1. **BLOCK:** از `LinkedBlockingQueue` با ظرفیت محدود استفاده می‌کند. `offer` با timeout بلاک می‌کند (پیش‌فرض 200ms). اگر subscriber در این زمان تخلیه نکرد، event drop می‌شود و `droppedEvents` increment می‌شود. این برای subscriber های کند که نباید event از دست بدهند اما نباید publisher را برای همیشه بلاک کنند مناسب است.
+1. **BLOCK:** Uses `LinkedBlockingQueue` with limited capacity. `offer` blocks with timeout (default 200ms). If subscriber doesn't drain in time, event dropped and `droppedEvents` incremented. For slow subscribers that shouldn't lose events but shouldn't block publisher forever.
 
-2. **DROP_OLDEST (پیش‌فرض):** از `ArrayDeque` + `ReentrantLock` + `Semaphore` استفاده می‌کند.
-   - `ring` خود Deque است که با `ringLock` محافظت می‌شود
-   - `ringAvailable` یک Semaphore است که تعداد آیتم‌های داخل ring را می‌شمارد. هر بار که آیتم اضافه می‌شود `release()`, هر بار که آیتم برداشته می‌شود `acquire()`
-   - وقتی ring پر است، قدیمی‌ترین آیتم (`pollFirst`) حذف می‌شود و `tryAcquire()` صدا زده می‌شود تا permit مربوطه مصرف شود (تا `availablePermits()` همیشه با `ring.size()` برابر بماند)
-   - این از `BlockingQueue` کارآمدتر است چون Deque اجازه حذف از اول را می‌دهد (برای DROP_OLDEST)
+2. **DROP_OLDEST (default):** Uses `ArrayDeque` + `ReentrantLock` + `Semaphore`.
+   - `ring` is Deque protected by `ringLock`
+   - `ringAvailable` is Semaphore counting items in ring. Each add does `release()`, each remove does `acquire()`
+   - When ring full, oldest item (`pollFirst`) removed and `tryAcquire()` called to consume its permit (so `availablePermits()` always equals `ring.size()`)
+   - More efficient than `BlockingQueue` because Deque allows removal from head (for DROP_OLDEST)
 
-**چرا Semaphore + Deque به جای BlockingQueue برای DROP_OLDEST؟** چون `LinkedBlockingQueue` فقط از یک انتها حذف می‌کند و نمی‌تواند قدیمی‌ترین را drop کند در حالی که جدیدترین را نگه دارد. `ArrayDeque` این را ممکن می‌کند اما thread-safe نیست، پس با `ReentrantLock` و `Semaphore` ترکیب شده.
+**Why Semaphore + Deque instead of BlockingQueue for DROP_OLDEST?** Because `LinkedBlockingQueue` only removes from one end and cannot drop oldest while keeping newest. `ArrayDeque` allows that but is not thread-safe, so combined with `ReentrantLock` and `Semaphore`.
 
-**CopyOnWriteArrayList برای subscriptions:** مشابه TileGatewayClient، اضافه/حذف subscription نادر است اما `publish` مکرر است. COWAL برای خواندن بدون lock بهینه است.
+**CopyOnWriteArrayList for subscriptions:** Similar to TileGatewayClient, add/remove subscription rare but `publish` frequent. COWAL is lock-free for reading.
 
-**drainLoop:** هر subscription یک `SingleThreadExecutor` دارد که در حلقه `take` می‌کند و به listener تحویل می‌دهد. اگر listener exception دهد، catch می‌شود و حلقه ادامه می‌یابد (یک listener buggy کل bus را down نمی‌کند).
+**drainLoop:** Each subscription has `SingleThreadExecutor` looping `take` and delivering to listener. If listener throws, caught and loop continues (one buggy listener doesn't bring down whole bus).
 
 ---
 
-## EngineFrameRouter و TouchFrameRouter
+## EngineFrameRouter and TouchFrameRouter
 
 ### EngineFrameRouter
 
-یک `FrameListener` که `DATA_IN` را با `ColorTileCodec` decode می‌کند و به صورت `Board<Boolean>` (یا `Board<TileColor>`) درمی‌آورد. همچنین reassembly timeout را مدیریت می‌کند: اگر یک لمس در چند فریم تکه‌تکه بیاید، تا `frameReassemblyTimeout` (پیش‌فرض 500ms) صبر می‌کند تا فریم‌های بعدی بیایند و سپس یک `Board` کامل می‌سازد.
+A `FrameListener` decoding `DATA_IN` with `ColorTileCodec` into `Board<Boolean>` (or `Board<TileColor>`). Also manages reassembly timeout: if a touch arrives fragmented in multiple frames, waits up to `frameReassemblyTimeout` (default 500ms) for subsequent frames then builds complete `Board`.
 
 ### TouchFrameRouter
 
-`Board<Boolean>` را به `TileEvent` تبدیل می‌کند و به session درست route می‌کند:
+Converts `Board<Boolean>` to `TileEvent` and routes to correct session:
 
 ```java
 public class TouchFrameRouter {
@@ -813,8 +813,6 @@ public class TouchFrameRouter {
     public void route(Board<Boolean> touchBoard) {
         List<Position> touched = touchBoard.positionsWhere(Boolean.TRUE::equals);
         for (Position pos : touched) {
-            // اگر sessionId در payload باشد، به آن session بفرست
-            // وگرنه به exclusive owner (تنها session فعال) بفرست
             GameSessionImpl session = exclusiveOwner.flatMap(sessionLookup).orElse(...);
             if (session!=null) session.handleTileEvent(TileEvent.touch(pos, session.sessionId()));
         }
@@ -824,20 +822,20 @@ public class TouchFrameRouter {
 
 ---
 
-## SSE - استریم به فرانت‌اند
+## SSE - Streaming to Frontend
 
 ```
 GameSessionImpl.publishBoard() → eventBus.publish(BOARD_UPDATED)
                             → SseGameEventPublisher → SseEmitter → HTTP client
 ```
 
-- `SseGameEventPublisher`: به `GameEventBus` subscribe می‌شود و هر `GameEvent` را به `SseGameEvent` تبدیل می‌کند و به تمام `SseEmitter` های متصل می‌فرستد
-- `GameEventSseEmitter`: wrapper دور Spring `SseEmitter` با heartbeat
+- `SseGameEventPublisher`: Subscribes to `GameEventBus` and converts each `GameEvent` to `SseGameEvent` and sends to all connected `SseEmitter`s
+- `GameEventSseEmitter`: Wrapper around Spring `SseEmitter` with heartbeat
 - `SseGameEventType`: `SESSION_STARTED`, `BOARD_UPDATED`, `SCORE_UPDATED`, `TICK`, `SESSION_FINISHED`...
 
 ---
 
-## لایه Spring - AutoConfiguration
+## Spring Layer - AutoConfiguration
 
 ```java
 @AutoConfiguration
@@ -874,11 +872,11 @@ public class TileboardEngineAutoConfiguration {
 }
 ```
 
-- تمام Bean ها `@ConditionalOnMissingBean` هستند → اگر شما Bean خودتان را تعریف کنید، auto-config عقب می‌نشیند
-- `gameRegistry` تمام `Game` Bean های موجود در context را auto-register می‌کند → کافی است بازی را به عنوان `@Bean` یا `@Component` تعریف کنید
-- `GameEngineManager` بعد از `gameEventBus` ساخته می‌شود (`@DependsOn`)
+- All beans are `@ConditionalOnMissingBean` -> if you define your own Bean, auto-config backs off
+- `gameRegistry` auto-registers all `Game` Beans in context -> just define game as `@Bean` or `@Component`
+- `GameEngineManager` built after `gameEventBus` (`@DependsOn`)
 
-### GameEngineManager - پل بین Spring و موتور framework-free
+### GameEngineManager - Bridge Between Spring and Framework-Free Engine
 
 ```java
 public class GameEngineManager {
@@ -902,7 +900,7 @@ public class GameEngineManager {
     private void shutdownCurrentEngine() {
         GameEngineImpl current = this.engine;
         if (current==null) { log.debug("no engine bound"); return; }
-        this.engine = null; // فوری visible به current()/require()
+        this.engine = null; // immediately visible
         List<GameSession> sessions = current.activeSessions();
         try { current.close(); } catch (RuntimeException e) { log.warn }
         log.info("Game engine unbound{}", sessions.isEmpty() ? "" : " ("+sessions.size()+" stopped)");
@@ -916,11 +914,11 @@ public class GameEngineManager {
 }
 ```
 
-**نکات concurrency:**
-- `engine` volatile → خواندن بدون synchronized visibility دارد، اما نوشتن با synchronized
-- `shutdownCurrentEngine` null-safe و idempotent → اگر دو بار disconnect بیاید، NPE نمی‌دهد
-- `engine = null` قبل از `close()` → `current()`/`require()` هرگز یک engine نیمه-bسته را نمی‌بینند
-- `@PreDestroy` تضمین می‌کند engine و thread های daemon آن هنگام توقف Spring context آزاد شوند، حتی اگر هیچ disconnect event ای نیامده باشد
+**Concurrency notes:**
+- `engine` volatile -> lock-free visibility for reads, but writes synchronized
+- `shutdownCurrentEngine` null-safe and idempotent -> duplicate disconnect events don't NPE
+- `engine = null` before `close()` -> `current()`/`require()` never see half-closed engine
+- `@PreDestroy` guarantees engine and daemon threads freed when Spring context stops, even if no disconnect event ever arrived
 
 ### TileboardEngineProperties
 
@@ -935,20 +933,20 @@ public class TileboardEngineProperties {
 }
 ```
 
-قابل تنظیم در `application.yml`.
+Configurable in `application.yml`.
 
 ---
 
-## آموزش گام به گام ساخت بازی
+## Step-by-Step Game Creation Tutorial
 
-### گام 1: کلاس بازی را بساز
+### Step 1: Create Game Class
 
 ```java
 public class MyFirstGame implements Game {
 
     private final GameDescriptor descriptor = GameDescriptor.builder("my-first-game", "My First Game")
         .category("TUTORIAL")
-        .description("اولین بازی من")
+        .description("My first game")
         .boardSize(8, 8)
         .players(1, 1)
         .build();
@@ -959,17 +957,14 @@ public class MyFirstGame implements Game {
     public void onStart(GameContext ctx) {
         ctx.fillBoard(TileColor.OFF);
         ctx.scores().resetAll();
-        // کل برد را سبز کن
         ctx.fillBoard(TileColor.GREEN);
     }
 
     @Override
     public void onTileEvent(GameContext ctx, TileEvent event) {
-        // هر تایل لمس شده را قرمز کن و امتیاز بده
         ctx.setTile(event.position().row(), event.position().col(), TileColor.RED);
         ctx.scores().add(ctx.players().get(0).id(), 1);
 
-        // اگر 10 امتیاز گرفت، برد
         if (ctx.scores().get(ctx.players().get(0).id()) >= 10) {
             ctx.animations().playWinAnimation().thenRun(() -> ctx.winSession(ctx.players()));
         }
@@ -982,7 +977,7 @@ public class MyFirstGame implements Game {
 }
 ```
 
-### گام 2: به عنوان Bean ثبت کن
+### Step 2: Register as Bean
 
 ```java
 @Configuration
@@ -994,14 +989,14 @@ public class MyGameConfig {
 }
 ```
 
-یا با `@Component`:
+Or with `@Component`:
 
 ```java
 @Component
 public class MyFirstGame implements Game { ... }
 ```
 
-### گام 3: بازی را شروع کن (REST)
+### Step 3: Start Game via REST
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/games/sessions \
@@ -1009,14 +1004,14 @@ curl -X POST http://localhost:8080/api/v1/games/sessions \
   -d '{"gameId":"my-first-game","players":[{"name":"Ali"}]}'
 ```
 
-### مثال پیشرفته - با انیمیشن‌ها
+### Advanced Example - With Animations
 
 ```java
 @Override
 public void onStart(GameContext ctx) {
     ctx.fillBoard(TileColor.OFF);
 
-    // 1. Standby 2 ثانیه
+    // 1. Standby 2 seconds
     try {
         ctx.animations().playStandbyAnimation(StandbyAnimationType.BREATHING).get(2, SECONDS);
     } catch (Exception e) {
@@ -1026,11 +1021,11 @@ public void onStart(GameContext ctx) {
     // 2. Countdown
     ctx.animations().playCountdown(800).join();
 
-    // 3. شروع بازی واقعی
+    // 3. Real game start
     ctx.state().put("score", 0);
     ctx.fillBoard(TileColor.BLUE);
 
-    // 4. تایمر 30 ثانیه
+    // 4. 30 second timer
     ctx.timer().startCountdown(Duration.ofSeconds(30), () -> {
         ctx.animations().playLoseAnimation(LoseAnimationType.FADE_TO_RED)
             .thenRun(() -> ctx.loseSession());
@@ -1039,19 +1034,19 @@ public void onStart(GameContext ctx) {
 
 @Override
 public void onTileEvent(GameContext ctx, TileEvent event) {
-    // منطق بازی...
+    // game logic...
 
-    // اگر باخت:
+    // On loss:
     ctx.animations().playLoseAnimation(LoseAnimationType.DESCENDING_CURTAIN)
         .thenRun(() -> ctx.loseSession());
 
-    // اگر برد:
+    // On win:
     ctx.animations().playWinAnimation(WinAnimationType.FIREWORKS)
         .thenRun(() -> ctx.winSession(ctx.players()));
 }
 ```
 
-### استفاده از Feature های دیگر
+### Using Other Features
 
 ```java
 // NeighborFinder
@@ -1067,7 +1062,7 @@ if (ctx.patterns().isLine(...)) { ... }
 
 // ComboTracker
 ctx.combos().recordHit();
-if (ctx.combos().currentCombo() >= 5) { /* جایزه کمبو */ }
+if (ctx.combos().currentCombo() >= 5) { /* combo bonus */ }
 
 // HealthSystem
 ctx.health().damage(playerId, 10);
@@ -1076,7 +1071,7 @@ if (ctx.health().isDead(playerId)) ctx.loseSession();
 
 ---
 
-## بررسی کدهای پیچیده - Concurrency
+## Deep Dive - Concurrency
 
 ### 1. GameEngineImpl.exclusiveSessionId - AtomicReference CAS
 
@@ -1098,11 +1093,11 @@ public String startGame(...) {
 }
 ```
 
-- `compareAndSet(null, sessionId)` یک عملیات اتمی است: فقط اگر مقدار فعلی null باشد، آن را به sessionId تغییر می‌دهد و true برمی‌گرداند. اگر در همین لحظه thread دیگری هم startGame کند، یکی موفق می‌شود و دیگری fail.
-- این بدون synchronized block سراسری، مالکیت انحصاری برد را تضمین می‌کند.
-- rollback با `compareAndSet(sessionId, null)` تضمین می‌کند اگر ساخت session fail شد، مالکیت آزاد شود، اما فقط اگر هنوز مالک همین sessionId باشد (اگر در این فاصله session دیگری مالک شده، rollback نباید مالکیت آن را پاک کند).
+- `compareAndSet(null, sessionId)` is atomic: only if current value is null, change to sessionId and return true. If two threads call startGame at same time, one succeeds, other fails.
+- Without global synchronized block, exclusive board ownership guaranteed.
+- Rollback with `compareAndSet(sessionId, null)` ensures if session creation fails, ownership freed, but only if still owner of same sessionId (if another session became owner in meantime, rollback shouldn't clear its ownership).
 
-### 2. SessionLifecycle - CAS state machine
+### 2. SessionLifecycle - CAS State Machine
 
 ```java
 public class SessionLifecycle {
@@ -1115,33 +1110,33 @@ public class SessionLifecycle {
     public boolean finish(GameStatus finalStatus) {
         while (true) {
             GameStatus current = status.get();
-            if (current==FINISHED || current==STOPPED) return false; // قبلا تمام شده
+            if (current==FINISHED || current==STOPPED) return false; // already finished
             if (status.compareAndSet(current, finalStatus)) return true;
         }
     }
 }
 ```
 
-- `finish` با حلقه CAS تضمین می‌کند فقط یک thread موفق به تغییر status به FINISHED شود، حتی اگر همزمان `winSession`, `loseSession`, `stopSession` و TTL reaper همزمان صدا زده شوند.
-- این idempotent است: دومین فراخوانی `finish` false برمی‌گرداند.
+- `finish` with CAS loop guarantees only one thread succeeds changing status to FINISHED, even if `winSession`, `loseSession`, `stopSession` and TTL reaper called concurrently.
+- Idempotent: second `finish` call returns false.
 
-### 3. GameEventBusImpl - Semaphore + Deque برای DROP_OLDEST
+### 3. GameEventBusImpl - Semaphore + Deque for DROP_OLDEST
 
-توضیح کامل در بخش EventBus داده شد. نکات کلیدی:
+Detailed in EventBus section. Key points:
 
-- `ringLock` (ReentrantLock) از `ring` (ArrayDeque) محافظت می‌کند
-- `ringAvailable` (Semaphore) تعداد آیتم‌ها را می‌شمارد
-- هنگام drop قدیمی‌ترین: `pollFirst()` + `tryAcquire()` → permit مربوط به آیتم حذف شده مصرف می‌شود تا `availablePermits() == ring.size()` بماند
-- `offerDropOldest` و `takeDropOldest` هر دو از `ringLock` و `ringAvailable` استفاده می‌کنند → thread-safe
-- `droppedEvents` (AtomicLong) تعداد drop ها را می‌شمارد (برای متریک)
+- `ringLock` (ReentrantLock) protects `ring` (ArrayDeque)
+- `ringAvailable` (Semaphore) counts items
+- On drop oldest: `pollFirst()` + `tryAcquire()` -> permit for evicted item consumed so `availablePermits() == ring.size()` stays true
+- Both `offerDropOldest` and `takeDropOldest` use `ringLock` and `ringAvailable` -> thread-safe
+- `droppedEvents` (AtomicLong) counts drops (for metrics)
 
 ### 4. BoardChannel - ReentrantLock + gatewayWriteLock + coalescing
 
-توضیح کامل در بخش BoardChannel داده شد.
+Detailed in BoardChannel section.
 
 ### 5. AnimationSystem - generation + CompletableFuture + SingleThreadExecutor
 
-توضیح کامل در بخش AnimationSystem داده شد.
+Detailed in AnimationSystem section.
 
 ### 6. ScoreSystem - ConcurrentHashMap + AtomicInteger
 
@@ -1157,9 +1152,9 @@ private AtomicInteger getOrCreate(String playerId) {
 }
 ```
 
-- `ConcurrentHashMap` برای خواندن/نوشتن همزمان thread-safe است
-- `computeIfAbsent` اتمی است: اگر دو thread همزمان برای یک playerId جدید `getOrCreate` کنند، فقط یک AtomicInteger ساخته می‌شود
-- `AtomicInteger.addAndGet` با CAS پیاده‌سازی شده، بدون lock سراسری
+- `ConcurrentHashMap` thread-safe for concurrent read/write
+- `computeIfAbsent` atomic: if two threads concurrently `getOrCreate` for new playerId, only one AtomicInteger created
+- `AtomicInteger.addAndGet` implemented with CAS, no global lock
 
 ### 7. GameTimer - volatile + AtomicReference
 
@@ -1176,29 +1171,29 @@ public void checkExpiry() {
 }
 ```
 
-- `volatile` تضمین می‌کند تغییرات `startedAt` و غیره فوری برای thread های دیگر visible باشد (بدون نیاز به synchronized)
-- `getAndSet(null)` تضمین می‌کند callback فقط یک بار اجرا شود، حتی اگر `checkExpiry` همزمان از دو thread صدا زده شود
+- `volatile` guarantees changes to `startedAt` etc. immediately visible to other threads (no synchronized needed)
+- `getAndSet(null)` guarantees callback runs only once, even if `checkExpiry` called concurrently from two threads
 
 ---
 
-## تست‌ها
+## Tests
 
 ```bash
 mvn test -pl tileboard-game-engine
 ```
 
-- `ColorTileCodecTest`: تست codec رنگ
-- `EngineFrameRouterTest`, `EngineFrameRouterReassemblyTest`: تست مسیریابی و reassembly
-- `BoardChannelConcurrencyTest`: تست همزمانی BoardChannel
-- `GameSessionImplTest`, `SessionLifecycleTest`: تست lifecycle
-- `GameEventBusImplTest`, `GameEventBusImplConcurrencyTest`: تست EventBus
-- `AnimationSystemCancellationTest`: تست cancellation انیمیشن
-- `FeatureSystemsTest`: تست تمام feature ها (Score, Health, Level, Combo, Timer, ...)
+- `ColorTileCodecTest`: color codec
+- `EngineFrameRouterTest`, `EngineFrameRouterReassemblyTest`: routing and reassembly
+- `BoardChannelConcurrencyTest`: BoardChannel concurrency
+- `GameSessionImplTest`, `SessionLifecycleTest`: lifecycle
+- `GameEventBusImplTest`, `GameEventBusImplConcurrencyTest`: EventBus
+- `AnimationSystemCancellationTest`: animation cancellation
+- `FeatureSystemsTest`: all features (Score, Health, Level, Combo, Timer, ...)
 - `TouchFrameRouterTest`, `GameEngineManagerTest`
 
 ---
 
-## وابستگی‌ها
+## Dependencies
 
 ```xml
 <dependency>
@@ -1209,12 +1204,12 @@ mvn test -pl tileboard-game-engine
 ```
 
 - `slf4j-api`: logging facade
-- `jackson-databind`: برای SSE JSON serialization
-- `spring-boot-autoconfigure` (optional): فقط برای auto-config layer
-- `micrometer-core`: برای متریک‌ها (optional)
+- `jackson-databind`: for SSE JSON serialization
+- `spring-boot-autoconfigure` (optional): only for auto-config layer
+- `micrometer-core`: for metrics (optional)
 
 ---
 
-**نویسنده:** تیم Tileboard Platform  
-**نسخه:** 1.0.0  
-**جاوا:** 17+
+**Author:** Tileboard Platform Team  
+**Version:** 1.0.0  
+**Java:** 17+

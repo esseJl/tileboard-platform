@@ -1,48 +1,48 @@
-# Tileboard Platform - مستندات جامع پلتفرم
+# Tileboard Platform - Comprehensive Platform Documentation
 
-> **پلتفرم Tileboard** یک سیستم کامل برای کنترل برد LED تایل (m x n) از طریق سریال و اجرای بازی‌های تعاملی روی آن است. شامل سه ماژول Maven: پروتکل سریال، موتور بازی و اپلیکیشن Spring Boot بک‌اند.
-
----
-
-## فهرست مطالب
-1. [معرفی پلتفرم](#معرفی-پلتفرم)
-2. [معماری کلی](#معماری-کلی)
-3. [ماژول‌ها](#ماژولها)
-4. [پیش‌نیازها](#پیشنیازها)
-5. [شروع سریع](#شروع-سریع)
-6. [جریان کاری معمول](#جریان-کاری-معمول)
-7. [مثال عملی - بازی SequentialTouchGame](#مثال-عملی)
-8. [انیمیشن‌ها](#انیمیشنها)
-9. [Concurrency و Thread-Safety در کل پلتفرم](#concurrency)
-10. [تست و بیلد](#تست-و-بیلد)
-11. [ساختار ریپازیتوری](#ساختار-ریپازیتوری)
-12. [نقشه راه توسعه](#نقشه-راه)
+> **Tileboard Platform** is a complete system for controlling an LED tile board (m x n) over serial and running interactive games on it. It consists of three Maven modules: serial protocol, game engine, and Spring Boot backend application.
 
 ---
 
-## معرفی پلتفرم
-
-Tileboard Platform برای حل این مسائل ساخته شده:
-
-- **ارتباط با سخت‌افزار LED Tile Board** از طریق پورت سریال (115200 baud) با پروتکل فریم‌بندی مقاوم به نویز
-- **انتزاع سخت‌افزار:** کد بازی نباید بداند از jSerialComm، RXTX یا Mock استفاده می‌شود
-- **موتور بازی production-ready:** امتیاز، جان، لول، کمبو، تایمر، تاریخچه لمس، همسایه‌یابی، الگو، موج، انیمیشن، SSE
-- **بک‌اند Spring Boot:** REST API برای کانفیگ، مدیریت پورت، کنترل بازی، استریم real-time
-- **قابل توسعه:** اضافه کردن بازی جدید فقط یک `@Bean` است، بدون تغییر موتور یا پروتکل
-
-### ویژگی‌های کلیدی
-
-- ✅ **Transport-agnostic:** پروتکل هیچ وابستگی به کتابخانه سریال ندارد (jSerialComm optional)
-- ✅ **Framework-free core:** موتور بازی بدون Spring هم کار می‌کند، لایه Spring optional است
-- ✅ **Thread-safe:** تمام بخش‌های حساس با `ConcurrentHashMap`, `AtomicReference`, `ReentrantLock`, `synchronized`, `CAS` محافظت شده‌اند
-- ✅ **انیمیشن‌های داخلی:** `countdown`, `win` (4 نوع), `lose` (4 نوع), `standby` (4 نوع)
-- ✅ **Event-driven:** EventBus با دو سیاست `BLOCK` و `DROP_OLDEST`, SSE برای فرانت‌اند
-- ✅ **Production-ready:** TTL برای session ها، rollback برای connect، idempotent disconnect، health check، Swagger
-- ✅ **تست‌پذیر:** Mock Transport، تست‌های concurrency، تست‌های unit برای تمام feature ها
+## Table of Contents
+1. [Platform Introduction](#platform-introduction)
+2. [Overall Architecture](#overall-architecture)
+3. [Modules](#modules)
+4. [Prerequisites](#prerequisites)
+5. [Quick Start](#quick-start)
+6. [Typical Workflow](#typical-workflow)
+7. [Practical Example - SequentialTouchGame](#practical-example)
+8. [Animations](#animations)
+9. [Concurrency and Thread-Safety Across Platform](#concurrency)
+10. [Tests and Build](#tests-and-build)
+11. [Repository Structure](#repository-structure)
+12. [Roadmap](#roadmap)
 
 ---
 
-## معماری کلی
+## Platform Introduction
+
+Tileboard Platform was built to solve these problems:
+
+- **Communication with LED Tile Board hardware** over serial port (115200 baud) with noise-resistant framing protocol
+- **Hardware abstraction:** Game code should not know whether jSerialComm, RXTX, or Mock is used
+- **Production-ready game engine:** Scoring, health, levels, combos, timers, touch history, neighbor finding, patterns, waves, animations, SSE
+- **Spring Boot backend:** REST API for configuration, port management, game control, real-time streaming
+- **Extensibility:** Adding a new game is just a `@Bean`, without changing engine or protocol
+
+### Key Features
+
+- ✅ **Transport-agnostic:** Protocol has zero dependency on serial library (jSerialComm optional)
+- ✅ **Framework-free core:** Game engine works without Spring, Spring layer is optional
+- ✅ **Thread-safe:** All sensitive sections protected with `ConcurrentHashMap`, `AtomicReference`, `ReentrantLock`, `synchronized`, `CAS`
+- ✅ **Built-in animations:** `countdown`, `win` (4 types), `lose` (4 types), `standby` (4 types)
+- ✅ **Event-driven:** EventBus with two policies `BLOCK` and `DROP_OLDEST`, SSE for frontend
+- ✅ **Production-ready:** TTL for sessions, rollback for connect, idempotent disconnect, health check, Swagger
+- ✅ **Testable:** Mock Transport, concurrency tests, unit tests for all features
+
+---
+
+## Overall Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -73,79 +73,79 @@ Tileboard Platform برای حل این مسائل ساخته شده:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-**جریان داده:**
+**Data Flow:**
 
-1. `TileGatewayClient` بایت‌ها را از `SerialTransport` می‌خواند
-2. `DefaultFrameCodec.decode` بایت‌ها را به `Frame` تبدیل می‌کند (stateful, resync)
-3. `EngineFrameRouter` فریم را به `Board<Boolean>` (لمس‌ها) تبدیل می‌کند
-4. `TouchFrameRouter` برد لمس را به `TileEvent` تبدیل و به `GameSessionImpl` درست route می‌کند
-5. `GameSessionImpl.handleTileEvent` تاریخچه و سرعت واکنش را record می‌کند و `game.onTileEvent` را صدا می‌زند
-6. بازی `ctx.setTile` / `publishBoard` را صدا می‌زند → `BoardChannel` → `TileGatewayClient.sendBoard` → `DefaultFrameCodec.encode` → `SerialTransport.write` → سخت‌افزار
-7. همزمان `eventBus.publish(BOARD_UPDATED)` → `SseGameEventPublisher` → `SseEmitter` → فرانت‌اند
+1. `TileGatewayClient` reads bytes from `SerialTransport`
+2. `DefaultFrameCodec.decode` converts bytes to `Frame` (stateful, resync)
+3. `EngineFrameRouter` converts frame to `Board<Boolean>` (touches)
+4. `TouchFrameRouter` converts touch board to `TileEvent` and routes to correct `GameSessionImpl`
+5. `GameSessionImpl.handleTileEvent` records history and reaction speed and calls `game.onTileEvent`
+6. Game calls `ctx.setTile` / `publishBoard` -> `BoardChannel` -> `TileGatewayClient.sendBoard` -> `DefaultFrameCodec.encode` -> `SerialTransport.write` -> hardware
+7. Simultaneously `eventBus.publish(BOARD_UPDATED)` -> `SseGameEventPublisher` -> `SseEmitter` -> frontend
 
 ---
 
-## ماژول‌ها
+## Modules
 
 ### 1. tileboard-serial-protocol
 
-**مسئولیت:** کتابخانه خالص پروتکل سریال، بدون وابستگی به فریم‌ورک
+**Responsibility:** Pure serial protocol library, no framework dependency
 
-**کلاس‌های کلیدی:**
-- `Board<T>`: گرید generic mutable
-- `TileCodec<T>`: پل بین دامنه و سیم
-- `ProtocolConstants`, `Frame`, `Command`, `CommandType`: فریم‌بندی
-- `DefaultFrameCodec`: encode stateless, decode stateful با resynchronization
-- `SerialTransport`, `SerialPortRegistry`: انتزاع سخت‌افزار
-- `JSerialCommTransport`, `JSerialCommPortRegistry`: پیاده‌سازی آماده (optional)
-- `TileGatewayClient`: کلاینت سطح بالا (thread-safe, COWAL, writeLock, callbackExecutor)
-- `HandshakeCoordinator`, `DeviceAddress`: هندشیک آدرس‌دهی
+**Key Classes:**
+- `Board<T>`: Generic mutable grid
+- `TileCodec<T>`: Bridge between domain and wire
+- `ProtocolConstants`, `Frame`, `Command`, `CommandType`: Framing
+- `DefaultFrameCodec`: Stateless encode, stateful decode with resynchronization
+- `SerialTransport`, `SerialPortRegistry`: Hardware abstraction
+- `JSerialCommTransport`, `JSerialCommPortRegistry`: Ready-made impl (optional)
+- `TileGatewayClient`: High-level client (thread-safe, COWAL, writeLock, callbackExecutor)
+- `HandshakeCoordinator`, `DeviceAddress`: Addressing handshake
 
-**مستندات کامل:** [tileboard-serial-protocol/README.md](tileboard-serial-protocol/README.md)
+**Full docs:** [tileboard-serial-protocol/README.md](tileboard-serial-protocol/README.md)
 
 ### 2. tileboard-game-engine
 
-**مسئولیت:** موتور بازی production-ready، framework-free، با امکانات غنی
+**Responsibility:** Production-ready, framework-free game engine with rich features
 
-**کلاس‌های کلیدی:**
-- `Game`, `GameDescriptor`, `GameContext`, `GameState`: قرارداد بازی
-- `GameEngine`, `GameEngineImpl`, `GameSession`, `GameSessionImpl`: چرخه حیات
-- `BoardChannel`: انتشار برد با coalescing semantics
-- `FeatureBundle`: تمام feature ها (Score, Health, Level, Combo, Timer, TouchHistory, NeighborFinder, WaveGenerator, AnimationSystem, ...)
-- `AnimationSystem`: انیمیشن‌های win/lose/standby/countdown با generation-based cancellation
-- `GameEventBusImpl`: EventBus thread-safe با دو سیاست BLOCK و DROP_OLDEST
-- `TileboardEngineAutoConfiguration`, `GameEngineManager`: لایه Spring
+**Key Classes:**
+- `Game`, `GameDescriptor`, `GameContext`, `GameState`: Game contract
+- `GameEngine`, `GameEngineImpl`, `GameSession`, `GameSessionImpl`: Lifecycle
+- `BoardChannel`: Board publishing with coalescing semantics
+- `FeatureBundle`: All features (Score, Health, Level, Combo, Timer, TouchHistory, NeighborFinder, WaveGenerator, AnimationSystem, ...)
+- `AnimationSystem`: win/lose/standby/countdown animations with generation-based cancellation
+- `GameEventBusImpl`: Thread-safe EventBus with BLOCK and DROP_OLDEST policies
+- `TileboardEngineAutoConfiguration`, `GameEngineManager`: Spring layer
 
-**مستندات کامل:** [tileboard-game-engine/README.md](tileboard-game-engine/README.md)
+**Full docs:** [tileboard-game-engine/README.md](tileboard-game-engine/README.md)
 
 ### 3. tileboard-app
 
-**مسئولیت:** اپلیکیشن Spring Boot بک‌اند که سخت‌افزار را به وب وصل می‌کند
+**Responsibility:** Spring Boot backend app bridging hardware to web
 
-**کلاس‌های کلیدی:**
+**Key Classes:**
 - `TileboardApplication`: main
-- `TileboardProperties`, `DeviceConfiguration`, `SerialGatewayConfig`: کانفیگ
+- `TileboardProperties`, `DeviceConfiguration`, `SerialGatewayConfig`: Config
 - `DeviceController`, `SerialPortController`, `GameController`, `StreamController`: REST API
-- `DeviceConfigurationService`, `SerialConnectionManager`, `BoardStateBroadcaster`: سرویس‌ها
-- `GameBeansConfig`, `SequentialTouchGame`: بازی نمونه آموزشی
-- `GlobalExceptionHandler`: مدیریت خطا
+- `DeviceConfigurationService`, `SerialConnectionManager`, `BoardStateBroadcaster`: Services
+- `GameBeansConfig`, `SequentialTouchGame`: Sample tutorial game
+- `GlobalExceptionHandler`: Error handling
 
-**مستندات کامل:** [tileboard-app/README.md](tileboard-app/README.md)
+**Full docs:** [tileboard-app/README.md](tileboard-app/README.md)
 
 ---
 
-## پیش‌نیازها
+## Prerequisites
 
-- **Java 17+** (پروژه با `maven.compiler.source=17` بیلد می‌شود)
+- **Java 17+** (project built with `maven.compiler.source=17`)
 - **Maven 3.8+**
-- **برد Tileboard** متصل به USB (یا بدون سخت‌افزار با Mock برای تست)
+- **Tileboard board** connected via USB (or without hardware using Mock for tests)
 - **Git**
 
 ---
 
-## شروع سریع
+## Quick Start
 
-### 1. کلون و بیلد
+### 1. Clone and Build
 
 ```bash
 git clone <repo-url>
@@ -153,31 +153,31 @@ cd tileboard-platform
 mvn clean install -DskipTests
 ```
 
-### 2. اجرای بک‌اند
+### 2. Run Backend
 
 ```bash
 cd tileboard-app
 mvn spring-boot:run
-# یا
+# or
 java -jar target/tileboard-app-1.0.0.jar
-# با prod profile:
+# with prod profile:
 java -jar target/tileboard-app-1.0.0.jar --spring.profiles.active=prod
 ```
 
-اپلیکیشن روی `http://localhost:8080` بالا می‌آید.
+App runs on `http://localhost:8080`.
 
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - Health: `http://localhost:8080/actuator/health`
 
-### 3. تست سریع بدون سخت‌افزار (Mock)
+### 3. Quick Test Without Hardware (Mock)
 
-اگر برد نداری، می‌توانی یک Mock Transport بسازی و بدون سریال تست کنی. برای تست‌های unit نیازی به سخت‌افزار نیست:
+If you don't have a board, you can build a Mock Transport and test without serial. Unit tests need no hardware:
 
 ```bash
 mvn test
 ```
 
-تمام تست‌ها بدون سخت‌افزار پاس می‌شوند. فقط `TileboardHardwareIT` نیاز به سخت‌افزار دارد و با پروفایل `hardware-tests` اجرا می‌شود:
+All unit tests pass without hardware. Only `TileboardHardwareIT` needs hardware and runs with `hardware-tests` profile:
 
 ```bash
 mvn verify -P hardware-tests -pl tileboard-serial-protocol
@@ -185,9 +185,9 @@ mvn verify -P hardware-tests -pl tileboard-serial-protocol
 
 ---
 
-## جریان کاری معمول
+## Typical Workflow
 
-### مرحله 1: کانفیگ دستگاه
+### Step 1: Configure Device
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/devices/configure \
@@ -195,7 +195,7 @@ curl -X POST http://localhost:8080/api/v1/devices/configure \
   -d '{"width":8,"height":8}'
 ```
 
-### مرحله 2: لیست و assign پورت‌ها
+### Step 2: List and Assign Ports
 
 ```bash
 curl http://localhost:8080/api/v1/ports
@@ -209,13 +209,13 @@ curl -X POST http://localhost:8080/api/v1/ports/assign \
   -d '{"role":"IN","portName":"COM3"}'
 ```
 
-### مرحله 3: Connect
+### Step 3: Connect
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/ports/connect
 ```
 
-لاگ‌ها:
+Logs:
 
 ```
 Enabling id handshake for a 8x8 board (minimumSequence=2)
@@ -223,15 +223,15 @@ Tile board gateway connected (in=COM3, out=COM3)
 Game engine bound to the newly connected tile gateway (8x8)
 ```
 
-### مرحله 4: لیست بازی‌ها
+### Step 4: List Games
 
 ```bash
 curl http://localhost:8080/api/v1/games
 ```
 
-پاسخ شامل `sequential-touch` (بازی نمونه) است.
+Response includes `sequential-touch` (sample game).
 
-### مرحله 5: شروع بازی
+### Step 5: Start Game
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/games/sessions \
@@ -239,13 +239,13 @@ curl -X POST http://localhost:8080/api/v1/games/sessions \
   -d '{"gameId":"sequential-touch","players":[{"name":"Ali"}]}'
 ```
 
-### مرحله 6: SSE برای دیدن رویدادها
+### Step 6: SSE for Events
 
 ```bash
 curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/games/events
 ```
 
-یا در JS:
+Or in JS:
 
 ```javascript
 const es = new EventSource('/api/v1/games/events');
@@ -255,55 +255,58 @@ es.addEventListener('SESSION_FINISHED', e => { console.log('Finished', JSON.pars
 
 ---
 
-## مثال عملی
+## Practical Example
 
-### بازی SequentialTouchGame - خلاصه
+### SequentialTouchGame - Summary
 
-این بازی تمام نیازمندی‌های شما را پیاده می‌کند:
+This game implements all your requirements:
 
-- **به ترتیب هر تایل با رنگی روشن شود:** لیست موقعیت‌ها row-major ساخته می‌شود، هر تایل با رنگی از پالت روشن می‌شود
-- **به محض لمس شدن با اضافه شدن امتیاز:** `ctx.scores().add(playerId, 10)` و `ctx.setTile(..., OFF)` و نوبت تایل بعدی
-- **تا وقتی همه تایل‌ها روشن و تاچ شوند:** ایندکس تا `positions.size()` پیش می‌رود
-- **سپس بازی خاتمه یابد:** `ctx.winSession(players)` بعد از انیمیشن win
-- **انیمیشن‌های lose, win, standby:** 
-  - `standby` (BREATHING) 2 ثانیه قبل از شروع
-  - `countdown` (3→2→1) قبل از شروع
-  - `lose` (FADE_TO_RED) برای لمس اشتباه، `DESCENDING_CURTAIN` برای timeout
-  - `win` (RADIAL_BURST) برای برد
-- **قبل از شروع بازی انیمیشن countDown**
+- **Each tile lights up sequentially with a color:** Positions list row-major, each tile lights with color from palette
+- **As soon as touched, add player score and next tile's turn:** `ctx.scores().add(playerId, 10)` and `ctx.setTile(..., OFF)` and next tile
+- **Until all tiles lit and touched:** Index goes up to `positions.size()`
+- **Then game ends:** `ctx.winSession(players)` after win animation
+- **Animations lose, win, stand-by:**
+  - `standby` (BREATHING) 2 seconds before start
+  - `countdown` (3→2→1) before start
+  - `lose` (FADE_TO_RED) for wrong touch, `DESCENDING_CURTAIN` for timeout
+  - `win` (RADIAL_BURST) for victory
+- **countDown animation before game start**
 
-**کد کامل:** `tileboard-app/src/main/java/com/tileboard/app/game/SequentialTouchGame.java`
+**Full code:** `tileboard-app/src/main/java/com/tileboard/app/game/SequentialTouchGame.java`
 
-**ثبت به عنوان Bean:** `tileboard-app/src/main/java/com/tileboard/app/game/GameBeansConfig.java`
+**Bean registration:** `tileboard-app/src/main/java/com/tileboard/app/game/GameBeansConfig.java`
 
-**مستندات گام به گام کامل:** بخش "آموزش جامع ساخت بازی" در [tileboard-app/README.md](tileboard-app/README.md)
+**Full step-by-step docs:** "Comprehensive Game Creation Tutorial" section in [tileboard-app/README.md](tileboard-app/README.md)
 
-### جریان بازی از دید بازیکن
+### Player Perspective Flow
 
-1. **Standby (BREATHING):** گوشه‌های برد آبی چشمک می‌زنند (2 ثانیه)
-2. **Countdown:** کل برد قرمز (3) → زرد (2) → سبز (1) → چشمک سبز 3 بار (GO!)
-3. **بازی:** تایل (0,0) قرمز روشن → بازیکن لمس می‌کند → +10 امتیاز → (0,0) خاموش → (0,1) سبز روشن → ...
-4. **لمس اشتباه:** FADE_TO_RED کوتاه → دوباره تایل درست روشن
-5. **Timeout 90 ثانیه:** DESCENDING_CURTAIN → باخت
-6. **همه 64 تایل درست:** RADIAL_BURST → برد
+1. **Standby (BREATHING):** Board corners blink blue (2 seconds)
+2. **Countdown:** Whole board red (3) -> yellow (2) -> green (1) -> green blink 3 times (GO!)
+3. **Game:** Tile (0,0) lights red
+4. Player touches (0,0) -> +10 points, (0,0) off, (0,1) lights green
+5. Player touches (0,1) -> +10 points, (0,1) off, (0,2) lights blue
+6. ... until (7,7)
+7. If wrong tile touched -> FADE_TO_RED short animation -> correct tile re-lights
+8. If 90 seconds pass -> DESCENDING_CURTAIN -> loss
+9. If all 64 tiles correctly touched -> RADIAL_BURST -> win
 
 ---
 
-## انیمیشن‌ها
+## Animations
 
-### انواع
+### Types
 
-| دسته | انواع | توضیح |
+| Category | Types | Description |
 |------|-------|-------|
-| **Countdown** | `playCountdown()` | 3→2→1 با رندر رقم یا رنگ کامل برد + چشمک سبز |
-| **Win** | `RADIAL_BURST`, `RAINBOW_SWEEP`, `SPARKLE`, `FIREWORKS` | انیمیشن برد |
-| **Lose** | `FADE_TO_RED`, `DESCENDING_CURTAIN`, `CRUMBLE`, `PULSE_RED` | انیمیشن باخت |
-| **Standby** | `BREATHING`, `CORNER_PULSE`, `WAVE_BORDER`, `RANDOM_TWINKLE` | حالت انتظار بی‌نهایت تا cancel |
+| **Countdown** | `playCountdown()` | 3→2→1 with digit rendering or full board color + green blink |
+| **Win** | `RADIAL_BURST`, `RAINBOW_SWEEP`, `SPARKLE`, `FIREWORKS` | Victory animation |
+| **Lose** | `FADE_TO_RED`, `DESCENDING_CURTAIN`, `CRUMBLE`, `PULSE_RED` | Defeat animation |
+| **Standby** | `BREATHING`, `CORNER_PULSE`, `WAVE_BORDER`, `RANDOM_TWINKLE` | Idle infinite until cancelled |
 
-### استفاده
+### Usage
 
 ```java
-// Countdown قبل از شروع
+// Countdown before start
 ctx.animations().playCountdown(700).join();
 
 // Win
@@ -314,7 +317,7 @@ ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.RADIAL_BURST)
 ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.FADE_TO_RED)
     .thenRun(() -> lightCurrentTile(ctx));
 
-// Standby 2 ثانیه
+// Standby 2 seconds
 try {
     ctx.animations().playStandbyAnimation(AnimationSystem.StandbyAnimationType.BREATHING)
         .get(2, TimeUnit.SECONDS);
@@ -323,69 +326,69 @@ try {
 }
 ```
 
-**پیاده‌سازی فنی:** تمام انیمیشن‌ها روی یک `SingleThreadExecutor` اجرا می‌شوند، با `AtomicLong generation` برای cooperative cancellation. هر انیمیشن جدید انیمیشن قبلی را کنسل می‌کند. `CompletableFuture` برمی‌گرداند که می‌توان chain کرد.
+**Technical implementation:** All animations run on a `SingleThreadExecutor`, with `AtomicLong generation` for cooperative cancellation. Each new animation cancels previous one. Returns `CompletableFuture` that can be chained.
 
-**مستندات کامل:** بخش AnimationSystem در [tileboard-game-engine/README.md](tileboard-game-engine/README.md) و بخش انیمیشن‌ها در [tileboard-app/README.md](tileboard-app/README.md)
+**Full docs:** AnimationSystem section in [tileboard-game-engine/README.md](tileboard-game-engine/README.md) and animations section in [tileboard-app/README.md](tileboard-app/README.md)
 
 ---
 
 ## Concurrency
 
-این پلتفرم به شدت concurrent است و تمام بخش‌های حساس thread-safe هستند:
+This platform is highly concurrent and all sensitive sections are thread-safe:
 
-| بخش | تکنیک | توضیح |
+| Section | Technique | Description |
 |-----|--------|-------|
-| `DefaultFrameCodec.decode` | `synchronized` + `ByteArrayOutputStream` | buffer stateful، resync logic |
-| `TileGatewayClient` | `CopyOnWriteArrayList` + `writeLock` + `callbackExecutor` | listener ها COWAL، write ها synchronized، callback روی daemon thread |
-| `JSerialCommTransport.setDataListener` | `synchronized` | جلوگیری از leak listener |
-| `GameEngineImpl` | `ConcurrentHashMap` + `AtomicReference` + `CAS` + `ScheduledExecutor` | exclusiveSessionId با compareAndSet، reaper با TTL |
-| `SessionLifecycle` | `AtomicReference` + CAS loop | finish دقیقا یک بار |
-| `BoardChannel` | `ReentrantLock` + `gatewayWriteLock` + coalescing | stateLock برای buffer، gatewayWriteLock برای سیم، snapshot دوباره برای coalescing |
-| `GameState` | `synchronized` methods + `HashMap` | کیف thread-safe |
-| `ScoreSystem` | `ConcurrentHashMap` + `AtomicInteger` | add با CAS |
-| `GameTimer` | `volatile` + `AtomicReference` | visibility بدون lock، callback فقط یک بار |
-| `AnimationSystem` | `AtomicLong generation` + `SingleThreadExecutor` + `CompletableFuture` | cooperative cancellation |
-| `GameEventBusImpl` | `CopyOnWriteArrayList` + `ArrayDeque` + `ReentrantLock` + `Semaphore` + `AtomicLong` | دو سیاست BLOCK و DROP_OLDEST، Deque برای drop قدیمی‌ترین |
-| `DefaultSerialConnectionManager` | `synchronized` + `EnumMap` + rollback | assign/connect/disconnect synchronized، rollback برای leak |
-| `InMemoryDeviceConfigurationService` | `AtomicReference` | thread-safe بدون synchronized |
-| `GameEngineManager` | `volatile` + `synchronized` + null-before-close | engine volatile، null قبل از close |
+| `DefaultFrameCodec.decode` | `synchronized` + `ByteArrayOutputStream` | Stateful buffer, resync logic |
+| `TileGatewayClient` | `CopyOnWriteArrayList` + `writeLock` + `callbackExecutor` | Listeners COWAL, writes synchronized, callback on daemon thread |
+| `JSerialCommTransport.setDataListener` | `synchronized` | Prevents listener leak |
+| `GameEngineImpl` | `ConcurrentHashMap` + `AtomicReference` + `CAS` + `ScheduledExecutor` | exclusiveSessionId with compareAndSet, reaper with TTL |
+| `SessionLifecycle` | `AtomicReference` + CAS loop | Finish exactly once |
+| `BoardChannel` | `ReentrantLock` + `gatewayWriteLock` + coalescing | stateLock for buffer, gatewayWriteLock for wire, re-read snapshot for coalescing |
+| `GameState` | `synchronized` methods + `HashMap` | Thread-safe bag |
+| `ScoreSystem` | `ConcurrentHashMap` + `AtomicInteger` | Add with CAS |
+| `GameTimer` | `volatile` + `AtomicReference` | Visibility without lock, callback only once |
+| `AnimationSystem` | `AtomicLong generation` + `SingleThreadExecutor` + `CompletableFuture` | Cooperative cancellation |
+| `GameEventBusImpl` | `CopyOnWriteArrayList` + `ArrayDeque` + `ReentrantLock` + `Semaphore` + `AtomicLong` | Two policies BLOCK and DROP_OLDEST, Deque for dropping oldest |
+| `DefaultSerialConnectionManager` | `synchronized` + `EnumMap` + rollback | assign/connect/disconnect synchronized, rollback for leak prevention |
+| `InMemoryDeviceConfigurationService` | `AtomicReference` | Thread-safe without synchronized |
+| `GameEngineManager` | `volatile` + `synchronized` + null-before-close | Engine volatile, null before close |
 
-**مستندات کامل برای هر کدام:** در README هر ماژول بخش "بررسی کدهای پیچیده" را ببینید.
+**Full docs for each:** See "Deep Dive" section in each module's README.
 
 ---
 
-## تست و بیلد
+## Tests and Build
 
-### بیلد کل پلتفرم
+### Build Whole Platform
 
 ```bash
 mvn clean install -DskipTests
 ```
 
-### تست
+### Tests
 
 ```bash
 mvn test
-# یا برای یک ماژول:
+# or for one module:
 mvn test -pl tileboard-serial-protocol
 mvn test -pl tileboard-game-engine
 mvn test -pl tileboard-app
 ```
 
-### تست با سخت‌افزار
+### Hardware Tests
 
 ```bash
 mvn verify -P hardware-tests -pl tileboard-serial-protocol
 ```
 
-### اجرای بک‌اند
+### Run Backend
 
 ```bash
 cd tileboard-app
 mvn spring-boot:run
 ```
 
-### پکیج
+### Package
 
 ```bash
 mvn clean package -DskipTests
@@ -394,16 +397,16 @@ java -jar tileboard-app/target/tileboard-app-1.0.0.jar
 
 ---
 
-## ساختار ریپازیتوری
+## Repository Structure
 
 ```
 tileboard-platform/
 ├── pom.xml (parent, packaging pom, modules: serial-protocol, game-engine, app)
-├── README.md (این فایل)
+├── README.md (this file)
 ├── .gitignore
 ├── tileboard-serial-protocol/
 │   ├── pom.xml
-│   ├── README.md (مستندات جامع پروتکل)
+│   ├── README.md (comprehensive protocol docs)
 │   └── src/main/java/com/tileboard/serial/
 │       ├── board/ (Board, Position, TileCodec)
 │       ├── protocol/ (Frame, DefaultFrameCodec, ProtocolConstants)
@@ -413,7 +416,7 @@ tileboard-platform/
 │       └── gateway/handshake/ (HandshakeCoordinator)
 ├── tileboard-game-engine/
 │   ├── pom.xml
-│   ├── README.md (مستندات جامع موتور)
+│   ├── README.md (comprehensive engine docs)
 │   └── src/main/java/com/tileboard/engine/
 │       ├── core/ (Game, GameEngine, GameSession, BoardChannel)
 │       ├── feature/ (ScoreSystem, AnimationSystem, GameTimer, ...)
@@ -424,7 +427,7 @@ tileboard-platform/
 │       └── spring/ (AutoConfiguration, GameEngineManager)
 └── tileboard-app/
     ├── pom.xml
-    ├── README.md (مستندات جامع اپ + آموزش بازی)
+    ├── README.md (comprehensive app docs + game tutorial)
     └── src/main/java/com/tileboard/app/
         ├── TileboardApplication.java
         ├── config/ (TileboardProperties, DeviceConfiguration)
@@ -432,71 +435,71 @@ tileboard-platform/
         ├── dto/ (Request/Response DTOs)
         ├── service/ (DeviceConfig, SerialConnection, Streaming)
         ├── exception/ (ApiException, GlobalExceptionHandler)
-        └── game/ (SequentialTouchGame, GameBeansConfig) ← جدید
+        └── game/ (SequentialTouchGame, GameBeansConfig) <- new
 ```
 
 ---
 
-## نقشه راه
+## Roadmap
 
-- [x] پروتکل سریال transport-agnostic
-- [x] موتور بازی با feature های غنی
-- [x] بک‌اند Spring Boot با REST و SSE
-- [x] انیمیشن‌های win/lose/standby/countdown
-- [x] بازی نمونه SequentialTouchGame
-- [ ] فرانت‌اند وب (React/Vue) برای نمایش برد و کنترل بازی
-- [ ] Persistence برای DeviceConfiguration (DB)
-- [ ] احراز هویت و امنیت (Spring Security)
-- [ ] بازی‌های بیشتر (Color Match, Memory, Reaction, ...)
-- [ ] پشتیبانی از چند برد همزمان
-- [ ] متریک‌های Micrometer + Prometheus
-- [ ] Docker و Kubernetes deployment
-
----
-
-## مشارکت
-
-1. Fork کن
-2. Branch جدید بساز (`git checkout -b feature/amazing-game`)
-3. Commit کن (`git commit -m 'Add amazing game'`)
-4. Push کن (`git push origin feature/amazing-game`)
-5. Pull Request بساز
+- [x] Transport-agnostic serial protocol
+- [x] Production-ready game engine with rich features
+- [x] Spring Boot backend with REST and SSE
+- [x] win/lose/standby/countdown animations
+- [x] Sample game SequentialTouchGame
+- [ ] Web frontend (React/Vue) for board display and game control
+- [ ] Persistence for DeviceConfiguration (DB)
+- [ ] Authentication and security (Spring Security)
+- [ ] More games (Color Match, Memory, Reaction, ...)
+- [ ] Multi-board support
+- [ ] Micrometer metrics + Prometheus
+- [ ] Docker and Kubernetes deployment
 
 ---
 
-## لایسنس
+## Contributing
 
-داخلی - تیم Tileboard Platform
-
----
-
-## نویسندگان
-
-تیم Tileboard Platform
+1. Fork it
+2. Create new branch (`git checkout -b feature/amazing-game`)
+3. Commit (`git commit -m 'Add amazing game'`)
+4. Push (`git push origin feature/amazing-game`)
+5. Create Pull Request
 
 ---
 
-## سوالات متداول
+## License
 
-**س: آیا بدون سخت‌افزار می‌توانم تست کنم؟**
-
-ج: بله، تمام تست‌های unit بدون سخت‌افزار کار می‌کنند. برای تست integration بدون برد، می‌توانی یک Mock Transport بسازی (مثال در README پروتکل).
-
-**س: چطور بازی جدید بسازم؟**
-
-ج: بخش "آموزش جامع ساخت بازی" در [tileboard-app/README.md](tileboard-app/README.md) را ببین. خلاصه: یک کلاس که `Game` را implement می‌کند بساز، به عنوان `@Bean` ثبت کن، تمام.
-
-**س: انیمیشن‌ها چطور کار می‌کنند؟**
-
-ج: بخش AnimationSystem در [tileboard-game-engine/README.md](tileboard-game-engine/README.md) و بخش انیمیشن‌ها در [tileboard-app/README.md](tileboard-app/README.md)
-
-**س: چطور concurrency را بفهمم؟**
-
-ج: هر README بخش "بررسی کدهای پیچیده" دارد که تمام الگوهای concurrency را با کد و توضیحات کامل شرح می‌دهد.
+Internal - Tileboard Platform Team
 
 ---
 
-**نسخه:** 1.0.0  
-**جاوا:** 17+  
+## Authors
+
+Tileboard Platform Team
+
+---
+
+## FAQ
+
+**Q: Can I test without hardware?**
+
+A: Yes, all unit tests work without hardware. For integration testing without board, you can build a Mock Transport (example in protocol README).
+
+**Q: How to create a new game?**
+
+A: See "Comprehensive Game Creation Tutorial" in [tileboard-app/README.md](tileboard-app/README.md). Summary: Create a class implementing `Game`, register as `@Bean`, done.
+
+**Q: How do animations work?**
+
+A: See AnimationSystem section in [tileboard-game-engine/README.md](tileboard-game-engine/README.md) and animations section in [tileboard-app/README.md](tileboard-app/README.md)
+
+**Q: How to understand concurrency?**
+
+A: Each README has a "Deep Dive" section explaining all concurrency patterns with full code and explanations.
+
+---
+
+**Version:** 1.0.0  
+**Java:** 17+  
 **Spring Boot:** 3.3.4  
-**تاریخ:** 2026-09-22
+**Date:** 2026-09-22
