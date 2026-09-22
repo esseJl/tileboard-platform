@@ -79,7 +79,7 @@ public class SequentialTouchGame implements Game {
         this.descriptor = GameDescriptor.builder("sequential-touch", "Sequential Touch Challenge")
                 .category("TUTORIAL")
                 .description("Tiles light up sequentially; touch it to score and advance. Includes countdown, standby, win and lose animations.")
-                .boardSize(8, 8) // default 8x8, changeable as needed
+                .boardSize(3, 3) // default 3x3, changeable as needed
                 .players(1, 1)
                 .build();
     }

@@ -42,8 +42,8 @@ public class GameBeansConfig {
     @Bean
     public Game sequentialTouchGame() {
         // Try to read current board size from config
-        int width = 8;
-        int height = 8;
+        int width = 3;
+        int height = 3;
 
         var current = deviceConfigService.current();
         if (current.isPresent()) {

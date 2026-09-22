@@ -12,6 +12,8 @@ import com.tileboard.engine.model.TileEvent;
 import com.tileboard.engine.codec.ColorTileCodec;
 import com.tileboard.serial.board.Board;
 import com.tileboard.serial.gateway.TileGatewayClient;
+import com.tileboard.serial.protocol.Command;
+import com.tileboard.serial.protocol.CommandType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,6 +45,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     private final SessionLifecycle lifecycle = new SessionLifecycle();
     private final Consumer<GameSessionImpl> onTerminated;
     private volatile GameResult result;
+    private TileGatewayClient gateway;
 
     public GameSessionImpl(String sessionId, Game game, List<Player> players,
                            TileGatewayClient gateway, Duration tickInterval, GameEventBus sharedEventBus,
@@ -52,7 +55,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         this.tickThreadName = "tileboard-tick-" + sessionId;
         this.game = Objects.requireNonNull(game, "game");
         this.players = List.copyOf(Objects.requireNonNull(players, "players"));
-        Objects.requireNonNull(gateway, "gateway");
+        this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.eventBus = Objects.requireNonNull(sharedEventBus, "sharedEventBus");
         this.onTerminated = onTerminated;
         int w = game.descriptor().requiredWidth();
@@ -74,6 +77,12 @@ public final class GameSessionImpl implements GameSession, GameContext {
         if (!lifecycle.start()) throw new GameSessionException("Session " + sessionId + " already started");
         features.timer().start();
         try {
+            try {
+                gateway.send(Command.START, CommandType.SET);
+                log.info("sent START to hardware for session: {}",sessionId);
+            }catch (RuntimeException e){
+                log.warn("failed to sent START command for session: {} (gateway may be disconnected)",sessionId);
+            }
             game.onStart(this);
             eventBus.publish(GameEvent.of(GameEventType.SESSION_STARTED, sessionId, gameId(), snapshotForSse()));
             log.info("Session {} started for game '{}'", sessionId, gameId());
@@ -312,6 +321,13 @@ public final class GameSessionImpl implements GameSession, GameContext {
             fillBoard(TileColor.OFF);
         } catch (RuntimeException e) {
             log.warn("Could not clear board on session end (gateway may be disconnected): {}", e.getMessage());
+        }
+
+        try {
+            gateway.send(Command.STOP,CommandType.SET);
+            log.info("sent STOP to hardware for session: {}",sessionId);
+        }catch (RuntimeException e){
+            log.warn("Could not send STOP on session end (gateway may be disconnected)");
         }
 
         // Critical, reliable, synchronous cleanup - MUST NOT depend on the best-effort event bus.

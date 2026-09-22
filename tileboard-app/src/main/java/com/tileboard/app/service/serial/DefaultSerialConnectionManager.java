@@ -1,5 +1,6 @@
 package com.tileboard.app.service.serial;
 
+import com.tileboard.app.config.DeviceConfiguration;
 import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.exception.PortsNotAssignedException;
 import com.tileboard.app.exception.SerialPortOperationException;
@@ -10,6 +11,8 @@ import com.tileboard.engine.spring.GatewayDisconnectedEvent;
 import com.tileboard.serial.gateway.TileGatewayClient;
 import com.tileboard.serial.gateway.handshake.DeviceAddress;
 import com.tileboard.serial.gateway.handshake.SequentialIdSequenceValidator;
+import com.tileboard.serial.protocol.Command;
+import com.tileboard.serial.protocol.CommandType;
 import com.tileboard.serial.transport.Parity;
 import com.tileboard.serial.transport.SerialPortConfig;
 import com.tileboard.serial.transport.SerialPortInfo;
@@ -102,6 +105,10 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
             return;
         }
 
+        if (deviceConfigurationService.current().isEmpty()){
+            log.info("Device not Configured - can not connect.");
+        }
+
         String outPort = assignedPorts.get(PortRole.OUT);
         String inPort = assignedPorts.get(PortRole.IN);
         if (outPort == null) {
@@ -173,18 +180,20 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
         openTransports.putAll(openedThisAttempt);
         this.client = newClient;
-        if (deviceConfigurationService.current().isPresent()){
+
             eventPublisher.publishEvent(
                     new GatewayConnectedEvent(newClient,
                             deviceConfigurationService.current().get().width(),
                             deviceConfigurationService.current().get().height()));
             newClient.start();
-            log.info("Tile board gateway connected (in={}, out={})", inPort, outPort);
-        }else {
-            log.info("Device Does not configured");
-            throw new DeviceNotConfiguredException();
+        log.info("Tile board gateway connected (input={}, output={})", inPort, outPort);
+        try {
+            DeviceConfiguration device = deviceConfigurationService.current().get();
+            newClient.send(Command.INTRODUCTION, CommandType.SET);
+            log.info("sent INTRODUCTION to hardware ({}X{} board)",device.width(),device.height());
+        }catch (RuntimeException e){
+            log.warn("failed to send INTRODUCTION command (gateway may have closed)");
         }
-
 
     }
 
@@ -228,6 +237,12 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
             return;
         }
         try {
+            try {
+                client.send(Command.STOP,CommandType.SET);
+                log.info("sent STOP to hardware on disconnected.");
+            }catch (RuntimeException e){
+                log.warn("Failed to sned STOP on disconnected: {}",e.getMessage());
+            }
             client.close();
         } finally {
             // Always drop our reference and tell the rest of the app the
