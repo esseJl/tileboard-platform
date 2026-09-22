@@ -10,14 +10,19 @@ import com.tileboard.engine.exception.GameSessionException;
 import com.tileboard.serial.exception.BoardException;
 import com.tileboard.serial.exception.ProtocolException;
 import com.tileboard.serial.exception.SerialTransportException;
+import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
@@ -27,6 +32,7 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * visible server-side even though the client only gets a clean JSON body.
  */
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
@@ -37,17 +43,20 @@ public class GlobalExceptionHandler {
         return ApiResponses.error(exception.getMessage(),exception.status());
     }
 
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    public void handleAsyncTimeout(AsyncRequestTimeoutException ex) {
+        log.debug("Async request timed out: {}", ex.getMessage());
+    }
+
+    @ExceptionHandler(AsyncRequestNotUsableException.class)
+    public void handleAsyncRequestNotUsable(AsyncRequestNotUsableException ex) {
+        log.debug("Client's async connection is no longer usable (client likely disconnected): {}",
+                ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse> handleValidationException(MethodArgumentNotValidException exception) {
         return ApiResponses.badRequest(exception.getMessage());
-  /*      ProblemDetail problem = ProblemDetail.forStatus(HttpStatus.BAD_REQUEST);
-        problem.setTitle("Validation failed");
-        problem.setProperty("errors", exception.getBindingResult().getFieldErrors().stream()
-                .collect(java.util.stream.Collectors.toMap(
-                        org.springframework.validation.FieldError::getField,
-                        fieldError -> fieldError.getDefaultMessage() == null ? "invalid" : fieldError.getDefaultMessage(),
-                        (a, b) -> a)));
-        return problem;*/
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -106,9 +115,16 @@ public class GlobalExceptionHandler {
     return ApiResponses.badGateway(exception.getMessage());
     }
 
+
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse> handleUnexpectedException(Exception exception) {
-        log.error("Unhandled exception", exception);
-    return ApiResponses.internalServerError(exception.getMessage());
+    public ResponseEntity<ApiResponse> handleUnexpectedException(Exception ex, HttpServletResponse response) {
+        if (response.isCommitted()) {
+            log.warn("Unhandled exception occurred but response is already committed "
+                            + "(likely an SSE/streaming response); cannot write error body. Exception: {}",
+                    ex.toString());
+            return null;
+        }
+        log.error("Unhandled exception", ex);
+        return ResponseEntity.internalServerError().body(ApiResponse.error(ex.getMessage()));
     }
 }

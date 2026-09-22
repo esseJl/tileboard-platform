@@ -24,13 +24,11 @@ public final class GameEventSseEmitter {
     private static final Logger log = LoggerFactory.getLogger(GameEventSseEmitter.class);
     private static final int PER_CLIENT_QUEUE_CAPACITY = 32;
     private static final long HEARTBEAT_SECONDS = 15;
-
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
-    private GameEventSseEmitter() {
-    }
+    private GameEventSseEmitter() {}
 
     public static SseEmitter forSession(String sessionId, GameEventBus bus, ScheduledExecutorService heartbeats) {
         return build(bus, null, sessionId, heartbeats);
@@ -50,7 +48,6 @@ public final class GameEventSseEmitter {
         AtomicReference<Runnable> unsubscribeRef = new AtomicReference<>();
         AtomicReference<ScheduledFuture<?>> heartbeatRef = new AtomicReference<>();
 
-        // --- cleanup فقط منابع داخلی ما را آزاد می‌کند (idempotent) ---
         Runnable releaseResources = () -> {
             Runnable unsub = unsubscribeRef.getAndSet(null);
             if (unsub != null) unsub.run();
@@ -58,21 +55,15 @@ public final class GameEventSseEmitter {
             if (hb != null) hb.cancel(false);
         };
 
-        Runnable onCompletionHandler = releaseResources; // completion یعنی از قبل کامل شده، فقط cleanup کافیست
-
-        Runnable onTimeoutHandler = () -> {
+        emitter.onCompletion(releaseResources);
+        emitter.onTimeout(() -> {
             releaseResources.run();
             safeComplete(emitter);
-        };
-
-        Consumer<Throwable> onErrorHandler = ex -> {
+        });
+        emitter.onError(ex -> {
             releaseResources.run();
-            safeCompleteWithError(emitter, (Exception) ex);
-        };
-
-        emitter.onCompletion(onCompletionHandler);
-        emitter.onTimeout(onTimeoutHandler);
-        emitter.onError(onErrorHandler::accept);
+            safeCompleteWithError(emitter, ex);
+        });
 
         SubscriptionOptions options = SubscriptionOptions.defaults(PER_CLIENT_QUEUE_CAPACITY)
                 .withPolicy(EventOverflowPolicy.DROP_OLDEST);
@@ -92,19 +83,24 @@ public final class GameEventSseEmitter {
             SseGameEvent dto = toDto(event);
             String json = MAPPER.writeValueAsString(dto);
             emitter.send(SseEmitter.event().id(event.id()).name(dto.type().name()).data(json));
-        } catch (IOException | IllegalStateException e) {
-            teardown.run();
-            safeCompleteWithError(emitter, e);
+        } catch (Exception e) {
+            handleWriteFailure(emitter, teardown, e);
         }
     }
 
     private static void sendComment(SseEmitter emitter, Runnable teardown) {
         try {
             emitter.send(SseEmitter.event().comment("ping"));
-        } catch (IOException | IllegalStateException e) {
-            teardown.run();
-            safeCompleteWithError(emitter, e);
+        } catch (Exception e) {
+            handleWriteFailure(emitter, teardown, e);
         }
+    }
+
+    private static void handleWriteFailure(SseEmitter emitter, Runnable teardown, Exception e) {
+        log.debug("SSE client appears to be disconnected ({}); tearing down subscription",
+                e.toString());
+        teardown.run();
+        safeCompleteWithError(emitter, e);
     }
 
     private static SseGameEvent toDto(GameEvent event) {
@@ -118,17 +114,19 @@ public final class GameEventSseEmitter {
         return new SseGameEvent(event.sessionId(), event.gameId(), sseType, event.payload(), event.occurredAt());
     }
 
-    private static void safeCompleteWithError(SseEmitter emitter, Exception e) {
-        try {
-            emitter.completeWithError(e);
-        } catch (IllegalStateException ignored) {
-            // already completed
-        }
-    }
-
     private static void safeComplete(SseEmitter emitter) {
         try {
             emitter.complete();
-        } catch (IllegalStateException alreadyCompleted) {}
+        } catch (IllegalStateException alreadyCompleted) {
+            // it`s safe
+        }
+    }
+
+    private static void safeCompleteWithError(SseEmitter emitter, Throwable ex) {
+        try {
+            emitter.completeWithError(ex);
+        } catch (IllegalStateException alreadyCompleted) {
+            // it`s safe
+        }
     }
 }
