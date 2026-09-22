@@ -163,7 +163,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
     @Override
     public void publishBoard(Board<TileColor> board) {
         boardChannel.publish(board);
-        eventBus.publish(GameEvent.of(GameEventType.BOARD_UPDATED, sessionId, gameId(), snapshotForSse()));
+        publishGameEvent(GameEventType.BOARD_UPDATED);
     }
 
     /**
@@ -180,12 +180,18 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
     @Override
     public void setTile(int row, int col, TileColor color) {
+        // Previously this only pushed to hardware via boardChannel and never told the
+        // event bus - the documented/typical way games recolor a single tile (e.g. from
+        // onTileEvent) therefore never produced a BOARD_UPDATED SSE event, even though
+        // publishBoard(Board) and fillBoard(...) were meant to behave the same way.
         boardChannel.setTile(row, col, color);
+        publishGameEvent(GameEventType.BOARD_UPDATED);
     }
 
     @Override
     public void fillBoard(TileColor color) {
         boardChannel.fill(color);
+        publishGameEvent(GameEventType.BOARD_UPDATED);
     }
 
     @Override
