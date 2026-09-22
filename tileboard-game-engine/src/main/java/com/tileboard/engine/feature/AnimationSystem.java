@@ -189,7 +189,7 @@ public final class AnimationSystem {
     }
 
     private void playSimpleCountdown(RunToken token, long digitDurationMs) {
-        TileColor[] colors = {TileColor.RED, TileColor.YELLOW, TileColor.GREEN};
+        TileColor[] colors = {TileColor.RED, TileColor.BLUE, TileColor.GREEN};
         for (int i = 3; i > 0; i--) {
             token.show(new Board<>(width, height, colors[3 - i]));
             if (!token.sleep(digitDurationMs)) return;

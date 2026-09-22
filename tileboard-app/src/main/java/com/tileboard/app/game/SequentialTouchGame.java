@@ -124,8 +124,8 @@ public class SequentialTouchGame implements Game {
         // playCountdown runs inside a SingleThreadExecutor and does not block until we join
         // We join so player gets ready
         try {
+            ctx.animations().playCountdown(1000).join();
             log.info("[{}] Playing COUNTDOWN...", ctx.sessionId());
-            ctx.animations().playCountdown(700).join(); // 700ms per digit
         } catch (Exception e) {
             log.warn("[{}] Countdown interrupted", ctx.sessionId(), e);
         }
