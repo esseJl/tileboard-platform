@@ -2,7 +2,6 @@ package com.tileboard.engine.core;
 
 import com.tileboard.engine.codec.EngineFrameRouter;
 import com.tileboard.engine.event.GameEventBus;
-import com.tileboard.engine.event.GameEventType;
 import com.tileboard.engine.exception.GameSessionException;
 import com.tileboard.engine.model.Player;
 import com.tileboard.serial.gateway.TileGatewayClient;
@@ -73,13 +72,16 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     private static void validatePlayers(GameDescriptor descriptor, List<Player> players) {
         int count = players.size();
         if (count < descriptor.minPlayers() || count > descriptor.maxPlayers()) {
-            throw new GameSessionException("Game '%s' requires %d..%d players, but got %d"
-                    .formatted(descriptor.gameId(), descriptor.minPlayers(), descriptor.maxPlayers(), count));
+            throw new GameSessionException(
+                    "Game '%s' requires %d..%d players, but got %d"
+                            .formatted(descriptor.gameId(), descriptor.minPlayers(), descriptor.maxPlayers(), count));
         }
         Set<String> ids = new HashSet<>();
         for (Player player : players) {
             Objects.requireNonNull(player, "players contains null");
-            if (!ids.add(player.id())) throw new GameSessionException("Duplicate player id: " + player.id());
+            if (!ids.add(player.id())) {
+                throw new GameSessionException("Duplicate player id: " + player.id());
+            }
         }
     }
 

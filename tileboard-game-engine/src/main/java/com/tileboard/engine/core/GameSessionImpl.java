@@ -54,7 +54,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         this.players = List.copyOf(Objects.requireNonNull(players, "players"));
         Objects.requireNonNull(gateway, "gateway");
         this.eventBus = Objects.requireNonNull(sharedEventBus, "sharedEventBus");
-        this.onTerminated = onTerminated; // nullable: engine always supplies one, tests may pass null
+        this.onTerminated = onTerminated;
         int w = game.descriptor().requiredWidth();
         int h = game.descriptor().requiredHeight();
         this.boardChannel = new BoardChannel(w, h, gateway, ColorTileCodec.instance());
@@ -299,8 +299,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         cancelTick();
         features.closeAll();
 
-        GameResult finalResult = new GameResult(
-                sessionId, gameId(), finalStatus, winners,
+        GameResult finalResult = new GameResult(sessionId, gameId(), finalStatus, winners,
                 features.scores().allScores(), features.timer().elapsed(), Instant.now());
         this.result = finalResult;
 
