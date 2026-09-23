@@ -16,7 +16,8 @@ package com.tileboard.engine.exception;
 public final class EngineNotReadyException extends GameEngineException {
 
     public EngineNotReadyException() {
-        super("The game engine is not ready: no serial gateway is currently connected. "
-                + "Assign and connect the serial ports first.");
+        super("engine.not_ready", null,
+                "The game engine is not ready: no serial gateway is currently connected. "
+                        + "Assign and connect the serial ports first.");
     }
 }

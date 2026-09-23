@@ -82,7 +82,8 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
     private static void validatePlayers(GameDescriptor descriptor, List<Player> players) {
         int count = players.size();
         if (count < descriptor.minPlayers() || count > descriptor.maxPlayers()) {
-            throw new GameSessionException(
+            throw new GameSessionException("game.player_count_out_of_range",
+                    new Object[] { descriptor.gameId(), descriptor.minPlayers(), descriptor.maxPlayers(), count },
                     "Game '%s' requires %d..%d players, but got %d"
                             .formatted(descriptor.gameId(), descriptor.minPlayers(), descriptor.maxPlayers(), count));
         }
@@ -90,14 +91,17 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
         for (Player player : players) {
             Objects.requireNonNull(player, "players contains null");
             if (!ids.add(player.id())) {
-                throw new GameSessionException("Duplicate player id: " + player.id());
+                throw new GameSessionException("game.duplicate_player_id", new Object[] { player.id() },
+                        "Duplicate player id: " + player.id());
             }
         }
     }
 
     private void validateBoardSize(GameDescriptor descriptor) {
         if (descriptor.requiredWidth() != boardWidth || descriptor.requiredHeight() != boardHeight) {
-            throw new GameSessionException(
+            throw new GameSessionException("game.board_size_mismatch",
+                    new Object[] { descriptor.gameId(), descriptor.requiredWidth(), descriptor.requiredHeight(),
+                            boardWidth, boardHeight },
                     "Game '%s' requires a %dx%d board, but the connected gateway reports %dx%d"
                             .formatted(descriptor.gameId(), descriptor.requiredWidth(), descriptor.requiredHeight(),
                                     boardWidth, boardHeight));
@@ -115,8 +119,10 @@ public final class GameEngineImpl implements GameEngine, AutoCloseable {
 
         String sessionId = UUID.randomUUID().toString();
         if (!exclusiveSessionId.compareAndSet(null, sessionId)) {
-            throw new GameSessionException("Cannot start game '%s': board is already owned by session %s"
-                    .formatted(gameId, exclusiveSessionId.get()));
+            throw new GameSessionException("game.board_already_owned",
+                    new Object[] { gameId, exclusiveSessionId.get() },
+                    "Cannot start game '%s': board is already owned by session %s"
+                            .formatted(gameId, exclusiveSessionId.get()));
         }
 
         GameSessionImpl session;

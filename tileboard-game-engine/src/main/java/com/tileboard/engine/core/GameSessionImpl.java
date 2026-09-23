@@ -89,7 +89,10 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
 
     void start() {
-        if (!lifecycle.start()) throw new GameSessionException("Session " + sessionId + " already started");
+        if (!lifecycle.start()) {
+            throw new GameSessionException("game.session_already_started", new Object[] { sessionId },
+                    "Session " + sessionId + " already started");
+        }
         features.timer().start();
         try {
             try {
@@ -104,7 +107,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
         } catch (RuntimeException e) {
             log.error("onStart threw in session {}", sessionId, e);
             forceStop();
-            throw new GameSessionException(
+            throw new GameSessionException("game.start_failed", new Object[] { gameId(), sessionId },
                     "Game '" + gameId() + "' failed to start (session " + sessionId + ")", e);
         }
     }
