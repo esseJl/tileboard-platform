@@ -177,17 +177,17 @@ public class SequentialTouchGame implements Game {
 
         Position expected = positions.get(currentIndex);
         Position touched = null;
-        if (event.type()== TileEventType.TOUCH){
+        if (event.type()== TileEventType.TOUCH || event.type()==TileEventType.HOLD){
             touched = event.position();
         }
 
 
         log.debug("[{}] Touch at {} - expected {}", ctx.sessionId(), touched, expected);
 
-        if (Objects.nonNull(touched) &&touched.equals(expected)) {
+        if (Objects.nonNull(touched) && touched.equals(expected)) {
             // Correct touch
             handleCorrectTouch(ctx, currentIndex, positions);
-        } else {
+        } else if (Objects.nonNull(touched)){
             // Wrong touch: short lose animation then back
             handleWrongTouch(ctx);
         }
