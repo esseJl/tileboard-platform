@@ -1,12 +1,10 @@
 package com.tileboard.app.game;
 
-import com.tileboard.engine.core.Game;
-import com.tileboard.engine.core.GameContext;
-import com.tileboard.engine.core.GameDescriptor;
-import com.tileboard.engine.core.GameResult;
+import com.tileboard.engine.core.*;
 import com.tileboard.engine.feature.AnimationSystem;
 import com.tileboard.engine.model.TileColor;
 import com.tileboard.engine.model.TileEvent;
+import com.tileboard.engine.model.TileEventType;
 import com.tileboard.serial.board.Position;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,7 +12,9 @@ import org.slf4j.LoggerFactory;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Sample tutorial game: Sequential Tile Touch
@@ -42,9 +42,9 @@ import java.util.concurrent.TimeUnit;
  * is stored inside {@link GameContext#state()} which is itself synchronized (HashMap with synchronized methods).
  * </p>
  * <p>
- * Board access goes through {@link com.tileboard.engine.core.BoardChannel} which:
+ * Board access goes through {@link BoardChannel} which:
  * <ul>
- *   <li>Uses {@link java.util.concurrent.locks.ReentrantLock} to protect internal buffer</li>
+ *   <li>Uses {@link ReentrantLock} to protect internal buffer</li>
  *   <li>Uses a separate Object called gatewayWriteLock to serialize writes on the wire</li>
  *   <li>Even if multiple threads call setTile concurrently, the latest consistent snapshot is sent (coalescing semantics)</li>
  * </ul>
@@ -176,11 +176,15 @@ public class SequentialTouchGame implements Game {
         }
 
         Position expected = positions.get(currentIndex);
-        Position touched = event.position();
+        Position touched = null;
+        if (event.type()== TileEventType.TOUCH){
+            touched = event.position();
+        }
+
 
         log.debug("[{}] Touch at {} - expected {}", ctx.sessionId(), touched, expected);
 
-        if (touched.equals(expected)) {
+        if (Objects.nonNull(touched) &&touched.equals(expected)) {
             // Correct touch
             handleCorrectTouch(ctx, currentIndex, positions);
         } else {
