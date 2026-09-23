@@ -6,7 +6,7 @@ import org.springframework.http.HttpStatus;
 public class GatewayNotConnectedException extends ApiException {
 
     public GatewayNotConnectedException() {
-        super(HttpStatus.CONFLICT, "gateway_not_connected",
+        super(HttpStatus.CONFLICT, "gateway.not_connected", null,
                 "No active serial connection to the tile board. Connect the ports first.");
     }
 }

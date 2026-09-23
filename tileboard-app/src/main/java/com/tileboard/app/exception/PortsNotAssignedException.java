@@ -6,7 +6,7 @@ import org.springframework.http.HttpStatus;
 public class PortsNotAssignedException extends ApiException {
 
     public PortsNotAssignedException() {
-        super(HttpStatus.CONFLICT, "ports_not_assigned",
+        super(HttpStatus.CONFLICT, "ports.not_assigned", null,
                 "At least the output port must be assigned before connecting.");
     }
 }

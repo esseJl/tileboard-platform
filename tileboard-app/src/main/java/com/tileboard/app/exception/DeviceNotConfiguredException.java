@@ -6,7 +6,7 @@ import org.springframework.http.HttpStatus;
 public class DeviceNotConfiguredException extends ApiException {
 
     public DeviceNotConfiguredException() {
-        super(HttpStatus.CONFLICT, "device_not_configured",
+        super(HttpStatus.CONFLICT, "device.not_configured", null,
                 "No device (board width/height) has been configured yet.");
     }
 }

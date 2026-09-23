@@ -58,8 +58,19 @@ public final class ApiResponses {
                 .body(ApiResponse.error(message));
     }
 
+    /** Localized {@code message} for the user plus the raw {@code debugMessage} for developers. */
+    public static  ResponseEntity<ApiResponse> error(String message, String debugMessage, HttpStatus status) {
+        return ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(message, debugMessage));
+    }
+
     public static  ResponseEntity<ApiResponse> badRequest(String message) {
         return error(message, HttpStatus.BAD_REQUEST);
+    }
+
+    public static  ResponseEntity<ApiResponse> badRequest(String message, String debugMessage) {
+        return error(message, debugMessage, HttpStatus.BAD_REQUEST);
     }
 
     public static  ResponseEntity<ApiResponse> unauthorized(String message) {
@@ -74,15 +85,31 @@ public final class ApiResponses {
         return error(message, HttpStatus.NOT_FOUND);
     }
 
+    public static  ResponseEntity<ApiResponse> notFound(String message, String debugMessage) {
+        return error(message, debugMessage, HttpStatus.NOT_FOUND);
+    }
+
     public static  ResponseEntity<ApiResponse> conflict(String message) {
         return error(message, HttpStatus.CONFLICT);
+    }
+
+    public static  ResponseEntity<ApiResponse> conflict(String message, String debugMessage) {
+        return error(message, debugMessage, HttpStatus.CONFLICT);
     }
 
     public static  ResponseEntity<ApiResponse> internalServerError(String message) {
         return error(message, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    public static  ResponseEntity<ApiResponse> internalServerError(String message, String debugMessage) {
+        return error(message, debugMessage, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
     public static ResponseEntity<ApiResponse> badGateway(String message) {
         return error(message,HttpStatus.BAD_GATEWAY);
+    }
+
+    public static ResponseEntity<ApiResponse> badGateway(String message, String debugMessage) {
+        return error(message, debugMessage, HttpStatus.BAD_GATEWAY);
     }
 }

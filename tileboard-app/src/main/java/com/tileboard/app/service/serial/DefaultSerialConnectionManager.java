@@ -227,7 +227,8 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         try {
             return portRegistry.open(portName, config);
         } catch (RuntimeException e) {
-            throw new SerialPortOperationException("Failed to open serial port '" + portName + "'", e);
+            throw new SerialPortOperationException("serial.port_operation_failed", new Object[] { portName },
+                    "Failed to open serial port '" + portName + "'", e);
         }
     }
 

@@ -6,6 +6,6 @@ import org.springframework.http.HttpStatus;
 public class NoActiveGameException extends ApiException {
 
     public NoActiveGameException() {
-        super(HttpStatus.CONFLICT, "no_active_game", "No game is currently running.");
+        super(HttpStatus.CONFLICT, "game.no_active", null, "No game is currently running.");
     }
 }
