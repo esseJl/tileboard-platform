@@ -13,14 +13,15 @@
 6. [SerialGatewayConfig - Hardware Abstraction](#serialgatewayconfig)
 7. [Services - Business Layer](#services)
 8. [Controllers - REST API](#controllers)
-9. [SSE Streaming - BoardStateBroadcaster](#sse-streaming)
+9. [SSE Streaming](#sse-streaming)
 10. [GameEngineManager - Spring and Engine Bridge](#gameenginemanager)
-11. [Error Handling - GlobalExceptionHandler](#error-handling)
+11. [Error Handling - GlobalExceptionHandler and i18n](#error-handling)
 12. [Step-by-Step Run and API Usage Tutorial](#step-by-step-tutorial)
 13. [Comprehensive Game Creation Tutorial - SequentialTouchGame Practical Example](#comprehensive-game-tutorial)
 14. [Using win/lose/standby/countdown Animations](#using-animations)
 15. [Deep Dive - Concurrency and Complex Logic](#deep-dive)
 16. [Tests and Execution](#tests-and-execution)
+17. [Full API Reference](#full-api-reference)
 
 ---
 
@@ -32,56 +33,59 @@
 │  HTTP REST + SSE                                                        │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Controllers (Spring MVC)                                               │
-│  ├─ DeviceController: POST /api/v1/devices/configure                    │
-│  ├─ SerialPortController: GET /api/v1/ports, POST /assign, /connect     │
-│  ├─ GameController: GET /api/v1/games, POST /sessions                   │
-│  └─ StreamController: GET /api/v1/stream/board, /api/v1/games/events    │
+│  ├─ DeviceController: GET/POST /api/v1/device                           │
+│  ├─ SerialPortController: GET /api/v1/ports, POST /{role}/assign,       │
+│  │                         GET /status, POST /connect, /disconnect      │
+│  ├─ GameController: GET /api/v1/games, /sessions CRUD                   │
+│  └─ StreamController: GET /api/v1/stream/board[/{sessionId}] (SSE)      │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Services                                                               │
 │  ├─ DeviceConfigurationService (AtomicReference)                        │
 │  │   └─ InMemoryDeviceConfigurationService                              │
 │  ├─ SerialConnectionManager (synchronized, EnumMap)                     │
 │  │   └─ DefaultSerialConnectionManager                                  │
-│  └─ BoardStateBroadcaster (SSE)                                         │
-│      └─ SseBoardStateBroadcaster                                        │
+│  ├─ BoardStateBroadcaster (SSE, "board-frame" events)                   │
+│  │   └─ SseBoardStateBroadcaster (wired to BoardFrameBroadcaster;       │
+│  │      currently no controller exposes it — see SSE section)            │
+│  └─ Messages (fixed-fa i18n) + GlobalExceptionHandler                   │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  GameEngineManager (@EventListener)                                     │
+│  GameEngineManager (@EventListener, volatile, synchronized)              │
 │  ├─ onGatewayConnected → new GameEngineImpl                             │
 │  └─ onGatewayDisconnected → close engine                                │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  tileboard-game-engine                                                  │
 │  ├─ GameRegistry (auto-registers @Bean Game)                            │
 │  ├─ GameEngineImpl, GameSessionImpl, BoardChannel, AnimationSystem      │
-│  └─ GameEventBusImpl, SseGameEventPublisher                             │
+│  └─ GameEventBusImpl, SseGameEventPublisher, SessionSnapshot            │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  tileboard-serial-protocol                                              │
 │  ├─ TileGatewayClient, DefaultFrameCodec, Board<T>                      │
 │  └─ JSerialCommTransport, JSerialCommPortRegistry                       │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  Hardware: LED Tile Board (m x n) over Serial (115200 baud)             │
+│  Hardware: LED Tile Board (m x n, max 255 tiles) over Serial (115200)   │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Typical Data Flow:**
 
-1. Operator configures device: `POST /devices/configure {width, height}`
-2. Lists serial ports: `GET /ports`
-3. Assigns ports: `POST /ports/assign {role, portName}`
-4. Connects: `POST /ports/connect` → `DefaultSerialConnectionManager.connect()` → `TileGatewayClient` created → `GatewayConnectedEvent` published → `GameEngineManager` creates new `GameEngineImpl`
-5. Lists games: `GET /games` (from `GameRegistry`)
-6. Starts game: `POST /games/sessions {gameId, players}` → `GameEngine.startGame()` → `GameSessionImpl` created → game's `onStart()` called
-7. Connects SSE: `GET /stream/board` or `/games/events` → board and scores and events real-time
-8. Player touches tiles → `TileGatewayClient` receives `DATA_IN` frame → `EngineFrameRouter` → `TouchFrameRouter` → `GameSessionImpl.handleTileEvent` → `game.onTileEvent`
-9. Game wins/loses → `winSession`/`loseSession` → `finishSession` → `GameResult` → board off → SSE `SESSION_FINISHED`
+1. Operator configures device: `POST /api/v1/device {width, height}`
+2. Lists serial ports: `GET /api/v1/ports`
+3. Assigns ports: `POST /api/v1/ports/OUT/assign {portName}` (+ optionally `IN`)
+4. Connects: `POST /api/v1/ports/connect` → `DefaultSerialConnectionManager.connect()` → `TileGatewayClient` created → handshake enabled → `GatewayConnectedEvent` published → `GameEngineManager` creates new `GameEngineImpl` → `client.start()` → `INTRODUCTION`/`SET` sent
+5. Lists games: `GET /api/v1/games` (from `GameRegistry` — works even before connect)
+6. Starts game: `POST /api/v1/games/sessions {gameId, players:[{name, role}]}` → `GameEngine.startGame()` → `GameSessionImpl` created → `START`/`SET` sent → game's `onStart()` called → `SESSION_STARTED` event
+7. Connects SSE: `GET /api/v1/stream/board` (or `/board/{sessionId}`) → `SESSION_LIFECYCLE`/`BOARD_UPDATE`/`TICK`/… events in real time
+8. Player touches tiles → `TileGatewayClient` receives `DATA_IN` frame → `EngineFrameRouter` reassembles → `Board<Boolean>` → `TouchFrameRouter` routes to exclusive owner → `GameSessionImpl.handleTileEvent` (records history + reaction speed) → `game.onTileEvent` (both `TOUCH` and `RELEASE` are delivered)
+9. Game wins/loses/stops → `finishSession` (exactly once via CAS) → `game.onStop` → board cleared → `STOP`/`SET` sent → `SESSION_FINISHED`/`SESSION_STOPPED` event → engine releases the board
 
 ---
 
 ## Tech Stack
 
-- **Java 17**, **Spring Boot 3.3.4**, **Spring MVC**, **Spring Actuator**
-- **jSerialComm 2.11.0** for serial communication
-- **springdoc-openapi 2.6.0** for Swagger UI
-- **Jackson** for JSON
+- **Java 17**, **Spring Boot 3.3.4** (parent), **Spring MVC**, **Spring Actuator** (health, info), **spring-boot-starter-validation**
+- **jSerialComm 2.11.0** for serial communication (declared here — it is `optional` in the protocol library, and the app is the module that talks to real hardware)
+- **springdoc-openapi 2.6.0** (`springdoc-openapi-starter-webmvc-ui`) — Swagger UI at the springdoc default path
+- **Jackson** for JSON (via `spring-boot-starter-web` + engine's `jackson-databind`/`jsr310`)
 - **SLF4J** for logging
 - **Maven** for build
 
@@ -91,15 +95,16 @@
 
 | Package | Responsibility |
 |------|---------|
-| `com.tileboard.app` | `TileboardApplication` (main) |
-| `config` | `TileboardProperties`, `DeviceConfiguration`, `SerialGatewayConfig`, `GeneralConfiguration` (CORS) |
+| `com.tileboard.app` | `TileboardApplication` (main, `@SpringBootApplication` + `@ConfigurationPropertiesScan`) |
+| `config` | `TileboardProperties` (`tileboard.serial`), `DeviceConfiguration`, `SerialGatewayConfig`, `GeneralConfiguration` (CORS filter, `@EnableWebMvc`) |
 | `controller` | REST controllers: `DeviceController`, `SerialPortController`, `GameController`, `StreamController` |
-| `dto` | API DTOs: `DeviceConfigurationRequest`, `AssignPortRequest`, `StartGameRequest`, `GameSessionResponse`, `ApiResponse`, ... |
+| `dto` | API DTOs: `ApiResponse`, `ApiResponses`, `Status`, `DeviceConfigurationRequest/Response`, `AssignPortRequest`, `SerialPortResponse`, `ConnectionStatusResponse`, `GameDescriptorResponse`, `StartGameRequest`, `PlayerRequest`, `GameSessionResponse` |
 | `service.device` | `DeviceConfigurationService` + `InMemoryDeviceConfigurationService` |
-| `service.serial` | `SerialConnectionManager` + `DefaultSerialConnectionManager`, `PortRole`, `ConnectionState` |
+| `service.serial` | `SerialConnectionManager` + `DefaultSerialConnectionManager`, `PortRole`, `PortAssignment`, `ConnectionState`, `SerialPortSummary` |
 | `service.streaming` | `BoardStateBroadcaster` + `SseBoardStateBroadcaster` |
-| `exception` | `ApiException` and subclasses + `GlobalExceptionHandler` |
-| `game` | **Sample games**: `SequentialTouchGame`, `GameBeansConfig` (new) |
+| `exception` | `ApiException` + subclasses (`DeviceNotConfiguredException`, `GatewayNotConnectedException`, `NoActiveGameException`, `PortsNotAssignedException`, `SerialPortOperationException`) + `handler.GlobalExceptionHandler` |
+| `i18n` | `Messages` (fixed-`fa` `MessageSource` wrapper) |
+| `game` | Sample game: `SequentialTouchGame` (default 3×3) + `GameBeansConfig` (`@Bean` registration) |
 
 ---
 
@@ -110,7 +115,7 @@
 ```yaml
 spring:
   application:
-    name: tileboard-game-engine
+    name: tileboard-game-engine   # NOTE: actual value in this repo (historical name)
 
 server:
   port: 8080
@@ -125,7 +130,7 @@ tileboard:
     handshake-min-sequence: 0  # 0 = auto (max(2, min(width,height)))
   engine:
     tick-interval: 100ms
-    session-ttl: 30m
+    session-ttl: 30m           # overrides the engine default of 1h
     frame-reassembly-timeout: 500ms
     event-bus-queue-capacity: 256
     touch-history-max-size: 2000
@@ -144,7 +149,7 @@ logging:
 ### application-prod.yml
 
 ```yaml
-# Activated with --spring.profiles.active=prod
+# Activated with --spring.profiles.active=prod (or SPRING_PROFILES_ACTIVE=prod)
 logging:
   level:
     root: INFO
@@ -152,6 +157,8 @@ logging:
 ```
 
 **Why DEBUG in dev?** Because `JSerialCommTransport` logs TX/RX bytes in hex at DEBUG level, useful for protocol debugging but noisy in production.
+
+**Locale note:** user-facing messages are always Persian because `Messages.APP_LOCALE` is hardcoded to `fa` in code. There is intentionally no `spring.mvc.locale*` setting in `application.yml` — the locale is fixed in one place (`Messages`), not via Spring's locale resolver.
 
 ### TileboardProperties
 
@@ -173,8 +180,8 @@ public record TileboardProperties(
 }
 ```
 
-- `record` with compact constructor for defaults
-- Enabled via `@ConfigurationPropertiesScan` in `TileboardApplication`
+- `record` with compact constructor for defaults (`0`/negative → sensible default; `handshakeMinSequence = 0` means "auto").
+- Enabled via `@ConfigurationPropertiesScan` in `TileboardApplication` (no `@EnableConfigurationProperties` needed).
 
 ---
 
@@ -184,15 +191,16 @@ public record TileboardProperties(
 public record DeviceConfiguration(int width, int height) {
     public DeviceConfiguration {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException(...);
-        if (width * height > 255) throw new IllegalArgumentException("width*height must be <=255 (protocol limit)");
+        if (width * height > 255) throw new IllegalArgumentException("width * height must be <= 255 (protocol addressing limit), ...");
     }
-    public int tileCount() { return width*height; }
+    public int tileCount() { return width * height; }
 }
 ```
 
-- Physical geometry of board: how many tiles wide and tall
-- Limit 255 comes from `DeviceAddress` encoding total tile count in one byte (protocol ceiling)
-- This is the one piece of information every other module (handshake, game engine) needs before doing anything useful
+- Physical geometry of board: how many tiles wide and tall.
+- Limit 255 comes from `DeviceAddress` encoding the total tile count in one byte (protocol ceiling: both `totalTiles` and `tilesPerRow` must fit in `[1, 255]`).
+- This is the one piece of information every other module (handshake `max(2, min(w,h))`, game engine board size) needs before doing anything useful.
+- DTO validation mirrors it: `DeviceConfigurationRequest(width, height)` with `@Min(1)`/`@Max(255)` on both fields.
 
 ---
 
@@ -208,7 +216,7 @@ public class SerialGatewayConfig {
 }
 ```
 
-**This is the only place in the whole app that knows `JSerialCommPortRegistry` is used.** If you want to swap serial library (or build a Mock for hardware-less demo), you only change this Bean. Rest of code only knows `SerialPortRegistry` interface.
+**This is the only place in the whole app that knows `JSerialCommPortRegistry` is used.** If you want to swap serial library (or build a Mock for a hardware-less demo), you only change this Bean. The rest of the code only knows the `SerialPortRegistry`/`SerialTransport` interfaces.
 
 ---
 
@@ -220,6 +228,7 @@ public class SerialGatewayConfig {
 public interface DeviceConfigurationService {
     Optional<DeviceConfiguration> current();
     DeviceConfiguration configure(int width, int height);
+    default boolean isConfigured() { return current().isPresent(); }
 }
 
 @Service
@@ -237,9 +246,9 @@ public class InMemoryDeviceConfigurationService implements DeviceConfigurationSe
 }
 ```
 
-- `AtomicReference` -> thread-safe without synchronized, because it holds just one value
-- `Optional` for "not yet configured" state
-- TODO: Replace with DB-backed implementation in future, since all consumers only know interface
+- `AtomicReference` → thread-safe without synchronized, because it holds just one value.
+- `Optional` for "not yet configured" state.
+- TODO in code: replace with a DB-backed implementation later — all consumers only know the interface.
 
 ### SerialConnectionManager
 
@@ -249,13 +258,16 @@ public interface SerialConnectionManager {
     void assign(PortRole role, String portName);
     PortAssignment currentAssignment();
     ConnectionState connectionState();
-    void connect();
-    void disconnect();
+    void connect();     // no-op if already connected; throws PortsNotAssignedException without OUT
+    void disconnect();  // publishes GatewayDisconnectedEvent
 }
 
 public enum PortRole { IN, OUT }
-public enum ConnectionState { CONNECTED, DISCONNECTED }
-public record PortAssignment(Optional<String> inPort, Optional<String> outPort) {}
+public enum ConnectionState { DISCONNECTED, CONNECTED }
+public record PortAssignment(Optional<String> inPort, Optional<String> outPort) {
+    public static PortAssignment empty() { ... }
+    public boolean isOutAssigned() { return outPort.isPresent(); }
+}
 public record SerialPortSummary(String systemName, String description) {}
 ```
 
@@ -284,18 +296,24 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         assignedPorts.put(role, portName);
     }
 
+    @Override public synchronized PortAssignment currentAssignment() { ... }
     @Override public synchronized ConnectionState connectionState() {
         return client != null ? CONNECTED : DISCONNECTED;
     }
 
     @Override public synchronized void connect() {
         if (client != null) return; // idempotent
+        if (deviceConfigurationService.current().isEmpty()) {
+            log.info("Device not Configured - can not connect."); // logged, NOT thrown here
+        }
         String outPort = assignedPorts.get(OUT);
         String inPort = assignedPorts.get(IN);
         if (outPort == null) throw new PortsNotAssignedException();
 
         SerialPortConfig config = SerialPortConfig.builder()
-            .baudRate(properties.baudRate()).dataBits(...).build();
+            .baudRate(properties.baudRate()).dataBits(...).stopBits(...)
+            .parity(Parity.NONE)
+            .readTimeoutMillis(...).writeTimeoutMillis(...).build();
 
         Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>(PortRole.class);
         TileGatewayClient newClient;
@@ -315,7 +333,7 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
                     openedThisAttempt.put(IN, inTransport);
                     builder.inputTransport(inTransport);
                 } else {
-                    log.warn("No IN port assigned - OUTPUT ONLY. Touches will never be received.");
+                    log.warn("No IN port assigned - connecting OUTPUT ONLY ...");
                 }
             }
             newClient = builder.build();
@@ -327,167 +345,242 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
         openTransports.putAll(openedThisAttempt);
         this.client = newClient;
-        if (deviceConfigurationService.current().isPresent()) {
-            eventPublisher.publishEvent(new GatewayConnectedEvent(newClient, width, height));
-            newClient.start();
-        } else {
-            throw new DeviceNotConfiguredException();
+        // NOTE: .get() below throws NoSuchElementException when no device is configured,
+        // so in practice the device MUST be configured before connect:
+        eventPublisher.publishEvent(new GatewayConnectedEvent(newClient,
+            deviceConfigurationService.current().get().width(),
+            deviceConfigurationService.current().get().height()));
+        newClient.start();
+        log.info("Tile board gateway connected (input={}, output={})", inPort, outPort);
+        try {
+            DeviceConfiguration device = deviceConfigurationService.current().get();
+            newClient.send(Command.INTRODUCTION, CommandType.SET);
+            log.info("sent INTRODUCTION to hardware ({}X{} board)", device.width(), device.height());
+        } catch (RuntimeException e) {
+            log.warn("failed to send INTRODUCTION command (gateway may have closed)");
         }
     }
 
     private void enableHandshakeIfDeviceKnown(TileGatewayClient gatewayClient) {
         deviceConfigurationService.current().ifPresentOrElse(
             device -> {
-                int minSeq = properties.handshakeMinSequence() > 0 ? properties.handshakeMinSequence() : Math.max(2, Math.min(device.width(), device.height()));
-                gatewayClient.enableIdHandshake(() -> DeviceAddress.forBoard(device.width(), device.height()), new SequentialIdSequenceValidator(minSeq));
+                int minimumSequence = properties.handshakeMinSequence() > 0
+                    ? properties.handshakeMinSequence()
+                    : Math.max(2, Math.min(device.width(), device.height()));
+                log.info("Enabling id handshake for a {}x{} board (minimumSequence={})", ...);
+                gatewayClient.enableIdHandshake(
+                    () -> DeviceAddress.forBoard(device.width(), device.height()),
+                    new SequentialIdSequenceValidator(minimumSequence));
             },
-            () -> log.warn("Connecting without device config - handshake will not be enabled until reconfigured"));
+            () -> log.warn("Connecting without a device configuration - the id handshake will not ..."));
     }
 
     @Override public synchronized void disconnect() {
-        if (client == null) return;
-        try { client.close(); } finally {
+        if (client == null) return; // idempotent
+        try {
+            try { client.send(Command.STOP, CommandType.SET); log.info("sent STOP to hardware on disconnected."); }
+            catch (RuntimeException e) { log.warn("Failed to sned STOP on disconnected: {}", e.getMessage()); }
+            client.close();
+        } finally {
             client = null;
             openTransports.clear();
+            log.info("Tile board gateway disconnected");
             eventPublisher.publishEvent(new GatewayDisconnectedEvent());
         }
     }
 }
 ```
 
-**Concurrency and complex logic notes:**
+**Behavior notes (exactly as coded):**
 
-1. **synchronized on mutating methods:** `assign`, `connectionState`, `connect`, `disconnect` are all `synchronized`. Since these are admin operations (operator-driven) and shouldn't be called concurrently from many threads, simple synchronized is enough and avoids complexity of other locks.
-
-2. **EnumMap:** For `assignedPorts` and `openTransports`, `EnumMap` is used which is optimized for enum keys (internal array, not hash).
-
+1. **synchronized on mutating methods:** `assign`, `currentAssignment`, `connectionState`, `connect`, `disconnect` are all `synchronized`. These are operator-driven admin operations, so a plain monitor is enough.
+2. **EnumMap:** for `assignedPorts` and `openTransports` — array-backed, optimal for enum keys.
 3. **Two topologies transparently:**
-   - If IN and OUT have same name -> one shared `SerialTransport` opened and used with `builder.transport(shared)` (full-duplex)
-   - If separate -> two separate transports opened
-   - If only OUT assigned -> warning logged that it's "OUTPUT ONLY" and touches will never be received. Better loud and explicit than silently half-working.
+   - IN and OUT same name → one shared `SerialTransport` opened once, `builder.transport(shared)` (full-duplex).
+   - Different names → two transports. Only OUT → loud warning that the client is OUTPUT ONLY (no touches/handshake will ever be received).
+4. **Rollback on failed connect:** `openedThisAttempt` + `success` flag + `finally { if (!success) closeQuietly(...) }` — a failed `connect` never leaks an OS port handle that would break the next attempt. `openPort` wraps any failure in `SerialPortOperationException` (HTTP 502).
+5. **Handshake before start:** `enableHandshakeIfDeviceKnown(newClient)` runs before `newClient.start()`, so the board's initial `ID`/`CLEAR` frames are never dropped. Auto `minimumSequence = max(2, min(width, height))`.
+6. **Device must be configured first:** when unconfigured, `connect()` only *logs* at the top — but then `deviceConfigurationService.current().get()` at event-publish time throws `NoSuchElementException`. So the practical rule is: **configure the device before connecting** (the tutorial below does exactly that).
+7. **Hardware protocol on (dis)connect:** `INTRODUCTION`/`SET` is sent after connect; `STOP`/`SET` is sent (best-effort) before disconnect. Note the exact log shapes: `Tile board gateway connected (input=…, output=…)` and `sent INTRODUCTION to hardware ({}X{} board)`.
+8. **Event publishing:** `GatewayConnectedEvent(client, width, height)` wakes `GameEngineManager`; `GatewayDisconnectedEvent` unbinds it. Both event types live in the engine module to avoid a circular dependency.
 
-4. **Rollback on failed connect:**
-   ```java
-   Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>();
-   boolean success = false;
-   try {
-       // open ports
-       success = true;
-   } finally {
-       if (!success) closeQuietly(openedThisAttempt.values());
-   }
-   ```
-   - `openedThisAttempt` only holds transports opened in this attempt
-   - If opening second port fails, `finally` closes first transport so OS handle doesn't leak. Without this, a failed `connect` would hold port handle open forever with nothing referencing it, and next `connect` attempt would fail again trying to reopen same physical port.
-
-5. **Handshake and start ordering:**
-   ```java
-   enableHandshakeIfDeviceKnown(newClient); // first register listeners
-   // ...
-   newClient.start(); // then open input pipe
-   ```
-   - If `start()` called first, board's very first frames (e.g., initial ID/CLEAR handshake request) could arrive before `HandshakeCoordinator` is registered and since `TileGatewayClient.dispatch()` only notifies listeners registered by the time a frame is decoded, those frames would be silently dropped.
-
-6. **Event publishing:** After client built, `GatewayConnectedEvent` published which wakes `GameEngineManager` to build engine. Then `client.start()` called so data starts flowing.
-
-7. **closeQuietly:** Even if `close()` of one transport throws, other transports are closed.
-
-### BoardStateBroadcaster
+### BoardStateBroadcaster (SSE board frames)
 
 ```java
 public interface BoardStateBroadcaster {
-    void broadcast(Board<TileColor> board);
+    SseEmitter subscribe();                 // registers a subscriber, returns its emitter
+    void broadcast(byte[] flatBoardBytes);   // row-major frame (Board.toWireBytes) to every subscriber
 }
 
 @Service
 public class SseBoardStateBroadcaster implements BoardStateBroadcaster {
-    private final SseGameEventPublisher ssePublisher;
-    // ...
+    private static final String EVENT_NAME = "board-frame";
+    private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
+
+    public SseBoardStateBroadcaster(BoardFrameBroadcaster boardFrameBroadcaster) {
+        // every actually-transmitted board frame is fanned out automatically:
+        boardFrameBroadcaster.subscribe((sessionId, board) ->
+            broadcast(board.toWireBytes(ColorTileCodec.instance())));
+    }
+
+    @Override public SseEmitter subscribe() {
+        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+        emitter.onCompletion(() -> emitters.remove(emitter));
+        emitter.onTimeout(() -> emitters.remove(emitter));
+        emitter.onError(ex -> emitters.remove(emitter));
+        emitters.add(emitter);
+        return emitter;
+    }
+
+    @Override public void broadcast(byte[] flatBoardBytes) {
+        if (emitters.isEmpty()) return;
+        int[] unsignedTiles = toUnsignedInts(flatBoardBytes); // byte -> 0..255 int
+        for (SseEmitter emitter : emitters) {
+            try { emitter.send(SseEmitter.event().name("board-frame").data(unsignedTiles)); }
+            catch (IOException | RuntimeException e) { emitters.remove(emitter); } // drop dead clients
+        }
+    }
 }
 ```
 
-This service broadcasts board to all connected SSE clients.
+Important wiring fact: this broadcaster is fully functional (subscribed to the application-lifetime `BoardFrameBroadcaster`), but **no controller currently injects it** — `StreamController` serves game events via `SseGameEventPublisher` instead. It is the intended seam for a future raw-board-mirror endpoint (SSE today, WebSocket tomorrow) without touching the engine.
+
+### ApiResponse envelope
+
+```java
+public record ApiResponse(Status status, String message, Object data, Object extra, String debugMessage) { ... }
+public enum Status { SUCCESS, INFO, WARNING, ERROR }
+```
+
+- `message`: localized (Persian) user-facing text.
+- `debugMessage`: raw English diagnostic for developers (logs, dev tools, bug reports) — never shown directly to end users; `null` on plain successes.
+- `extra`: optional third payload slot (currently unused by controllers).
+- `ApiResponses` factory: `ok(...)`, `info(...)`, `warning(...)`, `error(...)`, `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `internalServerError`, `badGateway` (each with an optional `debugMessage` overload).
 
 ---
 
 ## Controllers
 
-### DeviceController
+All controllers return the `ApiResponse` envelope — **except** `GET /api/v1/games/sessions/{sessionId}`, which returns a raw `GameSessionResponse`.
+
+### DeviceController — `/api/v1/device`
 
 ```
-POST /api/v1/devices/configure
-Body: { "width": 8, "height": 8 }
-Response: { "width": 8, "height": 8, "tileCount": 64 }
+GET  /api/v1/device
+→ 200 {status:SUCCESS, message:"Device successfully configured.", data:{width, height, tileCount}}
+→ 409 when nothing configured yet (DeviceNotConfiguredException)
 
-GET /api/v1/devices/configuration
-Response: { "width": 8, "height": 8, ... } or 404 if not configured
+POST /api/v1/device
+Body: { "width": 3, "height": 3 }   (@Min(1) @Max(255) on both — 400 on violation)
+→ 200 {status:SUCCESS, message:"Device successfully configured.", data:{width, height, tileCount}}
 ```
 
-- `DeviceConfigurationRequest` with validation (`@Min(1)`, `@Max(255)`)
-- `DeviceConfigurationResponse` from `DeviceConfiguration`
+Note the path is singular `/api/v1/device` (not `/devices/...`), with the operation on the bare resource (no `/configure` suffix).
 
-### SerialPortController
+### SerialPortController — `/api/v1/ports` (produces JSON)
 
 ```
-GET /api/v1/ports
-Response: [{ "systemName": "COM3", "description": "USB Serial Port" }, ...]
+GET  /api/v1/ports
+→ 200 {status:SUCCESS, message:"<N> ports are available",
+       data:[{systemName:"COM3", description:"USB Serial Port"}, ...]}
 
-POST /api/v1/ports/assign
-Body: { "role": "OUT", "portName": "COM3" }  # role = IN or OUT
-Response: { "inPort": "COM3", "outPort": "COM3" }
+POST /api/v1/ports/{role}/assign        # role is a PATH variable: IN or OUT (invalid → 400 type-mismatch)
+Body: { "portName": "COM3" }            # only portName; @NotBlank
+→ 200 {status:SUCCESS}                  # empty success, no echo of the assignment
 
-GET /api/v1/ports/assignment
-Response: { "inPort": "...", "outPort": "..." }
+GET  /api/v1/ports/status
+→ 200 {status:SUCCESS, data:{state:"CONNECTED"|"DISCONNECTED", inPort:"COM3"|null, outPort:"COM3"|null}}
 
 POST /api/v1/ports/connect
-Response: { "status": "CONNECTED", "inPort": "...", "outPort": "..." }
+→ 200 (same ConnectionStatusResponse body as /status)
+→ 409 ports.not_assigned when OUT was never assigned
 
 POST /api/v1/ports/disconnect
-Response: 204 No Content
-
-GET /api/v1/ports/status
-Response: { "status": "CONNECTED" or "DISCONNECTED", "assignment": {...} }
+→ 200 (same ConnectionStatusResponse body as /status; idempotent)
 ```
 
-### GameController
+There is **no** `GET /ports/assignment` endpoint and no `POST /ports/assign` with a `role` body field — assignment is `POST /ports/{role}/assign` with `{portName}` only. `disconnect` returns `200` with the status body (not `204`).
+
+### GameController — `/api/v1/games` (produces JSON)
 
 ```
-GET /api/v1/games
-Response: [{ "gameId": "sequential-touch", "displayName": "Sequential Touch Challenge", "category": "TUTORIAL", ... }, ...]
-# Works even before board connected (from GameRegistry)
+GET  /api/v1/games
+→ 200 {status:SUCCESS, data:[{gameId:"sequential-touch", displayName:"Sequential Touch Challenge",
+     category:"TUTORIAL", description:"...", requiredWidth:3, requiredHeight:3, minPlayers:1, maxPlayers:1}]}
+# Works even before the board is connected (served from GameRegistry).
 
 POST /api/v1/games/sessions
-Body: { "gameId": "sequential-touch", "players": [{ "name": "Ali" }] }
-Response: { "sessionId": "uuid", "gameId": "sequential-touch", "status": "RUNNING", "players": [...], "scores": {...} }
+Body: { "gameId": "sequential-touch",
+        "players": [{ "name": "Ali", "role": "SOLO" }] }  # role is REQUIRED (@NotNull)
+→ 200 {status:SUCCESS, data:{sessionId:"uuid", gameId:"sequential-touch", status:"RUNNING"}}
+→ 409 engine.not_ready when no gateway is connected (EngineNotReadyException via require())
+→ 404 game.not_found for unknown gameId; 409 for player-count/board-size/board-busy violations
 
-GET /api/v1/games/sessions
-Response: list of active sessions
+GET  /api/v1/games/sessions
+→ 200 {status:SUCCESS, data:[{sessionId, gameId, status}, ...]}
+# Empty list (not an error) when the engine is disconnected.
 
-GET /api/v1/games/sessions/{sessionId}
-Response: single session
+GET  /api/v1/games/sessions/{sessionId}
+→ 200 {sessionId, gameId, status}     # RAW body, NOT wrapped in ApiResponse
+→ 409 game.no_active when missing (NoActiveGameException — note: 409, not 404)
 
 POST /api/v1/games/sessions/{sessionId}/stop
-Response: 204
+→ 204 No Content
+→ 409 when the session doesn't exist; 409 engine.not_ready when disconnected
 ```
 
-- `engineManager.require()` -> if engine not yet bound (board not connected), throws `EngineNotReadyException` which `GlobalExceptionHandler` converts to 409 Conflict
-- `StartGameRequest` with validation
+- `PlayerRequest(name, role)`: `name` `@NotBlank`, `role` `@NotNull PlayerRole`. Valid roles: `SOLO, PLAYER_ONE, PLAYER_TWO, TEAM_A, TEAM_B, SPECTATOR`.
+- `GameSessionResponse` carries only `(sessionId, gameId, status)` — scores/players are observed via SSE `SessionSnapshot`, not via this DTO.
 
-### StreamController
+### StreamController — `/api/v1/stream` (SSE)
 
 ```
-GET /api/v1/stream/board
-Accept: text/event-stream
-Event: data: {"board": [[0,1,0,...], ...], "timestamp": "..."}
-
-GET /api/v1/games/events
-Accept: text/event-stream
-Event: event: SESSION_STARTED, BOARD_UPDATED, SCORE_UPDATED, TICK, SESSION_FINISHED
-       data: {...}
+GET /api/v1/stream/board                 (Accept: text/event-stream) → all sessions' events
+GET /api/v1/stream/board/{sessionId}     (Accept: text/event-stream) → one session's events
 ```
 
-- Uses Spring `SseEmitter`
-- Heartbeat every 15 seconds to prevent proxy timeout
+Both delegate to `SseGameEventPublisher` (`global()` / `forSession(sessionId)`). There is **no** `/api/v1/games/events` endpoint. See the SSE section for event names and payload shape.
+
+---
+
+## SSE Streaming
+
+Two SSE mechanisms exist in the codebase:
+
+**1. Game events (exposed via `StreamController`, powered by the engine).**
+- Endpoints: `GET /api/v1/stream/board`, `GET /api/v1/stream/board/{sessionId}`.
+- Infinite-timeout `SseEmitter`, per-client bus subscription (capacity 32, `DROP_OLDEST`), `: ping` heartbeat comment every 15 s.
+- Each event: SSE event *name* = `SseGameEventType`, `data` = JSON `SseGameEvent(sessionId, gameId, type, data: SessionSnapshot, timestamp)`:
+
+| SSE event name | Triggered by (internal type) |
+|------|------|
+| `SESSION_LIFECYCLE` | `SESSION_STARTED`, `SESSION_FINISHED`, `SESSION_STOPPED` |
+| `BOARD_UPDATE` | `BOARD_UPDATED` (every `publishBoard`/`setTile`/`fillBoard`) |
+| `TICK` | `TICK` (every `tickInterval` while `RUNNING`) |
+| `SCORE_UPDATE` | `SCORE_CHANGED` (reserved — not emitted by any feature today) |
+| `GAME_STATE` / `CUSTOM` | fallback / custom |
+
+```javascript
+const es = new EventSource('/api/v1/stream/board');
+es.addEventListener('BOARD_UPDATE', e => console.log(JSON.parse(e.data)));       // SseGameEvent JSON
+es.addEventListener('SESSION_LIFECYCLE', e => { console.log(JSON.parse(e.data)); es.close(); });
+```
+
+**2. Raw board frames (`SseBoardStateBroadcaster`, currently unexposed).**
+- `subscribe()` returns a `Long.MAX_VALUE`-timeout emitter; `broadcast(byte[])` sends SSE event `board-frame` with an `int[]` of unsigned tile wire codes.
+- It already receives every actually-transmitted frame via `BoardFrameBroadcaster`, but no controller injects it yet — the seam is ready for a future board-mirror endpoint.
+
+---
+
+## GameEngineManager
+
+Lives in `tileboard-game-engine` (`com.tileboard.engine.spring`), but its behavior is what makes the app's game endpoints work:
+
+- `volatile GameEngineImpl engine`, `synchronized` `@EventListener` methods for `GatewayConnectedEvent`/`GatewayDisconnectedEvent` (event types also live in the engine module, so app and engine share one definition).
+- `current(): Optional<GameEngine>`, `require(): GameEngine` (throws `EngineNotReadyException` → HTTP 409 when no gateway is connected).
+- `shutdownCurrentEngine()` is null-safe/idempotent and nulls `engine` **before** the slow `close()`, so no thread ever observes a half-closed engine.
+- `@PreDestroy shutdownOnContextClose()` releases everything when Spring stops.
+- Engine tuning comes from `TileboardEngineProperties` (`tileboard.engine.*` in `application.yml`): tick 100 ms, TTL 30 m, reassembly 500 ms, bus capacity 256, touch-history 2000.
 
 ---
 
@@ -495,45 +588,42 @@ Event: event: SESSION_STARTED, BOARD_UPDATED, SCORE_UPDATED, TICK, SESSION_FINIS
 
 ```java
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler {
+    private final Messages messages; // fixed-fa MessageSource wrapper
 
-    @ExceptionHandler(DeviceNotConfiguredException.class)
-    public ResponseEntity<ApiResponse<?>> handleDeviceNotConfigured(...) {
-        return ResponseEntity.status(400).body(ApiResponse.error("Device not configured"));
+    private ResponseEntity<ApiResponse> respond(HttpStatus status, LocalizableException ex) {
+        String localized = messages.resolve(ex.errorCode(), ex.args(), ex.getMessage());
+        return ApiResponses.error(localized, ex.getMessage(), status);
     }
 
-    @ExceptionHandler(PortsNotAssignedException.class)
-    public ResponseEntity<ApiResponse<?>> handlePortsNotAssigned(...) { 400 }
-
-    @ExceptionHandler(GatewayNotConnectedException.class)
-    public ResponseEntity<ApiResponse<?>> handleGatewayNotConnected(...) { 409 }
-
-    @ExceptionHandler(EngineNotReadyException.class)
-    public ResponseEntity<ApiResponse<?>> handleEngineNotReady(...) { 409 }
-
-    @ExceptionHandler(NoActiveGameException.class)
-    public ResponseEntity<ApiResponse<?>> handleNoActiveGame(...) { 404 }
-
-    @ExceptionHandler(SerialPortOperationException.class)
-    public ResponseEntity<ApiResponse<?>> handleSerialPortOp(...) { 500 }
-
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<?>> handleValidation(...) { 400 + details }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<?>> handleGeneric(...) { 500 }
+    @ExceptionHandler(ApiException.class) → respond(ex.status(), ex)               // status pinned on the exception
+    @ExceptionHandler(EngineNotReadyException.class) → 409
+    @ExceptionHandler(GameNotFoundException.class) → 404
+    @ExceptionHandler(GameSessionException.class) → 409
+    @ExceptionHandler(GameEngineException.class) → 502                            // catch-all for other engine failures
+    @ExceptionHandler({SerialTransportException, ProtocolException, BoardException}) → 502
+    @ExceptionHandler(MethodArgumentNotValidException.class) → 400                // "validation.failed (field: msg; ...)"
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class) → 400            // e.g. bad {role} path variable
+    @ExceptionHandler(HttpMessageNotReadableException.class) → 400                // empty/malformed JSON
+    @ExceptionHandler(IllegalArgumentException.class) → 400
+    @ExceptionHandler(AsyncRequestTimeoutException.class) → void (debug log)       // SSE timeouts
+    @ExceptionHandler(AsyncRequestNotUsableException.class) → void (debug log)     // SSE client gone
+    @ExceptionHandler(Exception.class) → 500 (null when response already committed, e.g. mid-SSE)
 }
 ```
 
-All errors return same `ApiResponse` format:
+Actual status mapping for the app's own exceptions (each pins its status in its constructor):
 
-```json
-{
-  "status": "ERROR",
-  "message": "Error description",
-  "data": null
-}
-```
+| Exception | Status | errorCode |
+|------|------|------|
+| `DeviceNotConfiguredException` | 409 CONFLICT | `device.not_configured` |
+| `GatewayNotConnectedException` | 409 CONFLICT | `gateway.not_connected` (defined but never thrown today — readiness is signaled by `EngineNotReadyException`) |
+| `NoActiveGameException` | 409 CONFLICT | `game.no_active` (note: 409, not 404) |
+| `PortsNotAssignedException` | 409 CONFLICT | `ports.not_assigned` |
+| `SerialPortOperationException` | 502 BAD_GATEWAY | passed through, e.g. `serial.port_operation_failed` |
+
+**i18n:** every error body is `{status: ERROR, message: <Persian>, data: null, extra: null, debugMessage: <raw English>}`. `message` is resolved from `messages_fa.properties` (fallback `messages.properties`, identical content) via `Messages.resolve(errorCode, args, fallback)` — a missing key degrades to the raw English message instead of a 500. Bean-validation messages use `{key}` placeholders resolved against the same catalog.
 
 ---
 
@@ -541,9 +631,8 @@ All errors return same `ApiResponse` format:
 
 ### Prerequisites
 
-- Java 17+
-- Maven 3.8+
-- Tileboard board connected via USB (or Mock for testing without hardware)
+- Java 17+, Maven 3.8+
+- Tileboard board connected via USB (or a Mock `SerialTransport` for hardware-less tests — unit tests need no hardware)
 
 ### Step 1: Build
 
@@ -567,25 +656,29 @@ java -jar target/tileboard-app-1.0.0.jar --spring.profiles.active=prod
 
 App runs on `http://localhost:8080`.
 
-Swagger UI: `http://localhost:8080/swagger-ui.html`
-
-Actuator: `http://localhost:8080/actuator/health`
+- Swagger UI: springdoc default (starter `2.6.0` is on the classpath)
+- Actuator: `http://localhost:8080/actuator/health` (only `health,info` are exposed)
 
 ### Step 3: Configure Device
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/devices/configure \
+curl -X POST http://localhost:8080/api/v1/device \
   -H "Content-Type: application/json" \
-  -d '{"width":8,"height":8}'
+  -d '{"width":3,"height":3}'
 ```
 
 Response:
 ```json
 {
   "status": "SUCCESS",
-  "data": { "width": 8, "height": 8, "tileCount": 64 }
+  "message": "Device successfully configured.",
+  "data": { "width": 3, "height": 3, "tileCount": 9 },
+  "extra": null,
+  "debugMessage": null
 }
 ```
+
+Current configuration is readable at any time via `GET /api/v1/device` (409 before the first configure).
 
 ### Step 4: List Ports
 
@@ -597,6 +690,7 @@ Response:
 ```json
 {
   "status": "SUCCESS",
+  "message": "2 ports are available",
   "data": [
     { "systemName": "COM3", "description": "USB Serial Port" },
     { "systemName": "COM4", "description": "USB Serial Port" }
@@ -606,23 +700,23 @@ Response:
 
 ### Step 5: Assign Ports
 
-If your board has single full-duplex port (common):
+Role is a **path variable** (`IN`/`OUT`), the body carries only `portName`. For a single full-duplex port (common case), assign the same port to both roles:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/ports/assign \
+curl -X POST http://localhost:8080/api/v1/ports/OUT/assign \
   -H "Content-Type: application/json" \
-  -d '{"role":"OUT","portName":"COM3"}'
+  -d '{"portName":"COM3"}'
 
-curl -X POST http://localhost:8080/api/v1/ports/assign \
+curl -X POST http://localhost:8080/api/v1/ports/IN/assign \
   -H "Content-Type: application/json" \
-  -d '{"role":"IN","portName":"COM3"}'
+  -d '{"portName":"COM3"}'
 ```
 
-If you have two half-duplex adapters:
+Two half-duplex adapters:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/ports/assign -d '{"role":"OUT","portName":"COM3"}'
-curl -X POST http://localhost:8080/api/v1/ports/assign -d '{"role":"IN","portName":"COM4"}'
+curl -X POST http://localhost:8080/api/v1/ports/OUT/assign -H "Content-Type: application/json" -d '{"portName":"COM3"}'
+curl -X POST http://localhost:8080/api/v1/ports/IN/assign -H "Content-Type: application/json" -d '{"portName":"COM4"}'
 ```
 
 ### Step 6: Connect
@@ -635,16 +729,19 @@ Response:
 ```json
 {
   "status": "SUCCESS",
-  "data": { "status": "CONNECTED", "inPort": "COM3", "outPort": "COM3" }
+  "data": { "state": "CONNECTED", "inPort": "COM3", "outPort": "COM3" }
 }
 ```
 
-Logs should show:
+Logs should show (for a 3×3 device):
 ```
-Enabling id handshake for a 8x8 board (minimumSequence=2)
-Tile board gateway connected (in=COM3, out=COM3)
-Game engine bound to the newly connected tile gateway (8x8)
+Enabling id handshake for a 3x3 board (minimumSequence=3)
+Tile board gateway connected (input=COM3, output=COM3)
+sent INTRODUCTION to hardware (3X3 board)
+Game engine bound to the newly connected tile gateway (3x3)
 ```
+
+(`minimumSequence` is `max(2, min(3,3)) = 3` in auto mode. Connection state is also readable any time via `GET /api/v1/ports/status`.)
 
 ### Step 7: List Games
 
@@ -661,9 +758,9 @@ Response:
       "gameId": "sequential-touch",
       "displayName": "Sequential Touch Challenge",
       "category": "TUTORIAL",
-      "description": "Tiles light up sequentially; touch to score...",
-      "requiredWidth": 8,
-      "requiredHeight": 8,
+      "description": "Tiles light up sequentially; touch it to score and advance to next tile.",
+      "requiredWidth": 3,
+      "requiredHeight": 3,
       "minPlayers": 1,
       "maxPlayers": 1
     }
@@ -671,14 +768,18 @@ Response:
 }
 ```
 
+(The `requiredWidth/Height` mirror the device configuration active at startup, defaulting to 3×3 — see `GameBeansConfig`.)
+
 ### Step 8: Start Game
+
+`role` is required (`SOLO` for single-player):
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/games/sessions \
   -H "Content-Type: application/json" \
   -d '{
     "gameId": "sequential-touch",
-    "players": [{"name":"Ali"}]
+    "players": [{"name":"Ali","role":"SOLO"}]
   }'
 ```
 
@@ -686,114 +787,92 @@ Response:
 ```json
 {
   "status": "SUCCESS",
-  "data": {
-    "sessionId": "a1b2c3d4-...",
-    "gameId": "sequential-touch",
-    "status": "RUNNING",
-    "players": [{"id":"...","name":"Ali"}],
-    "scores": {"...":0}
-  }
+  "data": { "sessionId": "a1b2c3d4-...", "gameId": "sequential-touch", "status": "RUNNING" }
 }
 ```
 
-At this moment on board:
-1. Standby animation (BREATHING) 2 seconds
-2. Countdown animation (3→2→1) ~2.1 seconds
+At this moment on the board:
+1. Standby animation (BREATHING) — 2 seconds
+2. Countdown animation (3→2→1 + green blink) — ~3.9 s at 1000 ms/digit
 3. First tile lights up (e.g., (0,0) red)
 
-### Step 9: SSE - Real-time Board View
+### Step 9: SSE - Real-time Events
 
 In another terminal:
 
 ```bash
-curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/games/events
+curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/stream/board
+# or for one session:
+curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/stream/board/{sessionId}
 ```
 
-Or with JS in browser:
+Or with JS in the browser:
 
 ```javascript
-const eventSource = new EventSource('/api/v1/games/events');
-eventSource.addEventListener('BOARD_UPDATED', e => {
-  const data = JSON.parse(e.data);
-  console.log('Board updated:', data);
+const eventSource = new EventSource('/api/v1/stream/board');
+eventSource.addEventListener('BOARD_UPDATE', e => {
+  const sseEvent = JSON.parse(e.data); // {sessionId, gameId, type, data: SessionSnapshot, timestamp}
+  console.log('Board updated:', sseEvent.data.board);
 });
-eventSource.addEventListener('SESSION_FINISHED', e => {
-  console.log('Game finished:', JSON.parse(e.data));
+eventSource.addEventListener('SESSION_LIFECYCLE', e => {
+  console.log('Lifecycle:', JSON.parse(e.data));
   eventSource.close();
 });
 ```
 
-### Step 10: Play
+### Step 10: Play (3×3 = 9 tiles)
 
-- Touch lit tile → +10 points, tile off, next tile lights
-- If wrong tile touched → FADE_TO_RED short animation, then correct tile re-lights
+- Touch the lit tile → +10 points, tile off, next tile lights
+- If a wrong tile is touched → FADE_TO_RED short animation, then the correct tile re-lights (RELEASE events are ignored)
 - If 90 seconds pass → DESCENDING_CURTAIN animation and loss
-- If all 64 tiles touched sequentially → RADIAL_BURST animation and win
+- If all 9 tiles are touched in order → RADIAL_BURST animation and win
 
-### Step 11: Stop Game
+### Step 11: Stop Game / Inspect Session
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/games/sessions/{sessionId}/stop
+curl http://localhost:8080/api/v1/games/sessions/{sessionId}   # raw {sessionId, gameId, status}
+curl -X POST http://localhost:8080/api/v1/games/sessions/{sessionId}/stop  # 204
 ```
 
 ### Step 12: Disconnect
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/ports/disconnect
+curl -X POST http://localhost:8080/api/v1/ports/disconnect   # 200 + status body (sends STOP first)
 ```
 
 ---
 
 ## Comprehensive Game Tutorial
 
-This is the most important section and explains step-by-step how to build **SequentialTouchGame** that includes all requested animations.
+This section explains step-by-step how **SequentialTouchGame** (default 3×3, device-sized via `GameBeansConfig`) is built, including all animations. It quotes the actual code in `src/main/java/com/tileboard/app/game/`.
 
 ### Game Scenario
 
-> Each tile lights up sequentially with a color; as soon as it is touched, player gets points and next tile's turn comes, until all tiles are lit and touched, then game ends. Also use lose, win, stand-by animations in game and before game start use countDown animation.
+> Each tile lights up sequentially with a color; as soon as it is touched, the player gets points and the next tile's turn comes, until all tiles are lit and touched, then the game ends. Also use lose, win, stand-by animations in the game, and before game start use a countDown animation.
 
 ### Step 1: Create Game Class
 
 File: `src/main/java/com/tileboard/app/game/SequentialTouchGame.java`
 
 ```java
-package com.tileboard.app.game;
-
-import com.tileboard.engine.core.Game;
-import com.tileboard.engine.core.GameContext;
-import com.tileboard.engine.core.GameDescriptor;
-import com.tileboard.engine.core.GameResult;
-import com.tileboard.engine.feature.AnimationSystem;
-import com.tileboard.engine.model.TileColor;
-import com.tileboard.engine.model.TileEvent;
-import com.tileboard.serial.board.Position;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-
 public class SequentialTouchGame implements Game {
-
-    private static final Logger log = LoggerFactory.getLogger(SequentialTouchGame.class);
 
     private static final String KEY_POSITIONS = "sequential.positions";
     private static final String KEY_INDEX = "sequential.index";
+    private static final String KEY_TOTAL = "sequential.total";
 
     private static final TileColor[] PALETTE = {
         TileColor.RED, TileColor.GREEN, TileColor.BLUE,
         TileColor.YELLOW, TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.WHITE
     };
 
-    private final GameDescriptor descriptor;
+    private final GameDescriptor descriptor;   // the ONLY field — the game is stateless otherwise
 
     public SequentialTouchGame() {
         this.descriptor = GameDescriptor.builder("sequential-touch", "Sequential Touch Challenge")
             .category("TUTORIAL")
-            .description("Tiles light up sequentially; touch to score and advance. Includes countdown, standby, win and lose animations.")
-            .boardSize(8, 8)
+            .description("Tiles light up sequentially; touch it to score and advance. Includes countdown, standby, win and lose animations.")
+            .boardSize(3, 3)   // default 3x3
             .players(1, 1)
             .build();
     }
@@ -801,7 +880,7 @@ public class SequentialTouchGame implements Game {
     public SequentialTouchGame(int width, int height) {
         this.descriptor = GameDescriptor.builder("sequential-touch", "Sequential Touch Challenge")
             .category("TUTORIAL")
-            .description("Tiles light up sequentially; touch to score and advance.")
+            .description("Tiles light up sequentially; touch it to score and advance to next tile.")
             .boardSize(width, height)
             .players(1, 1)
             .build();
@@ -815,57 +894,43 @@ public class SequentialTouchGame implements Game {
 ```java
     @Override
     public void onStart(GameContext ctx) {
-        log.info("[{}] Game onStart - board {}x{}", ctx.sessionId(), ctx.boardWidth(), ctx.boardHeight());
-
         ctx.fillBoard(TileColor.OFF);
         ctx.scores().resetAll();
         ctx.state().clear();
 
-        // 1. Standby animation: BREATHING for 2 seconds
-        // This animation is infinite until cancelled
+        // 1. Standby animation: BREATHING for 2 seconds (infinite until cancelled)
         try {
-            log.info("[{}] Playing STANDBY (BREATHING) for 2 seconds...", ctx.sessionId());
             ctx.animations().playStandbyAnimation(AnimationSystem.StandbyAnimationType.BREATHING)
                 .get(2, TimeUnit.SECONDS);
         } catch (Exception e) {
             ctx.animations().cancelCurrent();
-            log.info("[{}] Standby cancelled, moving to countdown", ctx.sessionId());
         }
 
-        // 2. Countdown animation: 3 -> 2 -> 1 -> green blink
-        // playCountdown runs on animation SingleThreadExecutor
-        // join() waits until countdown ends
+        // 2. Countdown animation: 3 -> 2 -> 1 -> green blink (1000 ms per digit)
         try {
-            log.info("[{}] Playing COUNTDOWN...", ctx.sessionId());
-            ctx.animations().playCountdown(700).join(); // 700ms per digit
+            ctx.animations().playCountdown(1000).join();
         } catch (Exception e) {
             log.warn("[{}] Countdown interrupted", ctx.sessionId(), e);
         }
 
         // 3. List all positions row-major
         List<Position> allPositions = new ArrayList<>();
-        for (int r = 0; r < ctx.boardHeight(); r++) {
-            for (int c = 0; c < ctx.boardWidth(); c++) {
+        for (int r = 0; r < ctx.boardHeight(); r++)
+            for (int c = 0; c < ctx.boardWidth(); c++)
                 allPositions.add(new Position(r, c));
-            }
-        }
 
         ctx.state().put(KEY_POSITIONS, allPositions);
         ctx.state().put(KEY_INDEX, 0);
+        ctx.state().put(KEY_TOTAL, allPositions.size());
 
-        // 4. Global timer: if not finished in 90 seconds, lose
-        // GameTimer uses AtomicReference<Runnable> for onExpire
-        // checkExpiry() called every tick (100ms) by GameSessionImpl.runTick()
+        // 4. Global timer: 90 seconds, then lose (checked every tick by runTick -> checkExpiry)
         ctx.timer().startCountdown(Duration.ofSeconds(90), () -> {
-            log.info("[{}] Timer expired - LOST", ctx.sessionId());
             ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.DESCENDING_CURTAIN)
                 .thenRun(() -> ctx.loseSession());
         });
 
         // 5. Light first tile
         lightCurrentTile(ctx);
-
-        log.info("[{}] Game started with {} tiles", ctx.sessionId(), allPositions.size());
     }
 
     private void lightCurrentTile(GameContext ctx) {
@@ -876,53 +941,46 @@ public class SequentialTouchGame implements Game {
 
         Position pos = positions.get(index);
         TileColor color = PALETTE[index % PALETTE.length];
-
-        // BoardChannel.setTile is thread-safe:
-        // - stateLock (ReentrantLock) for internal buffer
-        // - gatewayWriteLock (synchronized) for serializing writes on wire
-        ctx.setTile(pos.row(), pos.col(), color);
+        ctx.setTile(pos.row(), pos.col(), color);   // BoardChannel: stateLock + gatewayWriteLock
     }
 ```
 
 **Concurrency notes in onStart:**
 
-- `onStart` runs on thread calling `startGame` (usually HTTP request thread). So `get(2, SECONDS)` and `join()` blocking is fine because it doesn't block tick thread.
-- `ctx.state()` is `GameState` where all methods are `synchronized` -> thread-safe
-- `ctx.animations()` is `AnimationSystem` that has only one animation at a time with generation-based cancellation
-- `ctx.timer()` is `GameTimer` with `volatile` and `AtomicReference`
+- `onStart` runs on the thread calling `startGame` (usually the HTTP request thread), so the blocking `get(2, SECONDS)` and `join()` do not stall the tick thread.
+- `ctx.state()` is `GameState` (all methods `synchronized`) → thread-safe.
+- `ctx.animations()` runs a single animation at a time with generation-based cancellation.
+- `ctx.timer()` is `GameTimer` (`volatile` + `AtomicReference`/`AtomicBoolean`, exactly-once expiry).
 
 ### Step 3: Implement onTileEvent - Core Game Logic
 
 ```java
     @Override
     public void onTileEvent(GameContext ctx, TileEvent event) {
-        // Only called when RUNNING (check in GameSessionImpl.handleTileEvent)
+        // Only called while RUNNING (checked in GameSessionImpl.handleTileEvent),
+        // which already recorded touchHistory + reactionSpeed.
 
         @SuppressWarnings("unchecked")
         List<Position> positions = ctx.state().get(KEY_POSITIONS, List.class).orElse(List.of());
         int currentIndex = ctx.state().getOrDefault(KEY_INDEX, Integer.class, 0);
-
-        if (positions.isEmpty() || currentIndex >= positions.size()) return;
+        if (positions.isEmpty() || currentIndex >= positions.size()) return; // already finished
 
         Position expected = positions.get(currentIndex);
-        Position touched = event.position();
+        Position touched = null;
+        if (event.type() == TileEventType.TOUCH || event.type() == TileEventType.HOLD) {
+            touched = event.position();   // RELEASE events are ignored (touched stays null)
+        }
 
-        log.debug("[{}] Touch at {} - expected {}", ctx.sessionId(), touched, expected);
-
-        if (touched.equals(expected)) {
+        if (Objects.nonNull(touched) && touched.equals(expected)) {
             handleCorrectTouch(ctx, currentIndex, positions);
-        } else {
+        } else if (Objects.nonNull(touched)) {
             handleWrongTouch(ctx);
         }
     }
 
     private void handleCorrectTouch(GameContext ctx, int currentIndex, List<Position> positions) {
         String playerId = ctx.players().get(0).id();
-
-        // ScoreSystem uses ConcurrentHashMap<String, AtomicInteger>
-        // add() with AtomicInteger.addAndGet is thread-safe
-        int newScore = ctx.scores().add(playerId, 10);
-        log.info("[{}] Correct! Tile {}/{} touched, score={}", ctx.sessionId(), currentIndex+1, positions.size(), newScore);
+        int newScore = ctx.scores().add(playerId, 10);   // ConcurrentHashMap + AtomicInteger
 
         Position justTouched = positions.get(currentIndex);
         ctx.setTile(justTouched.row(), justTouched.col(), TileColor.OFF);
@@ -930,29 +988,19 @@ public class SequentialTouchGame implements Game {
         int nextIndex = currentIndex + 1;
         ctx.state().put(KEY_INDEX, nextIndex);
 
-        if (nextIndex >= positions.size()) {
-            handleWin(ctx);
-        } else {
-            lightCurrentTile(ctx);
-        }
+        if (nextIndex >= positions.size()) handleWin(ctx);
+        else lightCurrentTile(ctx);
     }
 
     private void handleWrongTouch(GameContext ctx) {
-        log.info("[{}] Wrong tile touched!", ctx.sessionId());
-
         ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.FADE_TO_RED)
-            .thenRun(() -> lightCurrentTile(ctx));
+            .thenRun(() -> lightCurrentTile(ctx));   // thenRun runs on the animation thread; setTile is thread-safe
     }
 
     private void handleWin(GameContext ctx) {
-        log.info("[{}] All tiles touched! WINS", ctx.sessionId());
         ctx.timer().stop();
-
-        // Win animation: RADIAL_BURST
-        // Then winSession which triggers finishSession in GameSessionImpl
-        // finishSession with CAS guarantees it runs only once
         ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.RADIAL_BURST)
-            .thenRun(() -> ctx.winSession(ctx.players()));
+            .thenRun(() -> ctx.winSession(ctx.players()));  // finishSession CAS runs exactly once
     }
 ```
 
@@ -961,11 +1009,13 @@ public class SequentialTouchGame implements Game {
 ```java
     @Override
     public void onStop(GameContext ctx, GameResult result) {
-        log.info("[{}] onStop - status={}, scores={}", ctx.sessionId(), result.finalStatus(), result.finalScores());
+        // GameResult fields: sessionId, gameId, finalStatus, winners, scoreByPlayerId, duration, finishedAt
+        log.info("[{}] SequentialTouchGame onStop - status={}, scores={}",
+            ctx.sessionId(), result.finalStatus(), result.scoreByPlayerId().get(0));
         try {
             ctx.fillBoard(TileColor.OFF);
         } catch (Exception e) {
-            log.warn("[{}] Could not clear board on stop", ctx.sessionId());
+            log.warn("[{}] Could not clear board on stop (gateway may be disconnected)", ctx.sessionId());
         }
         ctx.animations().cancelCurrent();
     }
@@ -1001,7 +1051,7 @@ public class GameBeansConfig {
 
     @Bean
     public Game sequentialTouchGame() {
-        int width = 8, height = 8;
+        int width = 3, height = 3;   // default when no device configured yet
         var current = deviceConfigService.current();
         if (current.isPresent()) {
             DeviceConfiguration cfg = current.get();
@@ -1013,21 +1063,25 @@ public class GameBeansConfig {
 }
 ```
 
-**Why this works?** Because `TileboardEngineAutoConfiguration.gameRegistry()` auto-registers all Beans of type `Game`:
+**Why this works?** Because `TileboardEngineAutoConfiguration.gameRegistry()` auto-registers all beans of type `Game`:
 
 ```java
 @Bean
-public GameRegistry gameRegistry(@Autowired(required=false) List<Game> games) {
+@ConditionalOnMissingBean
+public GameRegistry gameRegistry(@Autowired(required = false) List<Game> games) {
     GameRegistry registry = new DefaultGameRegistry();
-    if (games!=null) games.forEach(game -> {
+    if (games == null || games.isEmpty()) log.warn("No Game beans found ...");
+    else games.forEach(game -> {
         registry.register(game);
-        log.info("Auto-registered game: '{}' ({})", game.descriptor().displayName(), game.descriptor().gameId());
+        log.info("Auto-registered game: '{}' ({})", ...);
     });
     return registry;
 }
 ```
 
-So just defining game as `@Bean` makes it appear in `GET /api/v1/games`.
+So just defining the game as a `@Bean` makes it appear in `GET /api/v1/games`.
+
+**Startup-sizing caveat:** the bean is created once at startup, so the game's `requiredWidth/Height` reflect the device configuration *at startup time* (3×3 when unconfigured — which in practice means "configure the 3×3 device", since `validateBoardSize` requires an exact match). Restart the app after changing the device size.
 
 ### Step 6: Build and Run
 
@@ -1040,52 +1094,54 @@ mvn spring-boot:run
 ### Step 7: Test Game
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/devices/configure -H "Content-Type: application/json" -d '{"width":8,"height":8}'
+curl -X POST http://localhost:8080/api/v1/device -H "Content-Type: application/json" -d '{"width":3,"height":3}'
 curl http://localhost:8080/api/v1/ports
-curl -X POST http://localhost:8080/api/v1/ports/assign -H "Content-Type: application/json" -d '{"role":"OUT","portName":"COM3"}'
-curl -X POST http://localhost:8080/api/v1/ports/assign -H "Content-Type: application/json" -d '{"role":"IN","portName":"COM3"}'
+curl -X POST http://localhost:8080/api/v1/ports/OUT/assign -H "Content-Type: application/json" -d '{"portName":"COM3"}'
+curl -X POST http://localhost:8080/api/v1/ports/IN/assign -H "Content-Type: application/json" -d '{"portName":"COM3"}'
 curl -X POST http://localhost:8080/api/v1/ports/connect
 curl http://localhost:8080/api/v1/games
-curl -X POST http://localhost:8080/api/v1/games/sessions -H "Content-Type: application/json" -d '{"gameId":"sequential-touch","players":[{"name":"Ali"}]}'
-curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/games/events
+curl -X POST http://localhost:8080/api/v1/games/sessions -H "Content-Type: application/json" -d '{"gameId":"sequential-touch","players":[{"name":"Ali","role":"SOLO"}]}'
+curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/stream/board
 ```
 
-### Full Game Flow from Player Perspective
+### Full Game Flow from Player Perspective (3×3)
 
-1. **Standby (BREATHING):** Board corners blink blue (2 seconds) - idle state
-2. **Countdown:** Whole board red (3) -> yellow (2) -> green (1) -> green blink 3 times (GO!)
-3. **Game:** Tile (0,0) lights red
-4. Player touches (0,0) -> +10 points, (0,0) off, (0,1) lights green
-5. Player touches (0,1) -> +10 points, (0,1) off, (0,2) lights blue
-6. ... until (7,7)
-7. If wrong tile touched -> FADE_TO_RED short animation -> correct tile re-lights
-8. If 90 seconds pass -> DESCENDING_CURTAIN -> loss
-9. If all 64 tiles correctly touched -> RADIAL_BURST -> win
+1. **Standby (BREATHING):** corners/border breathe blue (2 seconds) — idle state
+2. **Countdown:** digits 3 (red) → 2 (yellow) → 1 (green), then green blink 3× (GO!)
+3. **Game:** tile (0,0) lights red
+4. Player touches (0,0) → +10 points, (0,0) off, (0,1) lights green
+5. Player touches (0,1) → +10 points, (0,1) off, (0,2) lights blue
+6. … until (2,2)
+7. Wrong tile touched → FADE_TO_RED short animation → correct tile re-lights (releasing a tile does nothing)
+8. 90 seconds pass → DESCENDING_CURTAIN → loss (`FINISHED` with no winners)
+9. All 9 tiles touched in order → RADIAL_BURST → win (`FINISHED` with the player as winner)
 
 ---
 
 ## Using Animations
+
+All animation behavior lives in the engine's `AnimationSystem` (single daemon thread `tileboard-animation`, generation-based cooperative cancellation, `CompletableFuture` chaining). In the app they are reached via `GameContext.animations()`, whose `boardPublisher` is `GameSessionImpl::publishBoard` → `BoardChannel` → `TileGatewayClient.sendBoard`.
 
 ### Available Animations
 
 #### Countdown
 
 ```java
-ctx.animations().playCountdown() // default 1000ms per digit
-ctx.animations().playCountdown(700) // custom 700ms
+ctx.animations().playCountdown()      // 1000 ms per digit
+ctx.animations().playCountdown(700)   // custom duration
 ```
 
-- If board smaller than 3x5: whole board lights red, yellow, green (simple)
-- If larger: digits 3,2,1 rendered with 5x3 pattern centered then green blink
+- Boards smaller than 3×5: whole board lights RED → BLUE → GREEN.
+- Larger boards: centered 5×3 digits 3 (red) → 2 (yellow) → 1 (green), then 3× green blink (150 ms on/off).
 
 #### Win
 
 ```java
 public enum WinAnimationType {
-    RADIAL_BURST,    // colored wave from center outward
-    RAINBOW_SWEEP,   // rainbow column sweep
-    SPARKLE,         // random sparkles
-    FIREWORKS        // fireworks at random points
+    RADIAL_BURST,    // colored ring bands expanding from center (default)
+    RAINBOW_SWEEP,   // two rainbow column sweeps
+    SPARKLE,         // 15 cycles of random sparkles
+    FIREWORKS        // 3 fireworks at random interior points
 }
 
 ctx.animations().playWinAnimation() // default RADIAL_BURST
@@ -1096,10 +1152,10 @@ ctx.animations().playWinAnimation(WinAnimationType.FIREWORKS)
 
 ```java
 public enum LoseAnimationType {
-    FADE_TO_RED,          // fade to red with noise
-    DESCENDING_CURTAIN,   // red curtain from top
-    CRUMBLE,              // crumble from yellow to red
-    PULSE_RED             // red pulse blink
+    FADE_TO_RED,          // random fill to full red (default)
+    DESCENDING_CURTAIN,   // red rows accumulate top-to-bottom
+    CRUMBLE,              // yellow board crumbles to red tile-by-tile
+    PULSE_RED             // 4x red pulse blinks
 }
 
 ctx.animations().playLoseAnimation()
@@ -1110,77 +1166,59 @@ ctx.animations().playLoseAnimation(LoseAnimationType.CRUMBLE)
 
 ```java
 public enum StandbyAnimationType {
-    BREATHING,      // corners and border breathing blue
-    CORNER_PULSE,   // colored pulse in corners
-    WAVE_BORDER,    // wave on border
-    RANDOM_TWINKLE  // random white twinkle
+    BREATHING,      // corners/border breathing blue (default)
+    CORNER_PULSE,   // cycling colored 3x3 corner blocks
+    WAVE_BORDER,    // marching border wave
+    RANDOM_TWINKLE  // random white twinkles
 }
 
 ctx.animations().playStandbyAnimation()
 ctx.animations().playStandbyAnimation(StandbyAnimationType.WAVE_BORDER)
 ```
 
-**Special feature of standby:** These animations run infinitely until cancelled. To use as "idle before start":
+**Standby animations run infinitely until cancelled.** The "idle before start" pattern:
 
 ```java
 try {
     ctx.animations().playStandbyAnimation(StandbyAnimationType.BREATHING)
-        .get(2, TimeUnit.SECONDS); // run 2 seconds
-} catch (TimeoutException e) {
-    ctx.animations().cancelCurrent(); // cancel
+        .get(2, TimeUnit.SECONDS); // TimeoutException after 2 seconds — expected
+} catch (Exception e) {
+    ctx.animations().cancelCurrent(); // cancel the still-running animation
 }
 ```
 
 ### Technical Implementation of Animations
 
-All animations run on a `SingleThreadExecutor` named `tileboard-animation`. Each new animation cancels previous one with generation-based cooperative cancellation pattern (detailed in game engine README).
-
 ```java
-// Inside AnimationSystem
+// Inside AnimationSystem (simplified)
 private final AtomicLong generation = new AtomicLong(0);
 
 private CompletableFuture<Void> run(Consumer<RunToken> body) {
     synchronized (runLock) {
-        if (currentTask!=null) currentTask.cancel(true);
-        if (currentResult!=null) currentResult.cancel(false);
+        if (currentTask != null) currentTask.cancel(true);
+        if (currentResult != null) currentResult.cancel(false);
         long myGen = generation.incrementAndGet();
         RunToken token = new RunToken(myGen);
-        // submit to executor...
+        // submit body to the single-thread executor...
     }
 }
 
 public final class RunToken {
     boolean isCancelled() { return generation.get() != myGeneration; }
-    boolean sleep(long ms) { if (isCancelled()) return false; Thread.sleep(ms); return !isCancelled(); }
+    boolean sleep(long ms) { ... }   // false when cancelled/interrupted
     void pause(long ms) { if (!sleep(ms)) throw new AnimationCancelledException(); }
-    void show(Board<TileColor> board) { if (isCancelled()) throw new AnimationCancelledException(); boardPublisher.accept(board); }
-}
-```
-
-Animations cooperatively check if cancelled and if so exit cleanly without force-killing thread.
-
-### Using Animations in Spring App
-
-In Spring app, animations are available via `GameContext.animations()` which is created in `FeatureBundle` and its `boardPublisher` is same as `BoardChannel.publish` which eventually goes to `TileGatewayClient.sendBoard`.
-
-For use outside games (e.g., in admin controller for board testing):
-
-```java
-@RestController
-public class AdminAnimationController {
-
-    private final GameEngineManager engineManager;
-
-    @PostMapping("/api/v1/admin/animations/countdown")
-    public void playCountdown() {
-        GameEngine engine = engineManager.require();
-        // get active session or create temp session for testing
-        // ...
+    void show(Board<TileColor> board) {
+        if (isCancelled()) throw new AnimationCancelledException();
+        boardPublisher.accept(board);
     }
 }
 ```
 
-But recommended to use animations only inside games, because `AnimationSystem` is per-session.
+Animations cooperatively check for cancellation and exit cleanly (cancelled future) instead of being force-killed. `shutdown()` (via `FeatureBundle.closeAll()` at session end) cancels and stops the executor. See the engine README for the full per-animation timings.
+
+### Using Animations in the Spring App
+
+Animations are per-session objects — use them inside games via `ctx.animations()`. There is intentionally no admin endpoint that plays animations outside a session.
 
 ---
 
@@ -1188,33 +1226,15 @@ But recommended to use animations only inside games, because `AnimationSystem` i
 
 ### 1. DefaultSerialConnectionManager - synchronized + rollback + dual topology
 
-**Problem:** `connect()` may be called concurrently from multiple threads (two admins at same time). Also opening ports may partially fail (first port opens, second fails).
+**Problem:** `connect()` may be called concurrently (two admins at once). Opening ports may partially fail (first opens, second throws).
 
 **Solution:**
 
-- `synchronized` on `connect()`, `disconnect()`, `assign()` -> only one thread can change state at a time
-- `openedThisAttempt` + `finally` rollback -> if any step fails, all transports opened in this attempt are closed so OS handle doesn't leak
-- `EnumMap` for `assignedPorts` -> optimized for enum keys
-- `shared transport` detection: if IN and OUT same name, opened only once
-
-```java
-Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>();
-boolean success = false;
-try {
-    if (inPort != null && inPort.equals(outPort)) {
-        SerialTransport shared = openPort(outPort, config);
-        openedThisAttempt.put(OUT, shared);
-        builder.transport(shared);
-    } else {
-        // open OUT and IN separately
-    }
-    newClient = builder.build();
-    enableHandshakeIfDeviceKnown(newClient);
-    success = true;
-} finally {
-    if (!success) closeQuietly(openedThisAttempt.values());
-}
-```
+- `synchronized` on `connect()`, `disconnect()`, `assign()`, `currentAssignment()`, `connectionState()` → one thread mutates state at a time.
+- `openedThisAttempt` + `success` flag + `finally` rollback → transports opened by a failed attempt are closed, so no OS handle leaks.
+- `EnumMap` for `assignedPorts`/`openTransports` → array-backed, optimal for enum keys.
+- Shared-transport detection: IN == OUT name → opened once, `builder.transport(shared)`.
+- `INTRODUCTION` after connect / `STOP` before disconnect (best-effort, warn on failure).
 
 ### 2. InMemoryDeviceConfigurationService - AtomicReference
 
@@ -1232,9 +1252,9 @@ public DeviceConfiguration configure(int width, int height) {
 }
 ```
 
-- `AtomicReference` thread-safe without synchronized for single value
-- `get()` and `set()` both atomic and visible across threads
-- `Optional` for "not yet configured" (null)
+- `AtomicReference` is thread-safe for a single value without synchronized.
+- `get()`/`set()` are atomic with cross-thread visibility.
+- `Optional` models "not yet configured" (null).
 
 ### 3. GameEngineManager - volatile + synchronized + null-before-close
 
@@ -1243,101 +1263,107 @@ private volatile GameEngineImpl engine;
 
 @EventListener
 public synchronized void onGatewayConnected(GatewayConnectedEvent event) {
-    if (engine != null) {
-        log.warn("engine already bound - stopping");
-        shutdownCurrentEngine();
-    }
-    engine = new GameEngineImpl(...);
+    if (engine != null) { log.warn("... already bound ..."); shutdownCurrentEngine(); }
+    engine = new GameEngineImpl(registry, event.client(), eventBus, boardFrameBroadcaster, ...);
 }
 
 private void shutdownCurrentEngine() {
     GameEngineImpl current = this.engine;
-    if (current == null) return;
-    this.engine = null; // immediately visible
-    try { current.close(); } catch (RuntimeException e) { log.warn }
+    if (current == null) { log.debug("... nothing to do"); return; }
+    this.engine = null; // immediately visible, BEFORE the slow close()
+    try { current.close(); } catch (RuntimeException e) { log.warn(...) }
 }
 
-public synchronized Optional<GameEngine> current() {
-    return Optional.ofNullable(engine);
-}
+public synchronized Optional<GameEngine> current() { return Optional.ofNullable(engine); }
+public synchronized GameEngine require() { if (engine == null) throw new EngineNotReadyException(); return engine; }
+
+@PreDestroy
+public synchronized void shutdownOnContextClose() { shutdownCurrentEngine(); }
 ```
 
-- `volatile` for `engine` -> lock-free visibility for reads, but writes synchronized
-- `synchronized` for writes -> prevents race between concurrent connect and disconnect
-- `engine = null` before `close()` -> `current()`/`require()` never see half-closed engine (if we close then null, between those moments another thread could get half-closed engine)
-- `shutdownCurrentEngine` null-safe and idempotent -> duplicate disconnect events don't NPE
+- `volatile` + `synchronized` writers → connect/disconnect races are impossible.
+- `engine = null` before `close()` → no thread ever observes a half-closed engine.
+- Null-safe/idempotent → duplicate disconnects are safe no-ops.
 
 ### 4. BoardChannel - ReentrantLock + gatewayWriteLock + coalescing
 
-Detailed in game engine README. Summary:
-
-- `stateLock` (ReentrantLock) protects `buffer`
-- `gatewayWriteLock` (synchronized Object) serializes writes on wire
-- `sendLatest()` re-reads `snapshot()` -> coalescing semantics: latest consistent state sent, not old
+Detailed in the game engine README. Summary: `stateLock` guards the buffer, `gatewayWriteLock` serializes wire writes, `sendLatest()` re-reads the snapshot (coalescing), and `BoardFrameBroadcaster` dispatch happens outside the write lock.
 
 ### 5. GameState - synchronized HashMap
 
 ```java
 public final class GameState {
     private final Map<String, Object> store = new HashMap<>();
-    public synchronized <T> void put(String key, T value) { store.put(key, value); }
-    public synchronized <T> Optional<T> get(String key, Class<T> type) { return Optional.of(type.cast(store.get(key))); }
+    public synchronized <T> void put(String key, T value) { ... }
+    public synchronized <T> Optional<T> get(String key, Class<T> type) { ... }
+    public synchronized <T> T getOrDefault(String key, Class<T> type, T defaultValue) { ... }
+    public synchronized boolean containsKey(String key) { ... }
+    public synchronized void remove(String key) { ... }
+    public synchronized void clear() { ... }
+    public synchronized Map<String, Object> snapshot() { ... } // unmodifiable copy
 }
 ```
 
-- Plain `HashMap` with `synchronized` methods -> thread-safe for concurrent access from tick thread and callback thread
-- `snapshot()` returns unmodifiable copy for SSE
+Plain `HashMap` with `synchronized` methods → safe for concurrent tick-thread/callback-thread access.
 
 ### 6. AnimationSystem - generation + CompletableFuture + SingleThreadExecutor
 
-Detailed in game engine README.
+Detailed in the game engine README: `AtomicLong generation`, `runLock`, single daemon thread, per-animation `CompletableFuture` (normal/cancelled/exceptional).
 
 ### 7. ScoreSystem - ConcurrentHashMap + AtomicInteger
 
 ```java
 private final Map<String, AtomicInteger> scores = new ConcurrentHashMap<>();
-public int add(String playerId, int delta) { return getOrCreate(playerId).addAndGet(delta); }
+public int add(String playerId, int delta) {
+    int result = getOrCreate(playerId).addAndGet(delta);
+    if (delta != 0) onChange.run();
+    return result;
+}
 private AtomicInteger getOrCreate(String playerId) { return scores.computeIfAbsent(playerId, k -> new AtomicInteger(0)); }
 ```
 
-- `ConcurrentHashMap` thread-safe for concurrent read/write
-- `computeIfAbsent` atomic
-- `AtomicInteger.addAndGet` with CAS, no global lock
+- `ConcurrentHashMap` + `computeIfAbsent` (atomic) + CAS-based `addAndGet` → no global lock; `onChange` fires on the caller's thread.
 
-### 8. GameTimer - volatile + AtomicReference
+### 8. GameTimer - volatile + AtomicReference + AtomicBoolean
 
 ```java
 private final AtomicReference<Runnable> onExpire = new AtomicReference<>();
+private final AtomicBoolean expiryNotified = new AtomicBoolean(false);
 private volatile Instant startedAt;
 public void checkExpiry() {
     if (!isExpired()) return;
+    if (expiryNotified.compareAndSet(false, true)) engineExpiryNotifier.run();
     Runnable cb = onExpire.getAndSet(null);
-    if (cb!=null) cb.run();
+    if (cb != null) cb.run();
 }
 ```
 
-- `volatile` for visibility without lock
-- `getAndSet(null)` guarantees callback runs only once
+- `volatile` for visibility without locking.
+- `compareAndSet` + `getAndSet(null)` → each expiry callback fires exactly once.
 
 ### 9. CORS Filter - FilterRegistrationBean
 
 ```java
-@Bean
-public FilterRegistrationBean<CorsFilter> simpleCorsFilter() {
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    CorsConfiguration config = new CorsConfiguration();
-    config.setAllowedOrigins(Collections.singletonList("*"));
-    config.setAllowedMethods(Collections.singletonList("*"));
-    config.setAllowedHeaders(Collections.singletonList("*"));
-    source.registerCorsConfiguration("/**", config);
-    FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
-    bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
-    return bean;
+@EnableWebMvc
+@Configuration
+public class GeneralConfiguration implements WebMvcConfigurer {
+    @Bean
+    public FilterRegistrationBean<CorsFilter> simpleCorsFilter() {
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(Collections.singletonList("*"));
+        config.setAllowedMethods(Collections.singletonList("*"));
+        config.setAllowedHeaders(Collections.singletonList("*"));
+        source.registerCorsConfiguration("/**", config);
+        FilterRegistrationBean<CorsFilter> bean = new FilterRegistrationBean<>(new CorsFilter(source));
+        bean.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        return bean;
+    }
 }
 ```
 
-- `HIGHEST_PRECEDENCE` -> CORS checked before any other filter
-- `*` for origins, methods, headers -> easy for development, should be restricted in production
+- `HIGHEST_PRECEDENCE` → CORS is evaluated before any other filter.
+- `*` origins/methods/headers → convenient for development; restrict for production.
 
 ---
 
@@ -1349,17 +1375,21 @@ public FilterRegistrationBean<CorsFilter> simpleCorsFilter() {
 mvn test -pl tileboard-app
 ```
 
-- `TileboardApplicationTests`: contextLoads
-- `TileboardPropertiesTest`: defaults and validation
-- `ControllerUnitTest`: controller unit tests with MockMvc
-- `InMemoryDeviceGeneralConfigurationServiceTest`: AtomicReference test
-- `DefaultSerialConnectionManagerTest`: connect/disconnect, rollback, dual topology
+Actual test classes:
+
+- `TileboardApplicationTests`: `contextLoads`
+- `TileboardPropertiesTest`: record defaults (115200/8/1/50/50/0)
+- `ControllerUnitTest`: pure unit tests (Mockito, no MockMvc) for `DeviceController`, `SerialPortController`, `GameController` (device read/update, port list/assign/status/connect/disconnect, game list/start/sessions/get/stop + disconnected-engine cases)
+- `InMemoryDeviceGeneralConfigurationServiceTest`: configure/current/isConfigured behavior
+- `DefaultSerialConnectionManagerTest`: distinct-port listing, assignment reporting, OUT-required connect, idempotent disconnect
 
 ### Execution
 
 ```bash
 mvn spring-boot:run -pl tileboard-app
-# or
+# from the module directory:
+cd tileboard-app && mvn spring-boot:run
+# or packaged:
 mvn clean package -DskipTests
 java -jar tileboard-app/target/tileboard-app-1.0.0.jar
 
@@ -1388,40 +1418,39 @@ docker run -p 8080:8080 --device=/dev/ttyUSB0 tileboard-app
 
 ## Full API Reference
 
-### Device
+### Device (`/api/v1/device`)
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
-| POST | /api/v1/devices/configure | {width, height} | DeviceConfigurationResponse |
-| GET | /api/v1/devices/configuration | - | DeviceConfigurationResponse or 404 |
+| POST | /api/v1/device | {width, height} | `ApiResponse{data: DeviceConfigurationResponse}` |
+| GET | /api/v1/device | - | `ApiResponse{data: DeviceConfigurationResponse}` or 409 |
 
-### Ports
-
-| Method | Path | Body | Response |
-|--------|------|------|----------|
-| GET | /api/v1/ports | - | List<SerialPortResponse> |
-| POST | /api/v1/ports/assign | {role, portName} | PortAssignment |
-| GET | /api/v1/ports/assignment | - | PortAssignment |
-| POST | /api/v1/ports/connect | - | ConnectionStatusResponse |
-| POST | /api/v1/ports/disconnect | - | 204 |
-| GET | /api/v1/ports/status | - | ConnectionStatusResponse |
-
-### Games
+### Ports (`/api/v1/ports`)
 
 | Method | Path | Body | Response |
 |--------|------|------|----------|
-| GET | /api/v1/games | - | List<GameDescriptorResponse> |
-| POST | /api/v1/games/sessions | {gameId, players} | GameSessionResponse |
-| GET | /api/v1/games/sessions | - | List<GameSessionResponse> |
-| GET | /api/v1/games/sessions/{id} | - | GameSessionResponse |
+| GET | /api/v1/ports | - | `ApiResponse{message: "N ports are available", data: [SerialPortResponse]}` |
+| POST | /api/v1/ports/{role}/assign | {portName} (`role` = IN/OUT path var) | `ApiResponse` empty success |
+| GET | /api/v1/ports/status | - | `ApiResponse{data: ConnectionStatusResponse{state, inPort, outPort}}` |
+| POST | /api/v1/ports/connect | - | same as /status (409 without OUT) |
+| POST | /api/v1/ports/disconnect | - | same as /status (200, idempotent) |
+
+### Games (`/api/v1/games`)
+
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| GET | /api/v1/games | - | `ApiResponse{data: [GameDescriptorResponse]}` |
+| POST | /api/v1/games/sessions | {gameId, players:[{name, role}]} | `ApiResponse{data: GameSessionResponse{sessionId, gameId, status}}` |
+| GET | /api/v1/games/sessions | - | `ApiResponse{data: [GameSessionResponse]}` (empty when disconnected) |
+| GET | /api/v1/games/sessions/{id} | - | **raw** `GameSessionResponse` (no envelope) or 409 |
 | POST | /api/v1/games/sessions/{id}/stop | - | 204 |
 
-### Stream
+### Stream (SSE, `text/event-stream`)
 
 | Method | Path | Response |
 |--------|------|----------|
-| GET | /api/v1/stream/board | SSE Board updates |
-| GET | /api/v1/games/events | SSE Game events |
+| GET | /api/v1/stream/board | SSE: `SESSION_LIFECYCLE`/`BOARD_UPDATE`/`TICK`/… (`SseGameEvent` JSON) |
+| GET | /api/v1/stream/board/{sessionId} | SSE for one session |
 
 ### Actuator
 
@@ -1430,19 +1459,23 @@ docker run -p 8080:8080 --device=/dev/ttyUSB0 tileboard-app
 | GET | /actuator/health |
 | GET | /actuator/info |
 
+### Error envelope
+
+Every error: `{status: ERROR, message: <Persian>, data: null, extra: null, debugMessage: <raw English>}` with the status from the exception (409/404/502/400/500 — see the Error Handling section).
+
 ---
 
 ## Summary
 
 This application:
 
-1. **Abstracts hardware:** Only knows `SerialPortRegistry` interface, not jSerialComm
-2. **Is thread-safe:** Correctly uses `AtomicReference`, `synchronized`, `ConcurrentHashMap`, `volatile`, `CAS`
-3. **Is extensible:** Adding new game is just a `@Bean`
-4. **Is production-ready:** TTL for sessions, rollback for connect, idempotent disconnect, CORS, Actuator, Swagger, configurable logging
-5. **Is educational:** Sample game `SequentialTouchGame` shows all animations and concurrency patterns
+1. **Abstracts hardware:** Only knows `SerialPortRegistry`/`SerialTransport` interfaces, not jSerialComm (single seam: `SerialGatewayConfig`).
+2. **Is thread-safe:** Correctly uses `AtomicReference`, `synchronized`, `ConcurrentHashMap`, `volatile`, CAS — documented per class above.
+3. **Is extensible:** Adding a new game is just a `@Bean` (auto-registered by the engine).
+4. **Is production-ready:** Per-session TTL, connect rollback, idempotent (dis)connect, `INTRODUCTION`/`START`/`STOP` hardware protocol, CORS, Actuator (`health,info`), Swagger starter, prod logging profile, localized error catalog.
+5. **Is educational:** Sample game `SequentialTouchGame` (3×3 default) demonstrates standby/countdown/win/lose animations and the concurrency patterns.
 
-For more questions, see READMEs of `tileboard-serial-protocol` and `tileboard-game-engine` modules.
+For more questions, see the READMEs of the `tileboard-serial-protocol` and `tileboard-game-engine` modules.
 
 ---
 
