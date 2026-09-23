@@ -1,16 +1,18 @@
 package com.tileboard.serial.exception;
 
+import com.tileboard.serial.support.error.LocalizableException;
+
 /**
  * Raised for any failure opening, writing to, or reading from a serial
  * transport.
  */
-public class SerialTransportException extends RuntimeException {
+public class SerialTransportException extends LocalizableException {
 
-    public SerialTransportException(String message) {
-        super(message);
+    public SerialTransportException(String errorCode, Object[] args, String rawMessage) {
+        super(errorCode, args, rawMessage);
     }
 
-    public SerialTransportException(String message, Throwable cause) {
-        super(message, cause);
+    public SerialTransportException(String errorCode, Object[] args, String rawMessage, Throwable cause) {
+        super(errorCode, args, rawMessage, cause);
     }
 }

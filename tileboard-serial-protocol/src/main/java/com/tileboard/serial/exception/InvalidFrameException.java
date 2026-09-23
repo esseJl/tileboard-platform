@@ -7,11 +7,11 @@ package com.tileboard.serial.exception;
  */
 public class InvalidFrameException extends ProtocolException {
 
-    public InvalidFrameException(String message) {
-        super(message);
+    public InvalidFrameException(String errorCode, Object[] args, String rawMessage) {
+        super(errorCode, args, rawMessage);
     }
 
-    public InvalidFrameException(String message, Throwable cause) {
-        super(message, cause);
+    public InvalidFrameException(String errorCode, Object[] args, String rawMessage, Throwable cause) {
+        super(errorCode, args, rawMessage, cause);
     }
 }
