@@ -8,24 +8,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * knobs an operator may reasonably want to change per deployment/hardware
  * revision without touching code.
  *
- * @param baudRate                serial line speed expected by the controller firmware
- * @param dataBits                serial data bits
- * @param stopBits                serial stop bits (1 or 2)
- * @param readTimeoutMillis       read timeout applied when opening a port
- * @param writeTimeoutMillis      write timeout applied when opening a port
- * @param handshakeMinSequence    minimum accepted length for the id-assignment sequence
- *                                (see {@code SequentialIdSequenceValidator}); a sensible
- *                                default is derived from the board size if not set (0 = auto)
+ * @param baudRate             serial line speed expected by the controller firmware
+ * @param dataBits             serial data bits
+ * @param stopBits             serial stop bits (1 or 2)
+ * @param readTimeoutMillis    read timeout applied when opening a port
+ * @param writeTimeoutMillis   write timeout applied when opening a port
+ * @param handshakeMinSequence minimum accepted length for the id-assignment sequence
+ *                             (see {@code SequentialIdSequenceValidator}); a sensible
+ *                             default is derived from the board size if not set (0 = auto)
  */
 @ConfigurationProperties(prefix = "tileboard.serial")
-public record TileboardProperties(
-        int baudRate,
-        int dataBits,
-        int stopBits,
-        int readTimeoutMillis,
-        int writeTimeoutMillis,
-        int handshakeMinSequence
-) {
+public record TileboardProperties(int baudRate, int dataBits, int stopBits,
+                                  int readTimeoutMillis, int writeTimeoutMillis, int handshakeMinSequence) {
 
     public TileboardProperties {
         if (baudRate <= 0) baudRate = 115_200;
