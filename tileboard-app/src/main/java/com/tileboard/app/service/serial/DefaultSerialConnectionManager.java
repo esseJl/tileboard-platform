@@ -1,11 +1,12 @@
 package com.tileboard.app.service.serial;
 
 import com.tileboard.app.config.DeviceConfiguration;
-import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.exception.PortsNotAssignedException;
 import com.tileboard.app.exception.SerialPortOperationException;
 import com.tileboard.app.config.TileboardProperties;
 import com.tileboard.app.service.device.DeviceConfigurationService;
+import com.tileboard.app.settings.SettingKeys;
+import com.tileboard.app.settings.SettingsService;
 import com.tileboard.engine.spring.GatewayConnectedEvent;
 import com.tileboard.engine.spring.GatewayDisconnectedEvent;
 import com.tileboard.serial.gateway.TileGatewayClient;
@@ -26,20 +27,14 @@ import org.springframework.stereotype.Service;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * Default {@link SerialConnectionManager}.
  *
- * <p>Supports two topologies transparently: a single full-duplex port
- * assigned to both {@link PortRole#IN} and {@link PortRole#OUT} (opened
- * once), or two independent half-duplex adapters (opened separately) - the
- * caller only ever assigns roles to port names, never has to think about
- * which topology results.
- *
- * <p>Not meant to be used concurrently from many threads doing
- * connect/disconnect at once (an operator-driven admin action), so the
- * mutating methods are simply {@code synchronized}.
+ * <p>WHICH ports are assigned to WHICH role is persisted through {@link SettingsService}
+ * (so it survives a restart, same as device configuration); the actually-open OS handles
+ * and the running {@link TileGatewayClient} are NOT persisted - a live serial connection
+ * cannot be reattached after a JVM restart, so those stay purely in-memory.
  */
 @Service
 public class DefaultSerialConnectionManager implements SerialConnectionManager {
@@ -49,19 +44,21 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
     private final SerialPortRegistry portRegistry;
     private final TileboardProperties properties;
     private final DeviceConfigurationService deviceConfigurationService;
+    private final SettingsService settingsService;
     private final ApplicationEventPublisher eventPublisher;
 
-    private final Map<PortRole, String> assignedPorts = new EnumMap<>(PortRole.class);
     private final Map<PortRole, SerialTransport> openTransports = new EnumMap<>(PortRole.class);
     private TileGatewayClient client;
 
     public DefaultSerialConnectionManager(SerialPortRegistry portRegistry,
                                           TileboardProperties properties,
                                           DeviceConfigurationService deviceConfigurationService,
+                                          SettingsService settingsService,
                                           ApplicationEventPublisher eventPublisher) {
         this.portRegistry = portRegistry;
         this.properties = properties;
         this.deviceConfigurationService = deviceConfigurationService;
+        this.settingsService = settingsService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -84,14 +81,13 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
     @Override
     public synchronized void assign(PortRole role, String portName) {
-        assignedPorts.put(role, portName);
+        PortAssignment updated = currentAssignment().withRole(role, portName);
+        settingsService.set(SettingKeys.SERIAL_PORT_ASSIGNMENT, updated);
     }
 
     @Override
     public synchronized PortAssignment currentAssignment() {
-        return new PortAssignment(
-                Optional.ofNullable(assignedPorts.get(PortRole.IN)),
-                Optional.ofNullable(assignedPorts.get(PortRole.OUT)));
+        return settingsService.getOrDefault(SettingKeys.SERIAL_PORT_ASSIGNMENT);
     }
 
     @Override
@@ -105,12 +101,13 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
             return;
         }
 
-        if (deviceConfigurationService.current().isEmpty()){
+        if (deviceConfigurationService.current().isEmpty()) {
             log.info("Device not Configured - can not connect.");
         }
 
-        String outPort = assignedPorts.get(PortRole.OUT);
-        String inPort = assignedPorts.get(PortRole.IN);
+        PortAssignment assignment = currentAssignment();
+        String outPort = assignment.outPort().orElse(null);
+        String inPort = assignment.inPort().orElse(null);
         if (outPort == null) {
             throw new PortsNotAssignedException();
         }
@@ -124,14 +121,6 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
                 .writeTimeoutMillis(properties.writeTimeoutMillis())
                 .build();
 
-        // Opened transports are tracked locally first, and only merged into
-        // the real openTransports/client state once every step below
-        // succeeds. If opening the second port (or anything else in this
-        // block) throws, the finally block closes whatever WAS opened in
-        // this attempt instead of leaking it - otherwise a failed connect
-        // would hold the OS port handle open forever with nothing left
-        // referencing it, and the next connect() attempt would fail again
-        // trying to reopen the same physical port.
         Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>(PortRole.class);
         TileGatewayClient newClient;
         boolean success = false;
@@ -151,11 +140,6 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
                     openedThisAttempt.put(PortRole.IN, inTransport);
                     builder.inputTransport(inTransport);
                 } else {
-                    // Silently proceeding here would build a send-only client:
-                    // TileGatewayClient.start() only calls setDataListener() when
-                    // an inputTransport is present, so with none assigned no
-                    // touch/handshake byte would ever be read - with no error
-                    // anywhere. Loud and explicit beats silently half-working.
                     log.warn("No IN port assigned - connecting OUTPUT ONLY. The board's touches and "
                             + "id handshake will never be received. If your controller uses a single "
                             + "full-duplex port, assign the SAME port name to both IN and OUT.");
@@ -163,13 +147,6 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
             }
 
             newClient = builder.build();
-            // Register every FrameListener (currently just the handshake
-            // coordinator) BEFORE start() opens the input pipe. Calling
-            // start() first would let the board's very first frames (e.g.
-            // its initial ID/CLEAR handshake request) arrive before anything
-            // is listening for them, silently dropping them since
-            // TileGatewayClient.dispatch() only notifies listeners that were
-            // registered by the time a frame is decoded.
             enableHandshakeIfDeviceKnown(newClient);
             success = true;
         } finally {
@@ -181,20 +158,19 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         openTransports.putAll(openedThisAttempt);
         this.client = newClient;
 
-            eventPublisher.publishEvent(
-                    new GatewayConnectedEvent(newClient,
-                            deviceConfigurationService.current().get().width(),
-                            deviceConfigurationService.current().get().height()));
-            newClient.start();
+        eventPublisher.publishEvent(
+                new GatewayConnectedEvent(newClient,
+                        deviceConfigurationService.current().get().width(),
+                        deviceConfigurationService.current().get().height()));
+        newClient.start();
         log.info("Tile board gateway connected (input={}, output={})", inPort, outPort);
         try {
             DeviceConfiguration device = deviceConfigurationService.current().get();
             newClient.send(Command.INTRODUCTION, CommandType.SET);
-            log.info("sent INTRODUCTION to hardware ({}X{} board)",device.width(),device.height());
-        }catch (RuntimeException e){
+            log.info("sent INTRODUCTION to hardware ({}X{} board)", device.width(), device.height());
+        } catch (RuntimeException e) {
             log.warn("failed to send INTRODUCTION command (gateway may have closed)");
         }
-
     }
 
     private void closeQuietly(Iterable<SerialTransport> transports) {
@@ -227,7 +203,7 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         try {
             return portRegistry.open(portName, config);
         } catch (RuntimeException e) {
-            throw new SerialPortOperationException("serial.port_operation_failed", new Object[] { portName },
+            throw new SerialPortOperationException("serial.port_operation_failed", new Object[]{portName},
                     "Failed to open serial port '" + portName + "'", e);
         }
     }
@@ -239,17 +215,13 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         }
         try {
             try {
-                client.send(Command.STOP,CommandType.SET);
+                client.send(Command.STOP, CommandType.SET);
                 log.info("sent STOP to hardware on disconnected.");
-            }catch (RuntimeException e){
-                log.warn("Failed to sned STOP on disconnected: {}",e.getMessage());
+            } catch (RuntimeException e) {
+                log.warn("Failed to send STOP on disconnected: {}", e.getMessage());
             }
             client.close();
         } finally {
-            // Always drop our reference and tell the rest of the app the
-            // gateway is gone, even if close() itself threw - staying
-            // "connected" after a failed close would leave GameSessionManager
-            // holding a client that can no longer be used.
             client = null;
             openTransports.clear();
             log.info("Tile board gateway disconnected");

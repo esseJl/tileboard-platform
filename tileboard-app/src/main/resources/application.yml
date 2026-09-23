@@ -1,11 +1,27 @@
 spring:
   application:
     name: tileboard-game-engine
+  datasource:
+    url: ${TILEBOARD_DB_URL:jdbc:h2:file:./data/tileboard;MODE=PostgreSQL}
+    username: ${TILEBOARD_DB_USER:sa}
+    password: ${TILEBOARD_DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 
 server:
   port: 8080
 
 tileboard:
+  settings:
+    store: memory    #  dev/demo/test    ---- jpa on production
+  cache:
+    settings-ttl-seconds: 300
+    settings-max-size: 100
   serial:
     baud-rate: 115200
     data-bits: 8

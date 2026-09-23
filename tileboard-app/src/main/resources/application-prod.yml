@@ -6,7 +6,27 @@
 # long-running production deployment. This profile only overrides logging;
 # everything else (serial settings, exposed actuator endpoints) is inherited
 # from application.yml.
+spring:
+  datasource:
+    url: jdbc:sqlite:./data/app.db
+    driver-class-name: org.sqlite.JDBC
+  jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
 logging:
   level:
     root: INFO
     com.tileboard: INFO
+
+tileboard:
+  settings:
+    store: jpa
+  cache:
+    settings-ttl-seconds: 300
+    settings-max-size: 100
