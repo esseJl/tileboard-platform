@@ -45,7 +45,8 @@ public final class DefaultFrameCodec implements FrameEncoder, FrameDecoder {
     public byte[] encode(Frame frame) {
         byte[] payload = frame.payload();
         if (payload.length > MAX_PAYLOAD_LENGTH) {
-            throw new InvalidFrameException(
+            throw new InvalidFrameException("protocol.payload_too_large",
+                    new Object[] { payload.length, MAX_PAYLOAD_LENGTH },
                     "Payload of " + payload.length + " bytes exceeds the maximum of " + MAX_PAYLOAD_LENGTH);
         }
 

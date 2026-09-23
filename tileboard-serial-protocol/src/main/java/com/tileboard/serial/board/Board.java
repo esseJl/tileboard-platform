@@ -27,7 +27,8 @@ public final class Board<T> {
 
     public Board(int width, int height, Supplier<T> initialTileSupplier) {
         if (width <= 0 || height <= 0) {
-            throw new BoardException("width and height must both be > 0, got width=" + width + ", height=" + height);
+            throw new BoardException("board.invalid_dimensions", new Object[] { width, height },
+                    "width and height must both be > 0, got width=" + width + ", height=" + height);
         }
         Objects.requireNonNull(initialTileSupplier, "initialTileSupplier");
         this.width = width;
@@ -142,8 +143,10 @@ public final class Board<T> {
         Objects.requireNonNull(flat, "flat");
         Objects.requireNonNull(codec, "codec");
         if (flat.length != width * height) {
-            throw new BoardException("Expected " + (width * height) + " bytes for a " + width + "x" + height +
-                    " board but got " + flat.length);
+            throw new BoardException("board.byte_length_mismatch",
+                    new Object[] { width * height, width, height, flat.length },
+                    "Expected " + (width * height) + " bytes for a " + width + "x" + height +
+                            " board but got " + flat.length);
         }
         Board<T> board = new Board<>(width, height, () -> null);
         int index = 0;
@@ -157,8 +160,9 @@ public final class Board<T> {
 
     private void checkBounds(int row, int col) {
         if (row < 0 || row >= height || col < 0 || col >= width) {
-            throw new BoardException("Position (row=" + row + ", col=" + col +
-                    ") is out of bounds for a " + width + "x" + height + " board");
+            throw new BoardException("board.position_out_of_bounds", new Object[] { row, col, width, height },
+                    "Position (row=" + row + ", col=" + col +
+                            ") is out of bounds for a " + width + "x" + height + " board");
         }
     }
 

@@ -47,7 +47,8 @@ public final class JSerialCommPortRegistry implements SerialPortRegistry {
         port.setFlowControl(toJSerialCommFlowControl(config.flowControl()));
 
         if (!port.openPort()) {
-            throw new SerialTransportException("Failed to open serial port: " + portName);
+            throw new SerialTransportException("serial.port_open_failed", new Object[] { portName },
+                    "Failed to open serial port: " + portName);
         }
         boolean clearDTR = port.clearDTR();
         boolean clearRTS = port.clearRTS();

@@ -43,7 +43,8 @@ public enum CommandType {
     public static CommandType fromCode(int code) {
         CommandType type = BY_CODE.get(code & 0xFF);
         if (type == null) {
-            throw new ProtocolException("Unknown command type code: " + (code & 0xFF));
+            throw new ProtocolException("protocol.unknown_command_type", new Object[] { code & 0xFF },
+                    "Unknown command type code: " + (code & 0xFF));
         }
         return type;
     }

@@ -68,7 +68,8 @@ public final class BoardFrameListener<T> implements FrameListener {
         try {
             board = Board.fromWireBytes(frame.payload(), width, height, codec);
         } catch (BoardException e) {
-            throw new ProtocolException(
+            throw new ProtocolException("protocol.frame_payload_board_mismatch",
+                    new Object[] { command, width, height, e.getMessage() },
                     "Received a " + command + " frame whose payload doesn't match the configured "
                             + width + "x" + height + " board: " + e.getMessage(), e);
         }

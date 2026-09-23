@@ -49,7 +49,8 @@ public enum Command {
     public static Command fromCode(int code) {
         Command command = BY_CODE.get(code & 0xFF);
         if (command == null) {
-            throw new ProtocolException("Unknown command code: " + (code & 0xFF));
+            throw new ProtocolException("protocol.unknown_command", new Object[] { code & 0xFF },
+                    "Unknown command code: " + (code & 0xFF));
         }
         return command;
     }

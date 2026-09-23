@@ -41,14 +41,16 @@ public final class JSerialCommTransport implements SerialTransport {
     @Override
     public void write(byte[] data) {
         if (!delegate.isOpen()) {
-            throw new SerialTransportException("Cannot write: port " + portName() + " is not open");
+            throw new SerialTransportException("serial.write_port_not_open", new Object[] { portName() },
+                    "Cannot write: port " + portName() + " is not open");
         }
         if (log.isDebugEnabled()) {
             log.debug("TX [{}] {} bytes: {}", portName(), data.length, HexFormat.of().formatHex(data));
         }
         int written = delegate.writeBytes(data, data.length);
         if (written != data.length) {
-            throw new SerialTransportException(
+            throw new SerialTransportException("serial.short_write",
+                    new Object[] { portName(), data.length, written },
                     "Short write on " + portName() + ": expected " + data.length + " bytes, wrote " + written);
         }
     }
