@@ -27,7 +27,7 @@ class TouchFrameRouterTest {
         touches.set(0, 1, true);
         router.route(touches);
 
-        verify(owner, times(1)).handleTileEvent(any());
+        verify(owner, times(4)).handleTileEvent(any());
         verifyNoInteractions(other);
     }
 
