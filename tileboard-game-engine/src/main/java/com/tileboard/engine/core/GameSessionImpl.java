@@ -30,7 +30,9 @@ import java.util.function.Consumer;
 public final class GameSessionImpl implements GameSession, GameContext {
 
     private static final Logger log = LoggerFactory.getLogger(GameSessionImpl.class);
-    /** How many of the most recent touches to expose (newest first) in each SSE snapshot. */
+    /**
+     * How many of the most recent touches to expose (newest first) in each SSE snapshot.
+     */
     private static final int RECENT_TOUCHES_LIMIT = 5;
     private static final double NANOS_PER_MILLI = 1_000_000.0;
 
@@ -436,7 +438,7 @@ public final class GameSessionImpl implements GameSession, GameContext {
      * {@link SessionSnapshot.TouchInfo} shape.
      */
     private List<SessionSnapshot.TouchInfo> recentTouchesForSse() {
-        return features.touchHistory().recent(RECENT_TOUCHES_LIMIT).stream()
+        return features.touchHistory().activeTouches().stream()
                 .map(e -> new SessionSnapshot.TouchInfo(
                         e.position().row(), e.position().col(), e.type().name(), e.occurredAt()))
                 .toList();

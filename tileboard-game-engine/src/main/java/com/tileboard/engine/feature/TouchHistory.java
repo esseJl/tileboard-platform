@@ -17,6 +17,7 @@ public final class TouchHistory {
     private final int maxSize;
     private final Deque<TileEvent> history = new ArrayDeque<>();
     private final Object lock = new Object();
+    private final Map<Position, TileEvent> active = new LinkedHashMap<>();
     private long totalTouches = 0;
 
     public TouchHistory(String sessionId) {
@@ -38,6 +39,17 @@ public final class TouchHistory {
             if (history.size() >= maxSize) history.pollFirst();
             history.addLast(event);
             totalTouches++;
+            updateActive(event);
+        }
+    }
+
+    /**
+     * Must only be called while holding {@link #lock}.
+     */
+    private void updateActive(TileEvent event) {
+        switch (event.type()) {
+            case TOUCH, HOLD -> active.put(event.position(), event);
+            case RELEASE -> active.remove(event.position());
         }
     }
 
@@ -55,6 +67,12 @@ public final class TouchHistory {
 
     public Optional<Position> lastTouchedPosition() {
         return last().map(TileEvent::position);
+    }
+
+    public List<TileEvent> activeTouches() {
+        synchronized (lock) {
+            return List.copyOf(active.values());
+        }
     }
 
     /**
