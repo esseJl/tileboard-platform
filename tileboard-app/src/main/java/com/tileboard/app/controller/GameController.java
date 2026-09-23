@@ -29,7 +29,7 @@ import java.util.List;
  * engine used by this controller up.
  */
 @RestController
-@RequestMapping(path = "/api/v1/games",produces = MediaType.APPLICATION_JSON_VALUE)
+@RequestMapping(path = "/api/v1/games", produces = MediaType.APPLICATION_JSON_VALUE)
 public class GameController {
 
     private final GameRegistry registry;
@@ -40,7 +40,9 @@ public class GameController {
         this.engineManager = engineManager;
     }
 
-    /** Every registered game type. Available even before the board is connected. */
+    /**
+     * Every registered game type. Available even before the board is connected.
+     */
     @GetMapping
     public ResponseEntity<ApiResponse> listGames() {
         List<GameDescriptorResponse> games = registry.listAll().stream()
@@ -49,24 +51,31 @@ public class GameController {
         return ApiResponses.ok(games);
     }
 
-    /** Starts a new session. Requires the gateway to be connected (see {@code /api/v1/ports/connect}). */
+    /**
+     * Starts a new session. Requires the gateway to be connected (see {@code /api/v1/ports/connect}).
+     */
     @PostMapping("/sessions")
-    public ResponseEntity<GameSessionResponse> startGame(@RequestBody @Valid StartGameRequest request) {
+    public ResponseEntity<ApiResponse> startGame(@RequestBody @Valid StartGameRequest request) {
         GameEngine engine = engineManager.require();
         List<Player> players = request.players().stream().map(PlayerRequest::toPlayer).toList();
         String sessionId = engine.startGame(request.gameId(), players);
-        GameSessionResponse response = engine.activeSession(sessionId)
+        GameSessionResponse gameSession = engine.activeSession(sessionId)
                 .map(GameSessionResponse::from)
                 .orElseThrow(NoActiveGameException::new);
-        return ResponseEntity.ok(response);
+        return ApiResponses.ok(gameSession);
     }
 
-    /** All currently running sessions. */
+    /**
+     * All currently running sessions.
+     */
     @GetMapping("/sessions")
-    public List<GameSessionResponse> activeSessions() {
-        return engineManager.current()
-                .map(engine -> engine.activeSessions().stream().map(GameSessionResponse::from).toList())
+    public ResponseEntity<ApiResponse> activeSessions() {
+        List<GameSessionResponse> activeSession = engineManager.current()
+                .map(engine -> engine.activeSessions()
+                        .stream()
+                        .map(GameSessionResponse::from).toList())
                 .orElseGet(List::of);
+        return ApiResponses.ok(activeSession);
     }
 
     @GetMapping("/sessions/{sessionId}")

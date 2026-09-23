@@ -77,10 +77,10 @@ class ControllerUnitTest {
         when(session.status()).thenReturn(GameStatus.RUNNING);
 
         GameController controller = new GameController(registry, manager);
-        assertEquals("g1", ((List<GameDescriptorResponse>)controller.listGames().getBody().data()).get(0).gameId());
+        assertEquals("g1", ((List<GameDescriptorResponse>) controller.listGames().getBody().data()).get(0).gameId());
         StartGameRequest request = new StartGameRequest("g1", List.of(new PlayerRequest("Alice", PlayerRole.PLAYER_ONE)));
-        assertEquals("s1", controller.startGame(request).getBody().sessionId());
-        assertEquals(1, controller.activeSessions().size());
+        assertEquals("s1", ((GameSessionResponse) controller.startGame(request).getBody().data()).sessionId());
+        assertEquals(1, ((List<GameSessionResponse>) controller.activeSessions().getBody().data()).size());
         assertEquals("s1", controller.getSession("s1").sessionId());
         assertEquals(HttpStatus.NO_CONTENT, controller.stopGame("s1").getStatusCode());
         verify(engine).stopGame("s1");
@@ -93,7 +93,7 @@ class ControllerUnitTest {
         GameEngineManager manager = mock(GameEngineManager.class);
         when(manager.current()).thenReturn(Optional.empty());
         GameController controller = new GameController(registry, manager);
-        assertTrue(controller.activeSessions().isEmpty());
+        assertTrue(((List<GameSessionResponse>) controller.activeSessions().getBody().data()).isEmpty());
         assertThrows(NoActiveGameException.class, () -> controller.getSession("x"));
     }
 
