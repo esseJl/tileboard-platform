@@ -13,3 +13,5 @@ target/
 /tileboard-app/target/
 /tileboard-game-engine/target/
 .DS_Store
+/identifier.sqlite
+/tileboard-app/data/tileboard.mv.db
