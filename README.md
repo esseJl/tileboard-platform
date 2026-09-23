@@ -1,6 +1,6 @@
 # Tileboard Platform - Comprehensive Platform Documentation
 
-> **Tileboard Platform** is a complete system for controlling an LED tile board (m x n, max 255 tiles) over serial and running interactive games on it. It consists of three Maven modules: serial protocol, game engine, and Spring Boot backend application.
+> **Tileboard Platform** is a complete system for controlling an LED tile board (m x n, max 255 tiles) over serial and running interactive games on it. It consists of three Maven modules: serial protocol, game engine, and a Spring Boot backend application (REST + SSE + JPA/Hibernate/Flyway persistence).
 
 ---
 
@@ -10,13 +10,14 @@
 3. [Modules](#modules)
 4. [Prerequisites](#prerequisites)
 5. [Quick Start](#quick-start)
-6. [Typical Workflow](#typical-workflow)
-7. [Practical Example - SequentialTouchGame](#practical-example)
-8. [Animations](#animations)
-9. [Concurrency and Thread-Safety Across Platform](#concurrency)
-10. [Tests and Build](#tests-and-build)
-11. [Repository Structure](#repository-structure)
-12. [Roadmap](#roadmap)
+6. [Persistence, Settings and Cache](#persistence-settings-and-cache)
+7. [Typical Workflow](#typical-workflow)
+8. [Practical Example - SequentialTouchGame](#practical-example)
+9. [Animations](#animations)
+10. [Concurrency and Thread-Safety Across Platform](#concurrency)
+11. [Tests and Build](#tests-and-build)
+12. [Repository Structure](#repository-structure)
+13. [Roadmap](#roadmap)
 
 ---
 
@@ -28,6 +29,7 @@ Tileboard Platform was built to solve these problems:
 - **Hardware abstraction:** Game code never knows whether jSerialComm, RXTX, or a Mock is used (`SerialTransport` interface; single seam `SerialGatewayConfig`)
 - **Production-ready game engine:** Scoring, health, levels, combos, timers, touch history, neighbor finding, patterns, waves, memory, reaction stats, graph queries, animations, SSE — framework-free core with an optional Spring adapter
 - **Spring Boot backend:** REST API for device configuration, port management, game control, and real-time SSE streaming, with a localized (Persian) error catalog
+- **Persistent configuration:** JPA/Hibernate (`ddl-auto: validate`) + Flyway migrations + SQLite (prod) / H2 file DB (dev), behind one generic, strongly-typed settings store (`SettingsService` + `SettingKey`) with a Caffeine read cache — device geometry and port assignment survive a restart, and adding a new setting needs no migration and no new table
 - **Extensibility:** Adding a new game is just a `@Bean` (auto-registered by `TileboardEngineAutoConfiguration`), without changing engine or protocol
 
 ### Key Features
@@ -38,6 +40,7 @@ Tileboard Platform was built to solve these problems:
 - ✅ **Built-in animations:** `countdown` (+ win: 4 types, lose: 4 types, standby: 4 types, all cooperative-cancellation based)
 - ✅ **Event-driven:** `GameEventBus` with `BLOCK` / `DROP_OLDEST` (default) policies; SSE to the frontend with `SseGameEvent` JSON payloads
 - ✅ **Production-ready:** Per-session TTL (30 m in app, 1 h engine default), connect rollback, idempotent (dis)connect, `INTRODUCTION`/`START`/`STOP` hardware protocol, Actuator (`health,info`), Swagger starter, Micrometer gauges (when a `MeterRegistry` exists)
+- ✅ **Persistent:** One `app_settings` table stores every configurable value as opaque JSON (`@Version` optimistic locking, Flyway-owned schema, `tileboard.settings.store=jpa` in prod / `memory` in dev), with a Caffeine cache in front of reads
 - ✅ **Testable:** Mock `SerialTransport`, concurrency tests, unit tests in every module; hardware suite is opt-in and skipped without a port
 
 ---
@@ -51,10 +54,17 @@ Tileboard Platform was built to solve these problems:
 ├─────────────────────────────────────────────────────────────────────────┤
 │  tileboard-app (Spring Boot 3.3.4, Java 17)                             │
 │  ├─ Controllers: Device (/api/v1/device), SerialPort, Game, Stream      │
-│  ├─ Services: DeviceConfig (AtomicReference), SerialConnection (sync),  │
-│  │            SseBoardStateBroadcaster, Messages (fixed-fa i18n)         │
+│  ├─ Services: DeviceConfig (settings-backed), SerialConnection (sync),  │
+│  │            SseBoardStateBroadcaster, Messages (fixed-fa i18n)        │
+│  ├─ Settings: SettingsService (SettingKey registry) = InMemory | Jpa    │
 │  ├─ GlobalExceptionHandler → ApiResponse{message fa, debugMessage en}   │
-│  └─ GameBeansConfig: SequentialTouchGame @Bean (default 3x3)            │
+│  └─ GameBeansConfig: SequentialTouchGame @Bean (sized from device cfg)  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Persistence: JPA/Hibernate (ddl-auto=validate) + Flyway migrations     │
+│  ├─ app_settings(setting_key PK, value_json, updated_at, version)       │
+│  ├─ Dev: H2 file DB (./data/tileboard, MODE=PostgreSQL, env-overridable)│
+│  ├─ Prod: SQLite (./data/app.db + hibernate-community-dialects)         │
+│  └─ Read cache: Caffeine (cache "settings", TTL/max-size configurable)  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  tileboard-game-engine (Framework-free + Spring AutoConfig)             │
 │  ├─ GameEngineImpl (ConcurrentHashMap, AtomicReference CAS, reaper)     │
@@ -85,6 +95,7 @@ Tileboard Platform was built to solve these problems:
 5. `GameSessionImpl.handleTileEvent` (only while `RUNNING`) records touch history + reaction speed, then calls `game.onTileEvent`
 6. Game calls `ctx.setTile` / `publishBoard` / `fillBoard` → `BoardChannel` (coalescing) → `TileGatewayClient.sendBoard(DATA_OUT/SET)` → `DefaultFrameCodec.encode` → `SerialTransport.write` → hardware
 7. Simultaneously `eventBus.publish(BOARD_UPDATED with SessionSnapshot)` → `SseGameEventPublisher`/`GameEventSseEmitter` → `SseEmitter` (`BOARD_UPDATE` event) → frontend
+8. In parallel with all of the above: configuration writes (`POST /api/v1/device`, `POST /api/v1/ports/{role}/assign`) go `SettingsBackedDeviceConfigurationService`/`DefaultSerialConnectionManager` → `SettingsService.set(SettingKey)` → JSON via `settingsObjectMapper` → `ApplicationSetting` row (`@Version`) → cache eviction; reads come back through the Caffeine cache or `InMemorySettingsService` (dev)
 
 ---
 
@@ -132,12 +143,13 @@ Tileboard Platform was built to solve these problems:
 
 **Key Classes:**
 - `TileboardApplication`: main (`@SpringBootApplication` + `@ConfigurationPropertiesScan`)
-- `TileboardProperties` (`tileboard.serial`), `DeviceConfiguration` (≤255 tiles), `SerialGatewayConfig` (single jSerialComm seam), `GeneralConfiguration` (CORS): Config
+- `TileboardProperties` (`tileboard.serial`), `DeviceConfiguration` (≤255 tiles), `SerialGatewayConfig` (single jSerialComm seam), `GeneralConfiguration` (CORS), `CacheConfig` + `CacheSettingsProperties` (`tileboard.cache`, Caffeine `settings` cache): Config
 - `DeviceController` (`/api/v1/device`), `SerialPortController` (`/api/v1/ports/{role}/assign`, `/status`, `/connect`, `/disconnect`), `GameController` (`/api/v1/games…`), `StreamController` (`/api/v1/stream/board[…]`): REST + SSE API
 - `DeviceConfigurationRequest/Response`, `AssignPortRequest({portName})`, `SerialPortResponse`, `ConnectionStatusResponse({state,inPort,outPort})`, `GameDescriptorResponse`, `StartGameRequest({gameId, players:[{name,role}]})`, `PlayerRequest`, `GameSessionResponse({sessionId,gameId,status})`, `ApiResponse({status,message,data,extra,debugMessage})`, `ApiResponses`, `Status`: DTOs
-- `DeviceConfigurationService`/`InMemoryDeviceConfigurationService`, `SerialConnectionManager`/`DefaultSerialConnectionManager` (+ `PortRole`, `PortAssignment`, `ConnectionState`), `BoardStateBroadcaster`/`SseBoardStateBroadcaster` (`board-frame` events): Services
+- `DeviceConfigurationService`/`SettingsBackedDeviceConfigurationService`, `SerialConnectionManager`/`DefaultSerialConnectionManager` (+ `PortRole`, `PortAssignment`, `ConnectionState`, persisted assignment), `BoardStateBroadcaster`/`SseBoardStateBroadcaster` (`board-frame` events): Services
+- `SettingsService` (`get`/`getOrDefault`/`set`/`clear`/`isSet`), `InMemorySettingsService` (`store=memory`), `JpaSettingsService` (`store=jpa`, default), `SettingKey<T>` + `SettingKeys` (append-only registry), `SettingsSerializationConfig` (`settingsObjectMapper`), `ApplicationSetting` (`@Entity @Table(app_settings)`, `@Version`) + `SettingRepository`, `SettingsPersistenceException`, `db/migration/V1__create_app_settings.sql`: Persistent settings
 - `Messages` (fixed-`fa`), `ApiException` + 5 subclasses, `GlobalExceptionHandler` (409/404/502/400/500 mapping): i18n error handling
-- `GameBeansConfig`, `SequentialTouchGame` (default 3×3): Sample tutorial game
+- `GameBeansConfig` (sizes the sample game from the persisted device configuration at startup), `SequentialTouchGame` (default 3×3): Sample tutorial game
 
 **Full docs:** [tileboard-app/README.md](tileboard-app/README.md)
 
@@ -149,6 +161,7 @@ Tileboard Platform was built to solve these problems:
 - **Maven 3.8+**
 - **Tileboard board** connected via USB (or a Mock `SerialTransport` — all unit tests run hardware-less)
 - **Git**
+- **No database server to install:** the app ships its own file databases — H2 (dev default, `./data/tileboard`) and SQLite (prod profile, `./data/app.db`, via `sqlite-jdbc`). The schema is created by Flyway migrations on startup and validated by Hibernate (`spring.jpa.hibernate.ddl-auto: validate`), so there is no manual SQL step.
 
 ---
 
@@ -177,8 +190,20 @@ App runs on `http://localhost:8080`.
 
 - Swagger UI: springdoc starter (`2.6.0`) default path
 - Health: `http://localhost:8080/actuator/health` (only `health,info` exposed)
+- On first start Flyway migrates the embedded DB and the file appears next to the module (`tileboard-app/data/tileboard.mv.db` in dev, `tileboard-app/data/app.db` with the `prod` profile — the `.gitignore` already excludes the H2 file)
+- Datasource is overridable without touching code: `TILEBOARD_DB_URL`, `TILEBOARD_DB_USER`, `TILEBOARD_DB_PASSWORD` (base `application.yml`); the `prod` profile pins the SQLite URL instead
 
-### 3. Quick Test Without Hardware (Mock)
+### 3. Persistence in One Line
+
+Dev default is an in-memory settings store (`tileboard.settings.store: memory`), prod persists (`jpa`). To make a dev run persistent without editing YAML:
+
+```bash
+TILEBOARD_SETTINGS_STORE=jpa java -jar target/tileboard-app-1.0.0.jar
+```
+
+See [Persistence, Settings and Cache](#persistence-settings-and-cache) for the full story.
+
+### 4. Quick Test Without Hardware (Mock)
 
 All unit tests pass without hardware:
 
@@ -194,6 +219,238 @@ mvn verify -P hardware-tests -pl tileboard-serial-protocol -Dtileboard.hardware.
 
 ---
 
+## Persistence, Settings and Cache
+
+### Why one generic settings store instead of a table per feature?
+
+The application has, and will keep getting, small pieces of configuration (board geometry
+today, serial port assignment today, display theme / calibration offsets / notification
+preferences tomorrow). Giving each one its own table, entity, repository and migration means
+every new knob is a schema change. Instead, `tileboard-app` stores **every** configurable value
+in a single `app_settings` table as opaque JSON, addressed by a stable string key, behind one
+generic interface:
+
+```
+Controller → Service → SettingsService.set/get(SettingKey<T>) → (Jpa | InMemory)
+                                       │
+                                       ├─ JpaSettingsService: Caffeine cache → SettingRepository → app_settings row
+                                       └─ InMemorySettingsService: ConcurrentHashMap (no DB at all)
+```
+
+### Storage Stack
+
+| Concern | Choice | Where |
+|-----|--------|-------|
+| JPA provider | Hibernate ORM via `spring-boot-starter-data-jpa`, `spring.jpa.hibernate.ddl-auto: validate` | `tileboard-app/pom.xml`, `application.yml` |
+| Schema owner | Flyway (`flyway-core`, `classpath:db/migration`, `spring.flyway.enabled: true`) | `application.yml`, `src/main/resources/db/migration/` |
+| Dev database | H2 file DB — `jdbc:h2:file:./data/tileboard;MODE=PostgreSQL`, user `sa`, empty password; overridable with `TILEBOARD_DB_URL`/`TILEBOARD_DB_USER`/`TILEBOARD_DB_PASSWORD` | `application.yml` |
+| Prod database | SQLite — `jdbc:sqlite:./data/app.db`, driver `org.sqlite.JDBC`, dialect `org.hibernate.community.dialect.SQLiteDialect` (from `hibernate-community-dialects`) | `application-prod.yml` |
+| Read cache | Caffeine (`spring-boot-starter-cache` + `caffeine`), cache name `settings` | `CacheConfig`, `CacheSettingsProperties` |
+| Persisted entity | `ApplicationSetting` (`@Entity @Table(name = "app_settings")`), `SettingRepository extends JpaRepository<ApplicationSetting, String>` | `settings/persistence/` |
+
+> Note: Flyway 10 moved most databases into separate modules, but **H2 and SQLite stay inside
+> `flyway-core`** — that is why both profiles migrate with the single dependency declared in the POM.
+
+### The `app_settings` Table (migration `V1__create_app_settings.sql`)
+
+```sql
+CREATE TABLE app_settings
+(
+    setting_key VARCHAR(200) PRIMARY KEY,
+    value_json  TEXT      NOT NULL,
+    updated_at  TIMESTAMP NOT NULL,
+    version     BIGINT    NOT NULL DEFAULT 0
+);
+```
+
+- `setting_key` is the stable id of a `SettingKey` — treat it as a wire/DB contract: **add new ids, never rename or reuse one**.
+- `value_json` is opaque JSON, so no schema change is ever needed for a new setting (the DB never interprets it).
+- `updated_at` and `version` are maintained by the entity: `updated_at` is set on every write, `version` is a JPA `@Version` column (optimistic locking, see below).
+- Flyway's own `flyway_schema_history` table is created alongside it; Hibernate only *validates* the schema at startup, so a mismatch between entity and migration fails the boot instead of silently altering tables.
+
+### `SettingsService` — the single typed seam
+
+```java
+public interface SettingsService {
+    <T> Optional<T> get(SettingKey<T> key);
+    <T> T getOrDefault(SettingKey<T> key);      // falls back to SettingKey.defaultValue()
+    <T> void set(SettingKey<T> key, T value);   // replaces any previous value
+    void clear(SettingKey<?> key);              // back to "never set"
+    boolean isSet(SettingKey<?> key);
+}
+```
+
+Two implementations, mutually exclusive via `tileboard.settings.store`:
+
+| Value of `tileboard.settings.store` | Bean | Behavior | When to use |
+|-----|------|----------|-------|
+| `memory` | `InMemorySettingsService` (`@ConditionalOnProperty(... havingValue = "memory")`) | `ConcurrentHashMap<String, Object>`; no DB read/write, values lost on restart | the default in `application.yml` — dev, demos, tests |
+| `jpa` (or property absent) | `JpaSettingsService` (`havingValue = "jpa", matchIfMissing = true`) | JSON (de)serialization + `app_settings` + Caffeine cache; survives restarts | `application-prod.yml` (and the real default when no profile is active *and* the property is not set) |
+
+Anything else (e.g. a typo like `redis`): **neither** bean matches, so no `SettingsService` exists and the context fails to start — a deliberate fail-fast rather than silently falling back to memory.
+
+### `SettingKey` + `SettingKeys` — an append-only registry
+
+```java
+public record SettingKey<T>(String id, Class<T> type, T defaultValue) {
+    public static <T> SettingKey<T> of(String id, Class<T> type) { ... }               // no default ("unset" is a real state)
+    public static <T> SettingKey<T> of(String id, Class<T> type, T defaultValue) { ... }
+}
+
+public final class SettingKeys {
+    public static final SettingKey<DeviceConfiguration> DEVICE_CONFIGURATION =
+            SettingKey.of("device.configuration", DeviceConfiguration.class);
+    public static final SettingKey<PortAssignment> SERIAL_PORT_ASSIGNMENT =
+            SettingKey.of("serial.port-assignment", PortAssignment.class, PortAssignment.empty());
+    private SettingKeys() { }
+}
+```
+
+| Key id | Java type | Default | Stored JSON example |
+|-----|-------|-------|--------|
+| `device.configuration` | `DeviceConfiguration` | none (`null` → "not configured", the state behind `DeviceNotConfiguredException`) | `{"width":3,"height":3}` |
+| `serial.port-assignment` | `PortAssignment` (`Optional<String> inPort`, `Optional<String> outPort`) | `PortAssignment.empty()` | `{"inPort":"COM3","outPort":"COM3"}` (an unassigned role is `null`) |
+
+`SettingKey` is deliberately **not** an enum: a new setting is one more `public static final` constant, and no switch statement, repository, controller or migration has to change.
+
+### `JpaSettingsService` — reads, writes, cache, optimistic locking
+
+```java
+@Override
+@Transactional(readOnly = true)
+public <T> Optional<T> get(SettingKey<T> key) {
+    Cache.ValueWrapper cached = cache.get(key.id());
+    if (cached != null) return (Optional<T>) cached.get();      // cache hit (also caches "absent")
+    Optional<T> loaded = repository.findById(key.id())
+            .map(entity -> deserialize(key, entity.getValue()));
+    cache.put(key.id(), loaded);
+    return loaded;
+}
+
+@Override
+@Transactional
+public <T> void set(SettingKey<T> key, T value) {
+    String json = serialize(key, value);
+    try {
+        persist(key.id(), json);                                 // findById → mutate → save
+    } catch (OptimisticLockingFailureException e) {
+        log.warn("Concurrent update detected for setting '{}', retrying once", key.id());
+        persist(key.id(), json);                                 // one retry against the fresh row
+    } finally {
+        cache.evict(key.id());                                   // next read is always consistent
+    }
+}
+```
+
+**Behavior notes (exactly as coded):**
+
+1. **Cache in front of reads.** Settings are read far more often than written (every connect, every game start), so `get` is cache-first. `getOrDefault` is a plain `get` + `defaultValue()` fallback (no second cache entry).
+2. **Negative caching.** `Optional.empty()` results are cached too, so a key that has never been written keeps answering "absent" for up to the TTL rather than hitting the DB every time.
+3. **Writes evict, they don't update.** `set`/`clear` evict the key in a `finally`, so a failed write can never leave a stale entry behind.
+4. **Optimistic locking + one retry.** The entity has `@Version version`; a lost update surfaces as `OptimisticLockingFailureException` (two admins saving at once). Because last-write-wins is acceptable for admin-driven settings, the service retries `persist(...)` exactly once instead of failing the request.
+5. **`isSet` bypasses the cache** (`repository.existsById`), so it is always the DB's answer.
+6. **Cache is mandatory.** The constructor resolves `CacheConfig.SETTINGS_CACHE` ("settings") from the injected `CacheManager` and throws `IllegalStateException` if it is missing — a misconfigured cache manager fails at startup, not at the first read.
+7. **(De)serialization failures are wrapped** in `SettingsPersistenceException` with the key id, the expected type and a hint that the stored value may be corrupt or written by an incompatible version. It is a `RuntimeException` with no dedicated handler, so it reaches the client as a generic 500 (`server.internal_error`).
+8. **JSON mapper is settings-only.** `SettingsSerializationConfig` exposes `settingsObjectMapper()` (a private `ObjectMapper` with `Jdk8Module` for `Optional`, `JavaTimeModule` for `Instant`, `FAIL_ON_UNKNOWN_PROPERTIES=false`) — independent of the web layer's mapper, since persistence is not a wire/API concern.
+
+Writes go through `persist(keyId, json)`: `repository.findById(keyId)` → `orElseGet(new ApplicationSetting(...))` → `setValue` + `setUpdatedAt(Instant.now())` → `save`.
+
+### Cache Configuration
+
+```java
+@Configuration
+@EnableCaching
+public class CacheConfig {
+    public static final String SETTINGS_CACHE = "settings";
+
+    @Bean
+    public CacheManager cacheManager(CacheSettingsProperties properties) {
+        CaffeineCacheManager manager = new CaffeineCacheManager(SETTINGS_CACHE);
+        manager.setCaffeine(Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofSeconds(properties.settingsTtlSeconds()))
+                .maximumSize(properties.settingsMaxSize()));
+        return manager;
+    }
+}
+```
+
+```yaml
+tileboard:
+  cache:
+    settings-ttl-seconds: 300   # how long another instance's write stays invisible (multi-instance)
+    settings-max-size: 100      # at most a handful of keys exist, so this is a safety bound
+```
+
+`CacheSettingsProperties(long settingsTtlSeconds, long settingsMaxSize)` is a record with a compact
+constructor that clamps non-positive values back to `300` / `100`, so a `0` in YAML (or a missing
+property) can never produce an eagerly-expiring or unbounded cache.
+
+### Who Reads and Writes What
+
+| Flow | Path |
+|-----|------|
+| `POST /api/v1/device` | `DeviceController` → `SettingsBackedDeviceConfigurationService.configure(w,h)` → `settingsService.set(DEVICE_CONFIGURATION, config)` |
+| `GET /api/v1/device` | `SettingsBackedDeviceConfigurationService.current()` → `settingsService.get(DEVICE_CONFIGURATION)` → empty ⇒ `DeviceNotConfiguredException` (409) |
+| `POST /api/v1/ports/{role}/assign` | `DefaultSerialConnectionManager.assign(role, portName)` → `withRole(...)` → `settingsService.set(SERIAL_PORT_ASSIGNMENT, updated)` |
+| `GET /api/v1/ports/status`, `POST /ports/connect` | `DefaultSerialConnectionManager.currentAssignment()` → `settingsService.getOrDefault(SERIAL_PORT_ASSIGNMENT)` |
+| Game registration at startup | `GameBeansConfig` reads `deviceConfigurationService.current()` to size `SequentialTouchGame` — with `store=jpa` the game is reborn with the **persisted** geometry after a restart |
+
+`SettingsBackedDeviceConfigurationService` itself knows nothing about JPA, JSON or caching — swapping
+the store never touches it or its callers.
+
+### What Is and Is Not Persisted
+
+| State | Persisted? | Why |
+|-----|-------|-----|
+| Device geometry (`device.configuration`) | ✅ with `store=jpa` (`memory` in dev) | read at every connect, at game registration, by the handshake |
+| Serial port assignment (`serial.port-assignment`) | ✅ with `store=jpa` (`memory` in dev) | which OS port is IN/OUT is operator intent, not runtime state |
+| Open OS handles, `TileGatewayClient` | ❌ never | a live serial connection cannot be reattached after a JVM restart |
+| Game sessions, scores, engine gauges, SSE subscribers | ❌ never | in-memory by design (see `GameEngineImpl`'s TTL reaper) |
+
+### Proving It Survives a Restart
+
+```bash
+# 1. persist in dev
+TILEBOARD_SETTINGS_STORE=jpa mvn spring-boot:run -pl tileboard-app
+
+# 2. configure the board once
+curl -X POST http://localhost:8080/api/v1/device \
+  -H "Content-Type: application/json" -d '{"width":3,"height":3}'
+curl -X POST http://localhost:8080/api/v1/ports/OUT/assign \
+  -H "Content-Type: application/json" -d '{"portName":"COM3"}'
+
+# 3. stop the app (Ctrl-C), start it again, then:
+curl http://localhost:8080/api/v1/device
+# → 200 {status:SUCCESS, message:"Device successfully configured.", data:{width:3,height:3,tileCount:9}}
+curl http://localhost:8080/api/v1/ports/status
+# → 200 {status:SUCCESS, data:{state:"DISCONNECTED", inPort:null, outPort:"COM3"}}
+#      ↑ assignment remembered, live link (correctly) not
+```
+
+With the dev default (`store=memory`) step 3 returns `409 device.not_configured` instead — the same
+endpoints behave differently only because of the store switch.
+
+### Adding a New Setting (no migration, no new table)
+
+```java
+// 1. declare it once, in the append-only registry
+public static final SettingKey<ThemeSettings> THEME =
+        SettingKey.of("ui.theme", ThemeSettings.class, ThemeSettings.defaults());
+
+// 2. use it anywhere, typed
+settingsService.set(SettingKeys.THEME, requested);
+ThemeSettings theme = settingsService.getOrDefault(SettingKeys.THEME);
+```
+
+That is the whole change: `SettingsService` already stores/retrieves *any* type through the same
+`app_settings` row shape, and the `settingsObjectMapper` handles the JSON.
+
+A genuinely new **table** (e.g. a match-history table) is the only case that needs a migration:
+add `V2__...sql` under `src/main/resources/db/migration/`, then the `@Entity` + `JpaRepository`.
+`ddl-auto: validate` will refuse to start if the two disagree.
+
+---
+
 ## Typical Workflow
 
 ### Step 1: Configure Device
@@ -203,6 +460,11 @@ curl -X POST http://localhost:8080/api/v1/device \
   -H "Content-Type: application/json" \
   -d '{"width":3,"height":3}'
 ```
+
+The geometry is written through `SettingsService` → `app_settings` (`{"width":3,"height":3}`), so with
+`tileboard.settings.store=jpa` this is a **one-time** call: it is still there after a restart, and
+`GameBeansConfig` sizes the sample game from it on the next boot. With the dev default
+(`store=memory`) it is replayed after every restart.
 
 ### Step 2: List and Assign Ports
 
@@ -369,8 +631,11 @@ This platform is highly concurrent and all sensitive sections are thread-safe:
 | `AnimationSystem` | `AtomicLong generation` + `runLock` + `SingleThreadExecutor` + `CompletableFuture` | Cooperative cancellation; superseded futures cancel |
 | `GameEventBusImpl` | `CopyOnWriteArrayList` + (`LinkedBlockingQueue` \| `ArrayDeque`+`ReentrantLock`+`Semaphore`) + `AtomicLong` | `BLOCK` (200 ms timeout) and `DROP_OLDEST` policies; per-subscription daemon drain loop |
 | `TouchFrameRouter`/`EngineFrameRouter` | lock-guarded reassembly buffer | Chunk reassembly with timeout; exclusive-owner-only routing |
-| `DefaultSerialConnectionManager` | `synchronized` + `EnumMap` + rollback + idempotent (dis)connect | Leak-free connect, dual topologies, handshake-before-start |
-| `InMemoryDeviceConfigurationService` | `AtomicReference` | Single-value thread-safety without synchronized |
+| `DefaultSerialConnectionManager` | `synchronized` + `EnumMap` + rollback + idempotent (dis)connect | Leak-free connect, dual topologies, handshake-before-start; IN/OUT assignment read from and written to `SettingsService` |
+| `InMemorySettingsService` | `ConcurrentHashMap` | Store for the dev default (`tileboard.settings.store=memory`); no DB, no locking |
+| `JpaSettingsService` | Caffeine cache + `@Transactional` + JPA `@Version` + eviction in `finally` | Cache-first reads (negative results cached too), one retry on `OptimisticLockingFailureException`, writes evict instead of update |
+| `CacheConfig` (Caffeine) | `expireAfterWrite` + `maximumSize` (clamped in `CacheSettingsProperties`) | Bounds cross-instance staleness and memory; a missing cache fails fast at startup |
+| `SettingsBackedDeviceConfigurationService` | Stateless delegate (`SettingsService` handles all thread-safety) | No cached copy of its own — every read reflects the store (and its cache) |
 | `GameEngineManager` | `volatile` + `synchronized` + null-before-close + `@PreDestroy` | Race-free (re)binding; never exposes a half-closed engine |
 | `SseBoardStateBroadcaster` | `CopyOnWriteArrayList` | Dead SSE emitters dropped on write failure |
 
@@ -397,6 +662,12 @@ mvn test -pl tileboard-app
 ```
 
 Module suites: protocol (`BoardTest`, `DefaultFrameCodecTest`, `TileGatewayClientTest`, `HandshakeCoordinatorTest`, `BoardFrameListenerTest`), engine (codec/core/event/feature tests incl. concurrency tests), app (`TileboardApplicationTests`, `TileboardPropertiesTest`, `ControllerUnitTest`, `InMemoryDeviceGeneralConfigurationServiceTest`, `DefaultSerialConnectionManagerTest`).
+
+`TileboardApplicationTests` (`@SpringBootTest`) boots the real context, so it also exercises Flyway
+migration + Hibernate `validate` against the dev H2 file DB — no external database or container is
+required. The settings-backed test in `InMemoryDeviceGeneralConfigurationServiceTest` is currently
+commented out (the class now only pins the `DeviceConfiguration` geometry limits), so persistence
+behavior itself is expected to be checked with the restart walkthrough above.
 
 ### Hardware Tests (opt-in, skipped without a port)
 
@@ -456,19 +727,29 @@ tileboard-platform/
 │       ├── spring/ (TileboardEngineAutoConfiguration, TileboardEngineProperties, GameEngineManager, GatewayConnected/DisconnectedEvent, SseGameEventPublisher, GameEngineMetricsBinder)
 │       └── exception/ (GameEngineException, GameNotFoundException, GameSessionException, EngineNotReadyException)
 └── tileboard-app/
-    ├── pom.xml (spring-boot 3.3.4 parent; web, validation, actuator, springdoc 2.6.0, jSerialComm 2.11.0)
+    ├── pom.xml (spring-boot 3.3.4 parent; web, validation, actuator, springdoc 2.6.0, jSerialComm 2.11.0,
+    │            data-jpa, cache + caffeine, sqlite-jdbc, h2 (runtime), flyway-core, hibernate-community-dialects)
     ├── README.md (comprehensive app docs + game tutorial)
-    └── src/main/java/com/tileboard/app/
-        ├── TileboardApplication.java
-        ├── config/ (TileboardProperties, DeviceConfiguration, SerialGatewayConfig, GeneralConfiguration)
-        ├── controller/ (DeviceController, SerialPortController, GameController, StreamController)
-        ├── dto/ (ApiResponse, ApiResponses, Status, DeviceConfigurationRequest/Response, AssignPortRequest, SerialPortResponse, ConnectionStatusResponse, GameDescriptorResponse, StartGameRequest, PlayerRequest, GameSessionResponse)
-        ├── service/device/ (DeviceConfigurationService, InMemoryDeviceConfigurationService)
-        ├── service/serial/ (SerialConnectionManager, DefaultSerialConnectionManager, PortRole, PortAssignment, ConnectionState, SerialPortSummary)
-        ├── service/streaming/ (BoardStateBroadcaster, SseBoardStateBroadcaster)
-        ├── exception/ (ApiException + 5 subclasses), exception/handler/ (GlobalExceptionHandler)
-        ├── i18n/ (Messages) + resources (application.yml, application-prod.yml, messages[_fa].properties)
-        └── game/ (SequentialTouchGame, GameBeansConfig)
+    ├── data/ (created at runtime, git-ignored: tileboard.mv.db in dev / app.db in prod)
+    └── src/main/
+        ├── java/com/tileboard/app/
+        │   ├── TileboardApplication.java
+        │   ├── config/ (TileboardProperties, DeviceConfiguration, SerialGatewayConfig, GeneralConfiguration, CacheConfig, CacheSettingsProperties)
+        │   ├── controller/ (DeviceController, SerialPortController, GameController, StreamController)
+        │   ├── dto/ (ApiResponse, ApiResponses, Status, DeviceConfigurationRequest/Response, AssignPortRequest, SerialPortResponse, ConnectionStatusResponse, GameDescriptorResponse, StartGameRequest, PlayerRequest, GameSessionResponse)
+        │   ├── service/device/ (DeviceConfigurationService, SettingsBackedDeviceConfigurationService)
+        │   ├── service/serial/ (SerialConnectionManager, DefaultSerialConnectionManager, PortRole, PortAssignment, ConnectionState, SerialPortSummary)
+        │   ├── service/streaming/ (BoardStateBroadcaster, SseBoardStateBroadcaster)
+        │   ├── settings/ (SettingsService, SettingKey, SettingKeys, InMemorySettingsService, JpaSettingsService, SettingsPersistenceException)
+        │   │   ├── conf/ (SettingsSerializationConfig → settingsObjectMapper)
+        │   │   └── persistence/ (ApplicationSetting @Entity, SettingRepository)
+        │   ├── exception/ (ApiException + 5 subclasses), exception/handler/ (GlobalExceptionHandler)
+        │   ├── i18n/ (Messages)
+        │   └── game/ (SequentialTouchGame, GameBeansConfig)
+        └── resources/
+            ├── application.yml / application-prod.yml (datasource, JPA validate, Flyway, settings store, cache, serial, engine)
+            ├── db/migration/V1__create_app_settings.sql
+            └── messages[_fa].properties
 ```
 
 ---
@@ -481,9 +762,12 @@ tileboard-platform/
 - [x] win/lose/standby/countdown animations (4+4+4 types + scalable countdown)
 - [x] Sample game SequentialTouchGame (3×3 default, device-sized)
 - [x] Micrometer gauges (`tileboard.engine.active_sessions`, `tileboard.eventbus.*` — bound when a `MeterRegistry` exists; Prometheus endpoint not exposed)
+- [x] Persistence for configuration (JPA/Hibernate `validate` + Flyway + SQLite/H2) behind the generic `SettingsService`/`SettingKeys` store, with a Caffeine read cache — device geometry and port assignment survive a restart
 - [ ] Web frontend (React/Vue) for board display and game control
 - [ ] Raw board-mirror SSE endpoint on top of `SseBoardStateBroadcaster` (seam is ready, unexposed)
-- [ ] Persistence for DeviceConfiguration (DB)
+- [ ] First `V2` migration + a real second table (e.g. match history / audit trail) — today the schema is a single settings table
+- [ ] Settings admin API (list/clear keys over HTTP; today settings are only written through the feature endpoints)
+- [ ] Distributed settings store / cluster-safe cache (Redis or etcd behind the same `SettingsService`) — with several instances the Caffeine TTL bounds staleness at 300 s
 - [ ] Authentication and security (Spring Security)
 - [ ] More games (Color Match, Memory, Reaction, …)
 - [ ] Multi-board support (engine is single-exclusive-owner today)
@@ -536,9 +820,22 @@ A: The SSE wire names are `SseGameEventType`: `SESSION_LIFECYCLE`, `BOARD_UPDATE
 
 A: Each README has a "Deep Dive" section explaining the concurrency patterns with code quotes taken from the actual implementation.
 
+**Q: Where is my configuration stored, and does it survive a restart?**
+
+A: Everything configurable goes through `SettingsService` into the single `app_settings` table as JSON: `device.configuration` (`{"width":3,"height":3}`) and `serial.port-assignment` (`{"inPort":"COM3","outPort":"COM3"}`) today. Whether it survives depends on one switch, `tileboard.settings.store`: `memory` (the value in the dev `application.yml`) keeps it in a `ConcurrentHashMap` and loses it on restart, `jpa` (the `prod` profile, and the default when the property is unset) persists it through Hibernate + Flyway with a Caffeine cache in front of reads. Live state — open serial handles and running game sessions — is never persisted.
+
+**Q: Do I need to install a database?**
+
+A: No. Dev runs on an H2 file DB (`./data/tileboard`, `MODE=PostgreSQL`) and prod on SQLite (`./data/app.db`) — both embedded, both created by Flyway on first start, and `spring.jpa.hibernate.ddl-auto: validate` guarantees the entities match what the migrations built. Point `TILEBOARD_DB_URL`/`TILEBOARD_DB_USER`/`TILEBOARD_DB_PASSWORD` elsewhere (e.g. PostgreSQL) if you would rather run a server; with Flyway 10 you would then also add the matching `flyway-database-*` module.
+
+**Q: How do I add a new persisted setting?**
+
+A: Declare one constant in `SettingKeys` (`SettingKey.of("ui.theme", ThemeSettings.class, ThemeSettings.defaults())`) and call `settingsService.set/getOrDefault(...)`. No migration, entity, repository or controller change — the value rides in the same `app_settings` row shape (`SettingKeys` is append-only: add ids, never rename them).
+
 ---
 
 **Version:** 1.0.0  
 **Java:** 17+  
 **Spring Boot:** 3.3.4 (app) / 3.3.2 (engine Spring adapter)  
+**Persistence:** JPA/Hibernate (`ddl-auto: validate`) + Flyway + H2 file DB (dev) / SQLite (prod) + Caffeine cache  
 **Date:** 2026-09-23
