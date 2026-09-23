@@ -68,6 +68,24 @@ public final class GameTimer {
         return countdownTarget != null && remaining().isZero();
     }
 
+    /**
+     * Whether a countdown is currently configured via {@link #startCountdown}
+     * and has not since been cleared by {@link #reset()}. Needed to tell "no
+     * countdown was ever started" apart from "the countdown ran out", since
+     * {@link #remaining()} returns {@link Duration#ZERO} in both cases.
+     */
+    public boolean hasCountdown() {
+        return countdownTarget != null;
+    }
+
+    /**
+     * The total duration passed to {@link #startCountdown}, or {@code null}
+     * if no countdown is active (see {@link #hasCountdown()}).
+     */
+    public Duration countdownDuration() {
+        return countdownTarget;
+    }
+
     public void checkExpiry() {
         if (!isExpired()) return;
         if (expiryNotified.compareAndSet(false, true)) {

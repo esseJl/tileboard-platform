@@ -95,12 +95,17 @@ class GameEventBusImplTest {
     void eventPayloadIsDefensivelyCopied() {
         Map<String, Integer> map = new HashMap<>();
         map.put("score", 1);
-        var mutable = new SessionSnapshot(map, 0, "", 0);
+        var snapshot = new SessionSnapshot(map, 0, "", 0);
 
-        GameEvent event = GameEvent.of(GameEventType.SCORE_CHANGED, "s", "g", mutable);
+        GameEvent event = GameEvent.of(GameEventType.SCORE_CHANGED, "s", "g", snapshot);
         assertEquals(1, event.payload().scores().get("score"));
-        mutable.scores().put("score", 99);
-        assertEquals(99, event.payload().scores().get("score"));
-        //assertThrows(UnsupportedOperationException.class, () -> event.payload().scores().put("x", 1));
+
+        // Mutating the caller's original map after the fact must NOT leak into the
+        // already-built, already-published snapshot.
+        map.put("score", 99);
+        assertEquals(1, event.payload().scores().get("score"));
+
+        // The snapshot's own exposed map must itself be unmodifiable.
+        assertThrows(UnsupportedOperationException.class, () -> event.payload().scores().put("x", 1));
     }
 }

@@ -57,6 +57,29 @@ public final class TouchHistory {
         return last().map(TileEvent::position);
     }
 
+    /**
+     * The most recent {@code limit} touch events, newest first (i.e. element
+     * {@code 0} is always the very last touch recorded — the "live" one).
+     * Returns fewer than {@code limit} elements while the history hasn't
+     * accumulated that many yet, and an empty list once {@link #reset()} has
+     * been called or before anything has been recorded.
+     *
+     * @throws IllegalArgumentException if {@code limit} is negative
+     */
+    public List<TileEvent> recent(int limit) {
+        if (limit < 0) throw new IllegalArgumentException("limit must be >= 0");
+        if (limit == 0) return List.of();
+        synchronized (lock) {
+            int n = Math.min(limit, history.size());
+            List<TileEvent> result = new ArrayList<>(n);
+            Iterator<TileEvent> it = history.descendingIterator();
+            while (result.size() < n && it.hasNext()) {
+                result.add(it.next());
+            }
+            return List.copyOf(result);
+        }
+    }
+
     public TouchSequence sequence() {
         synchronized (lock) {
             List<Position> pos = new ArrayList<>(history.size());

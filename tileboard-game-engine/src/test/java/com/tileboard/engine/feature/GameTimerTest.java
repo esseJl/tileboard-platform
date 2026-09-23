@@ -7,6 +7,9 @@ import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GameTimerTest {
 
@@ -44,5 +47,27 @@ class GameTimerTest {
         });
         Awaitility.await().until(timer::isExpired);
         assertEquals(Duration.ZERO, timer.remaining());
+    }
+
+    @Test
+    void hasCountdownAndDurationReflectLifecycle() {
+        GameTimer timer = new GameTimer();
+        assertFalse(timer.hasCountdown());
+        assertNull(timer.countdownDuration());
+
+        timer.startCountdown(Duration.ofMillis(500), () -> {
+        });
+        assertTrue(timer.hasCountdown());
+        assertEquals(Duration.ofMillis(500), timer.countdownDuration());
+
+        // Expiry alone must not clear the countdown — remainingSeconds still needs
+        // to be reportable (as zero) while hasCountdown stays true.
+        Awaitility.await().until(timer::isExpired);
+        assertTrue(timer.hasCountdown());
+        assertEquals(Duration.ZERO, timer.remaining());
+
+        timer.reset();
+        assertFalse(timer.hasCountdown());
+        assertNull(timer.countdownDuration());
     }
 }

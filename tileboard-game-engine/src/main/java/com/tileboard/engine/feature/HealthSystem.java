@@ -5,6 +5,7 @@ import com.tileboard.engine.model.Player;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * Thread-safe health / lives tracking. Health is clamped to [0, maxHealth].
@@ -101,5 +102,20 @@ public final class HealthSystem {
     private AtomicInteger getOrCreate(String playerId) {
         maxHealth.putIfAbsent(playerId, defaultMaxHealth);
         return health.computeIfAbsent(playerId, k -> new AtomicInteger(defaultMaxHealth));
+    }
+
+    /** Current/max health for a single player, as returned by {@link #snapshot()}. */
+    public record Status(int current, int max) {
+    }
+
+    /**
+     * Immutable snapshot of every player currently tracked by this system
+     * (including ones lazily created via {@link #getOrCreate}), keyed by
+     * player id. Safe to expose to external consumers (e.g. SSE payloads)
+     * since it copies out of the live, mutable counters.
+     */
+    public Map<String, Status> snapshot() {
+        return health.keySet().stream()
+                .collect(Collectors.toUnmodifiableMap(id -> id, id -> new Status(current(id), max(id))));
     }
 }

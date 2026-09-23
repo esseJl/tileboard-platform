@@ -30,6 +30,9 @@ import java.util.function.Consumer;
 public final class GameSessionImpl implements GameSession, GameContext {
 
     private static final Logger log = LoggerFactory.getLogger(GameSessionImpl.class);
+    /** How many of the most recent touches to expose (newest first) in each SSE snapshot. */
+    private static final int RECENT_TOUCHES_LIMIT = 5;
+    private static final double NANOS_PER_MILLI = 1_000_000.0;
 
     private final String sessionId;
     private final String tickThreadName;
@@ -356,9 +359,11 @@ public final class GameSessionImpl implements GameSession, GameContext {
 
         // Best-effort notification for external observers (SSE, metrics...). Losing this
         // event is acceptable for observers, but must never be relied on for engine state.
+        // finalResult is passed explicitly here (not read off this.result) so it is only
+        // ever attached to this exact publish — see snapshotForSse(GameResult) javadoc.
         eventBus.publish(GameEvent.of(
                 finalStatus == GameStatus.FINISHED ? GameEventType.SESSION_FINISHED : GameEventType.SESSION_STOPPED,
-                sessionId, gameId(), snapshotForSse()));
+                sessionId, gameId(), snapshotForSse(finalResult)));
 
         log.info("Session {} ended with status={}, winners={}", sessionId, finalStatus, winners);
     }
@@ -392,13 +397,59 @@ public final class GameSessionImpl implements GameSession, GameContext {
     }
 
     private SessionSnapshot snapshotForSse() {
-        return new SessionSnapshot(
-                features.scores().allScores(),
-                features.levels().currentLevel(),
-                lifecycle.current().name(),
-                features.timer().elapsed().toSeconds(),
-                readableBoard()
-        );
+        return snapshotForSse(null);
+    }
+
+    /**
+     * @param report the full end-of-game report to embed, or {@code null} for
+     *               every in-progress event. Passed explicitly (rather than
+     *               read off {@code this.result}) so that only the one true
+     *               terminal publish in {@link #finishSession} ever carries
+     *               it — including the intermediate {@code BOARD_UPDATED}
+     *               that {@link #finishSession} itself triggers via
+     *               {@code fillBoard(OFF)} *after* {@code this.result} has
+     *               already been assigned, which must still report {@code null}.
+     */
+    private SessionSnapshot snapshotForSse(GameResult report) {
+        GameTimer timer = features.timer();
+        Duration countdownTotal = timer.countdownDuration();
+
+        return SessionSnapshot.builder()
+                .scores(features.scores().allScores())
+                .level(features.levels().currentLevel())
+                .status(lifecycle.current().name())
+                .elapsedSeconds(timer.elapsed().toSeconds())
+                .board(readableBoard())
+                .remainingSeconds(timer.hasCountdown() ? timer.remaining().toSeconds() : null)
+                .countdownTotalSeconds(countdownTotal != null ? countdownTotal.toSeconds() : null)
+                .health(features.health().snapshot())
+                .recentTouches(recentTouchesForSse())
+                .totalTouches(features.touchHistory().totalTouches())
+                .combo(new SessionSnapshot.ComboInfo(features.combos().current(), features.combos().max()))
+                .reaction(reactionInfoForSse())
+                .report(report)
+                .build();
+    }
+
+    /**
+     * The most recent touches, newest first, mapped to the JSON-friendly
+     * {@link SessionSnapshot.TouchInfo} shape.
+     */
+    private List<SessionSnapshot.TouchInfo> recentTouchesForSse() {
+        return features.touchHistory().recent(RECENT_TOUCHES_LIMIT).stream()
+                .map(e -> new SessionSnapshot.TouchInfo(
+                        e.position().row(), e.position().col(), e.type().name(), e.occurredAt()))
+                .toList();
+    }
+
+    private SessionSnapshot.ReactionInfo reactionInfoForSse() {
+        ReactionSpeedTracker reaction = features.reactionSpeed();
+        long count = reaction.reactionCount();
+        if (count == 0) return SessionSnapshot.ReactionInfo.EMPTY;
+        double lastMs = reaction.lastReaction().toNanos() / NANOS_PER_MILLI;
+        double bestMs = reaction.bestReaction().toNanos() / NANOS_PER_MILLI;
+        double averageMs = reaction.averageReactionMillis().orElse(0.0);
+        return new SessionSnapshot.ReactionInfo(lastMs, bestMs, averageMs, count);
     }
 
     /**
