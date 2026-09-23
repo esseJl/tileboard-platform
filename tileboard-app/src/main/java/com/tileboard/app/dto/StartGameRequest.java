@@ -8,6 +8,5 @@ import java.util.List;
 
 public record StartGameRequest(
         @NotBlank(message = "gameId must not be blank") String gameId,
-        @NotEmpty(message = "at least one player is required") @Valid List<PlayerRequest> players
-) {
+        @NotEmpty(message = "at least one player is required") @Valid List<PlayerRequest> players) {
 }
