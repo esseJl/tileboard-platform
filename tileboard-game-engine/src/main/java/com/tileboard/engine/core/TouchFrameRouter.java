@@ -33,5 +33,10 @@ public final class TouchFrameRouter {
                 session.handleTileEvent(TileEvent.touch(pos, session.sessionId()));
             }
         }
+        for (Position pos : touchBoard.positionsWhere(Boolean.FALSE::equals)) {
+            if (pos.row() < h && pos.col() < w) {
+                session.handleTileEvent(TileEvent.release(pos, session.sessionId()));
+            }
+        }
     }
 }

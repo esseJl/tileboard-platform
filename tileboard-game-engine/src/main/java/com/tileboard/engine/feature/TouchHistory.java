@@ -48,9 +48,9 @@ public final class TouchHistory {
      * Must only be called while holding {@link #lock}.
      */
     private void updateActive(TileEvent event) {
-        this.active.clear();
         switch (event.type()) {
             case TOUCH, HOLD -> active.put(event.position(), event);
+            case RELEASE -> active.remove(event.position());
         }
     }
 

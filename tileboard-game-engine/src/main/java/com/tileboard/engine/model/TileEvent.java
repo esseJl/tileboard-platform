@@ -9,17 +9,13 @@ import java.util.Objects;
 /**
  * Immutable record of a single tile interaction arriving from the hardware.
  */
-public record TileEvent(
-        Position position,
-        TileEventType type,
-        Instant occurredAt,
-        String sessionId
-) {
+public record TileEvent(Position position, TileEventType type,
+                        Instant occurredAt, String sessionId) {
     public TileEvent {
-        Objects.requireNonNull(position,   "position");
-        Objects.requireNonNull(type,       "type");
+        Objects.requireNonNull(position, "position");
+        Objects.requireNonNull(type, "type");
         Objects.requireNonNull(occurredAt, "occurredAt");
-        Objects.requireNonNull(sessionId,  "sessionId");
+        Objects.requireNonNull(sessionId, "sessionId");
     }
 
     public static TileEvent touch(Position position, String sessionId) {
