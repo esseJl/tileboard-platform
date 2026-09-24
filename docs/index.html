@@ -24,7 +24,7 @@
     </span>
     <span><b>Tileboard Platform</b><small>مستندات آموزشی · نسخه ۱.۰.۰</small></span>
   </a>
-  <button class="menu-btn" aria-label="باز کردن فهرست">☰</button>
+  <button class="menu-btn" type="button" aria-label="باز کردن فهرست" aria-controls="sidebar" aria-expanded="false">☰</button>
   <nav class="topnav">
     <a href="#overview">نمای کلی</a>
     <a class="mod-protocol" href="#module-protocol">serial-protocol</a>
@@ -60,10 +60,14 @@
   </div>
 </section>
 
+<!-- Mobile-drawer overlay. It is position:fixed and must stay OUTSIDE the .layout grid:
+     as a grid item it used to occupy the content column and push <main> under the sidebar. -->
+<div class="sidebar-backdrop" aria-hidden="true"></div>
+
 <div class="layout">
 
 <!-- ============================ SIDEBAR ============================ -->
-<aside class="sidebar">
+<aside class="sidebar" id="sidebar" aria-label="فهرست مستندات">
   <h4>شروع</h4>
   <a href="#overview"><span class="ico">🏠</span> نمای کلی پلتفرم</a>
   <a class="sub" href="#architecture">معماری لایه‌ای</a>
@@ -111,7 +115,6 @@
   <a href="#faq"><span class="ico">💬</span> سوالات متداول</a>
   <a href="#roadmap"><span class="ico">🗺️</span> نقشه راه</a>
 </aside>
-<div class="sidebar-backdrop"></div>
 
 <!-- ============================ CONTENT ============================ -->
 <main class="content">

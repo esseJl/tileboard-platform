@@ -113,6 +113,7 @@
   });
 
   /* ---------- scrollspy for sidebar ---------- */
+  var sidebar = document.querySelector(".sidebar");
   var links = Array.prototype.slice.call(document.querySelectorAll(".sidebar a[href^='#']"));
   var sections = links
     .map(function (a) {
@@ -120,33 +121,89 @@
       return el ? { link: a, el: el } : null;
     })
     .filter(Boolean);
+  var activeLink = null;
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // The sidebar scrolls independently of the page: keep the highlighted entry inside
+  // its visible area (only the sidebar is scrolled, never the page).
+  function revealInSidebar(link) {
+    if (!sidebar || !link || sidebar.scrollHeight <= sidebar.clientHeight) return;
+    var box = sidebar.getBoundingClientRect();
+    var item = link.getBoundingClientRect();
+    var margin = Math.min(64, box.height / 4);
+    var delta = 0;
+    if (item.top < box.top + margin) delta = item.top - (box.top + margin);
+    else if (item.bottom > box.bottom - margin) delta = item.bottom - (box.bottom - margin);
+    if (!delta) return;
+    var top = sidebar.scrollTop + delta;
+    if (sidebar.scrollTo) sidebar.scrollTo({ top: top, behavior: reduceMotion ? "auto" : "smooth" });
+    else sidebar.scrollTop = top;
+  }
 
   function spy() {
+    var doc = document.documentElement;
     var fromTop = window.scrollY + 140;
     var current = null;
-    sections.forEach(function (s) {
-      if (s.el.getBoundingClientRect().top + window.scrollY <= fromTop) current = s;
-    });
-    links.forEach(function (a) { a.classList.remove("active"); });
-    if (current) current.link.classList.add("active");
+    if (sections.length && window.scrollY + window.innerHeight >= doc.scrollHeight - 2) {
+      current = sections[sections.length - 1];          // bottom of the page: last entry
+    } else {
+      sections.forEach(function (s) {
+        if (s.el.getBoundingClientRect().top + window.scrollY <= fromTop) current = s;
+      });
+    }
+    var link = current ? current.link : null;
+    if (link === activeLink) return;                    // touch the DOM only on change
+    if (activeLink) activeLink.classList.remove("active");
+    if (link) link.classList.add("active");
+    activeLink = link;
+    revealInSidebar(link);
   }
-  window.addEventListener("scroll", spy, { passive: true });
+
+  var spyQueued = false;
+  function queueSpy() {
+    if (spyQueued) return;
+    spyQueued = true;
+    requestAnimationFrame(function () { spyQueued = false; spy(); });
+  }
+  window.addEventListener("scroll", queueSpy, { passive: true });
+  window.addEventListener("resize", queueSpy);
+  window.addEventListener("load", queueSpy);            // web fonts shift section offsets
   spy();
 
-  /* ---------- mobile sidebar ---------- */
-  var sidebar = document.querySelector(".sidebar");
+  /* ---------- mobile sidebar (off-canvas drawer) ---------- */
   var menuBtn = document.querySelector(".menu-btn");
   var backdrop = document.querySelector(".sidebar-backdrop");
-  function closeSidebar() {
-    if (sidebar) sidebar.classList.remove("open");
-    if (backdrop) backdrop.classList.remove("show");
+  function isOpen() { return !!sidebar && sidebar.classList.contains("open"); }
+  function setSidebar(open) {
+    if (!sidebar) return;
+    sidebar.classList.toggle("open", open);
+    if (backdrop) backdrop.classList.toggle("show", open);
+    document.body.classList.toggle("menu-open", open);
+    if (menuBtn) {
+      menuBtn.setAttribute("aria-expanded", open ? "true" : "false");
+      menuBtn.setAttribute("aria-label", open ? "بستن فهرست" : "باز کردن فهرست");
+      menuBtn.textContent = open ? "\u2715" : "\u2630";
+    }
+    if (open) revealInSidebar(activeLink);
   }
-  if (menuBtn) menuBtn.addEventListener("click", function () {
-    sidebar.classList.toggle("open");
-    backdrop.classList.toggle("show", sidebar.classList.contains("open"));
+  if (menuBtn) menuBtn.addEventListener("click", function () { setSidebar(!isOpen()); });
+  if (backdrop) backdrop.addEventListener("click", function () { setSidebar(false); });
+  links.forEach(function (a) {
+    a.addEventListener("click", function () { if (isOpen()) setSidebar(false); });
   });
-  if (backdrop) backdrop.addEventListener("click", closeSidebar);
-  links.forEach(function (a) { a.addEventListener("click", closeSidebar); });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && isOpen()) {
+      setSidebar(false);
+      if (menuBtn) menuBtn.focus();
+    }
+  });
+  // Growing past the mobile breakpoint with the drawer open must not leave the page scroll-locked.
+  if (window.matchMedia) {
+    var mobileMq = window.matchMedia("(max-width: 1020px)");
+    var onBreakpoint = function (e) { if (!e.matches && isOpen()) setSidebar(false); };
+    if (mobileMq.addEventListener) mobileMq.addEventListener("change", onBreakpoint);
+    else if (mobileMq.addListener) mobileMq.addListener(onBreakpoint);
+  }
 
   /* ---------- reveal on scroll ---------- */
   if ("IntersectionObserver" in window) {

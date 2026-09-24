@@ -214,6 +214,9 @@ body {
    ========================================================================== */
 .layout {
   display: grid; grid-template-columns: 268px minmax(0, 1fr);
+  /* Explicit areas: whatever else ends up inside this grid can never push
+     <main> into the narrow sidebar column (where the sticky sidebar covers it). */
+  grid-template-areas: "sidebar content";
   gap: clamp(20px, 3vw, 44px);
   max-width: 1400px; margin: 0 auto;
   padding: 10px clamp(14px, 3vw, 40px) 90px;
@@ -221,38 +224,52 @@ body {
 }
 
 .sidebar {
+  grid-area: sidebar;
   position: sticky; top: calc(var(--topbar-h) + 18px);
   max-height: calc(100vh - var(--topbar-h) - 36px);
+  max-height: calc(100dvh - var(--topbar-h) - 36px);
   overflow-y: auto;
+  overscroll-behavior: contain;          /* wheel at the list's end must not scroll the page */
+  scrollbar-width: thin;
+  scrollbar-color: #22304f transparent;
   background: rgba(15, 23, 43, .6);
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 18px 14px;
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
+.sidebar::-webkit-scrollbar { width: 6px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb { background: #22304f; border-radius: 6px; }
 .sidebar h4 {
-  font-size: 11px; letter-spacing: 1px; color: var(--text-faint);
-  margin: 16px 8px 6px; font-weight: 800;
+  /* no letter-spacing: it tears apart the joined letters of Persian labels */
+  font-size: 11.5px; color: var(--text-faint);
+  margin: 18px 8px 6px; font-weight: 800; line-height: 1.6;
 }
 .sidebar h4:first-child { margin-top: 0; }
 .sidebar a {
   display: flex; align-items: center; gap: 9px;
   color: var(--text-dim); text-decoration: none;
-  font-size: 13.5px; font-weight: 600;
+  font-size: 13.5px; font-weight: 600; line-height: 1.7;
   padding: 7px 10px; border-radius: 9px;
-  border-right: 2px solid transparent;
-  transition: .15s;
+  border-inline-start: 2px solid transparent;
+  transition: color .15s, background-color .15s, border-color .15s;
 }
 .sidebar a:hover { color: #fff; background: rgba(148, 163, 184, .08); }
 .sidebar a.active {
-  color: #fff; background: rgba(34, 211, 238, .1); border-right-color: var(--cyan);
+  color: #fff; background: rgba(34, 211, 238, .1); border-inline-start-color: var(--cyan);
 }
 .sidebar a .ico { width: 18px; text-align: center; flex: none; font-size: 14px; }
 .sidebar a.sub { padding-inline-start: 26px; font-size: 12.5px; font-weight: 500; color: var(--text-faint); }
 .sidebar a.sub:hover { color: var(--text-dim); }
-.sidebar a.sub.active { border-right-color: var(--violet); background: rgba(167, 139, 250, .1); }
+.sidebar a.sub.active { color: #fff; border-inline-start-color: var(--violet); background: rgba(167, 139, 250, .1); }
+.sidebar a:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
 
-.content { min-width: 0; }
+/* only the mobile drawer uses the backdrop (see the responsive section) */
+.sidebar-backdrop { display: none; }
+
+.content { grid-area: content; min-width: 0; }
 
 /* ==========================================================================
    Sections & headings
@@ -456,6 +473,9 @@ b, strong { color: #fff; }
 }
 .violet-c code, .flow-step.violet-c .fnum { color: var(--violet); }
 td code { white-space: nowrap; }
+/* long identifiers / paths in running text (e.g. META-INF/spring/…AutoConfiguration.imports)
+   must wrap instead of widening the page on phones */
+.content :not(pre) > code { overflow-wrap: anywhere; }
 
 /* ==========================================================================
    Frame diagram (wire layout)
@@ -697,23 +717,37 @@ footer .f-chips { display: flex; gap: 8px; justify-content: center; flex-wrap: w
    Responsive
    ========================================================================== */
 @media (max-width: 1020px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "content"; }
+
+  /* Off-canvas drawer anchored to the inline-start edge (the right edge in RTL).
+     top/bottom instead of 100vh so it always fits the visible viewport on mobile browsers. */
   .sidebar {
-    position: fixed; inset-inline: 0; top: var(--topbar-h); z-index: 999;
-    max-height: none; height: calc(100vh - var(--topbar-h));
-    border-radius: 0; transform: translateX(105%);
-    transition: transform .3s ease;
+    position: fixed; top: var(--topbar-h); bottom: 0; z-index: 999;
+    inset-inline-start: 0; inset-inline-end: auto;
+    width: min(330px, 86vw);
+    max-height: none;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    border: 0; border-inline-end: 1px solid var(--line-strong); border-radius: 0;
     background: rgba(7, 11, 22, .97);
+    box-shadow: -24px 0 60px -18px rgba(0, 0, 0, .75);
+    transform: translateX(105%);
+    /* hidden once slid out: no off-screen overflow and its links leave the Tab order */
+    visibility: hidden;
+    transition: transform .3s ease, visibility 0s linear .3s;
   }
-  .sidebar.open { transform: none; }
+  .sidebar.open { transform: none; visibility: visible; transition: transform .3s ease; }
   .menu-btn { display: block; }
   .topnav { display: none; }
   .brand small { display: none; }
   .sidebar-backdrop {
-    display: none; position: fixed; inset: 0; z-index: 998;
-    background: rgba(0, 0, 0, .55); backdrop-filter: blur(2px);
+    display: block; position: fixed; inset: 0; z-index: 998;
+    background: rgba(0, 0, 0, .55);
+    backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px);
+    opacity: 0; visibility: hidden;
+    transition: opacity .3s ease, visibility 0s linear .3s;
   }
-  .sidebar-backdrop.show { display: block; }
+  .sidebar-backdrop.show { opacity: 1; visibility: visible; transition: opacity .3s ease; }
+  body.menu-open { overflow: hidden; }          /* the page must not scroll behind the drawer */
 }
 
 @media (max-width: 640px) {
@@ -727,7 +761,7 @@ footer .f-chips { display: flex; gap: 8px; justify-content: center; flex-wrap: w
 
 /* print */
 @media print {
-  .topbar, .sidebar, .progress, .bg-glow, .bg-grid, .hero-actions, .copy-btn { display: none !important; }
-  .layout { grid-template-columns: 1fr; }
+  .topbar, .sidebar, .sidebar-backdrop, .progress, .bg-glow, .bg-grid, .hero-actions, .copy-btn { display: none !important; }
+  .layout { grid-template-columns: 1fr; grid-template-areas: "content"; }
   body { background: #fff; color: #111; }
 }
