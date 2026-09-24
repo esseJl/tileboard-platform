@@ -47,11 +47,6 @@
             <groupId>org.xerial</groupId>
             <artifactId>sqlite-jdbc</artifactId>
         </dependency>
-        <!-- Flyway -->
-        <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
-        </dependency>
         <!-- Hibernate SQLite dialect -->
         <dependency>
             <groupId>org.hibernate.orm</groupId>
