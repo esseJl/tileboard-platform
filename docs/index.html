@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tileboard Platform — مستندات آموزشی ماژول‌ها</title>
+<meta name="description" content="مستندات آموزشی کامل پلتفرم Tileboard: پروتکل سریال، موتور بازی و بک‌اند Spring Boot — فلسفه طراحی، مشکلات حل‌شده، مثال‌ها و راهنمای افزودن قابلیت‌های جدید">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='8' y='8' width='38' height='38' rx='8' fill='%2322d3ee'/><rect x='54' y='8' width='38' height='38' rx='8' fill='%23a78bfa'/><rect x='8' y='54' width='38' height='38' rx='8' fill='%23a3e635'/><rect x='54' y='54' width='38' height='38' rx='8' fill='%23f472b6'/></svg>">
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="bg-grid"></div>
+<div class="progress"></div>
+
+<!-- ============================ TOPBAR ============================ -->
+<header class="topbar">
+  <a class="brand" href="#overview">
+    <span class="logo">
+      <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="8" height="8" rx="2" fill="#07121c"/><rect x="13" y="3" width="8" height="8" rx="2" fill="#07121c" opacity=".85"/><rect x="3" y="13" width="8" height="8" rx="2" fill="#07121c" opacity=".85"/><rect x="13" y="13" width="8" height="8" rx="2" fill="#07121c" opacity=".7"/></svg>
+    </span>
+    <span><b>Tileboard Platform</b><small>مستندات آموزشی · نسخه ۱.۰.۰</small></span>
+  </a>
+  <button class="menu-btn" aria-label="باز کردن فهرست">☰</button>
+  <nav class="topnav">
+    <a href="#overview">نمای کلی</a>
+    <a class="mod-protocol" href="#module-protocol">serial-protocol</a>
+    <a class="mod-engine" href="#module-engine">game-engine</a>
+    <a class="mod-app" href="#module-app">app</a>
+    <a href="#tutorials">آموزش‌ها</a>
+    <a href="#faq">سوالات</a>
+  </nav>
+</header>
+
+<!-- ============================ HERO ============================ -->
+<section class="hero">
+  <div class="hero-inner">
+    <span class="kicker"><span class="dot"></span> مستندات رسمی تیم Tileboard · به‌روزرسانی ۲۰۲۶</span>
+    <h1>از بایت‌های سریال تا <span class="grad">بازی روی تخته LED</span><br>سفر کامل یک ایده</h1>
+    <p class="lead">
+      این صفحه، سند آموزشی و مرجع کاملِ سه ماژول Maven پلتفرم است:
+      <code>tileboard-serial-protocol</code>، <code>tileboard-game-engine</code> و <code>tileboard-app</code>.
+      برای هر ماژول، <b>فلسفه وجودی</b>، <b>مشکلاتی که حل می‌کند</b>، <b>مثال‌های واقعی استفاده</b> و
+      <b>راهنمای گام‌به‌گام افزودن قابلیت‌های جدید</b> (مثل یک انیمیشن تازه) را می‌بینید.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="#module-protocol">🚀 شروع آموزش از ماژول اول</a>
+      <a class="btn btn-ghost" href="#t-animation">✨ افزودن انیمیشن جدید</a>
+      <a class="btn btn-ghost" href="#quickstart">⚡ اجرای سریع</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><b>۳</b><span>ماژول Maven مستقل</span></div>
+      <div class="stat"><b>+۱۵۰</b><span>کلاس جاوا ۱۷</span></div>
+      <div class="stat"><b>۱۳</b><span>انیمیشن داخلی + شمارش معکوس</span></div>
+      <div class="stat"><b>۱۶</b><span>قابلیت آماده موتور بازی</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="layout">
+
+<!-- ============================ SIDEBAR ============================ -->
+<aside class="sidebar">
+  <h4>شروع</h4>
+  <a href="#overview"><span class="ico">🏠</span> نمای کلی پلتفرم</a>
+  <a class="sub" href="#architecture">معماری لایه‌ای</a>
+  <a class="sub" href="#dataflow">جریان داده</a>
+  <a class="sub" href="#quickstart">اجرای سریع</a>
+
+  <h4>ماژول ۱ — پروتکل سریال</h4>
+  <a href="#module-protocol"><span class="ico">📡</span> tileboard-serial-protocol</a>
+  <a class="sub" href="#p-philosophy">فلسفه وجودی</a>
+  <a class="sub" href="#p-problems">مشکلات و راه‌حل‌ها</a>
+  <a class="sub" href="#p-frame">ساختار فریم روی سیم</a>
+  <a class="sub" href="#p-packages">پکیج‌ها و کلاس‌های کلیدی</a>
+  <a class="sub" href="#p-examples">مثال‌های استفاده</a>
+
+  <h4>ماژول ۲ — موتور بازی</h4>
+  <a href="#module-engine"><span class="ico">🎮</span> tileboard-game-engine</a>
+  <a class="sub" href="#e-philosophy">فلسفه وجودی</a>
+  <a class="sub" href="#e-problems">مشکلات و راه‌حل‌ها</a>
+  <a class="sub" href="#e-lifecycle">چرخه عمر یک بازی</a>
+  <a class="sub" href="#e-features">۱۶ قابلیت آماده</a>
+  <a class="sub" href="#e-animations">سیستم انیمیشن</a>
+  <a class="sub" href="#e-events">رویدادها و SSE</a>
+  <a class="sub" href="#e-spring">لایه اختیاری Spring</a>
+
+  <h4>ماژول ۳ — اپلیکیشن</h4>
+  <a href="#module-app"><span class="ico">🖥️</span> tileboard-app</a>
+  <a class="sub" href="#a-philosophy">فلسفه وجودی</a>
+  <a class="sub" href="#a-problems">مشکلات و راه‌حل‌ها</a>
+  <a class="sub" href="#a-api">مرجع REST API</a>
+  <a class="sub" href="#a-serial">چرخه اتصال سریال</a>
+  <a class="sub" href="#a-settings">تنظیمات ماندگار</a>
+  <a class="sub" href="#a-health">پایش و سلامت</a>
+
+  <h4>آموزش‌های گام‌به‌گام</h4>
+  <a href="#tutorials"><span class="ico">🧪</span> کارگاه توسعه</a>
+  <a class="sub" href="#t-animation">افزودن انیمیشن جدید</a>
+  <a class="sub" href="#t-game">افزودن بازی جدید</a>
+  <a class="sub" href="#t-color">افزودن رنگ جدید</a>
+  <a class="sub" href="#t-setting">افزودن تنظیم ماندگار</a>
+  <a class="sub" href="#t-endpoint">افزودن Endpoint جدید</a>
+  <a class="sub" href="#t-transport">تعویض کتابخانه سریال</a>
+
+  <h4>مرجع</h4>
+  <a href="#concurrency"><span class="ico">🧵</span> مدل همزمانی</a>
+  <a href="#faq"><span class="ico">💬</span> سوالات متداول</a>
+  <a href="#roadmap"><span class="ico">🗺️</span> نقشه راه</a>
+</aside>
+<div class="sidebar-backdrop"></div>
+
+<!-- ============================ CONTENT ============================ -->
+<main class="content">
+
+<!-- ============================================================
+     OVERVIEW
+     ============================================================ -->
+<section class="section" id="overview">
+  <span class="sec-eyebrow">PLATFORM OVERVIEW</span>
+  <h2>نمای کلی پلتفرم</h2>
+  <p class="sec-desc">
+    <b>Tileboard Platform</b> یک سیستم کامل برای کنترل یک <b>تخته LED لمسی</b> با ابعاد m×n
+    (حداکثر ۲۵۵ کاشی) از طریق پورت سریال و اجرای بازی‌های تعاملی روی آن است. پلتفرم از سه ماژول Maven
+    تشکیل شده که هر کدام یک مسئولیت روشن دارند و می‌توانند کاملا جداگانه تست و استفاده شوند.
+  </p>
+
+  <div class="grid grid-3">
+    <div class="card card-accent-cyan reveal">
+      <span class="cico">📡</span>
+      <h5>tileboard-serial-protocol</h5>
+      <p>کتابخانه خالص پروتکل سریال؛ بدون Spring و بدون وابستگی اجباری به هیچ کتابخانه سخت‌افزاری. زبان مشترک نرم‌افزار و برد.</p>
+    </div>
+    <div class="card card-accent-violet reveal">
+      <span class="cico">🎮</span>
+      <h5>tileboard-game-engine</h5>
+      <p>موتور بازی آماده‌ی تولید: امتیاز، سلامت، سطح، کمبو، تایمر، حافظه، گراف، انیمیشن، Event Bus و SSE — بدون نیاز به فریم‌ورک.</p>
+    </div>
+    <div class="card card-accent-lime reveal">
+      <span class="cico">🖥️</span>
+      <h5>tileboard-app</h5>
+      <p>بک‌اند Spring Boot 3.3.4 با REST و SSE و ماندگاری JPA/SQLite؛ پیکربندی دستگاه، مدیریت پورت‌ها و پیام‌های خطای فارسی.</p>
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="architecture"><span class="num">۰۱</span> معماری لایه‌ای — چرا این شکلی؟</h3>
+  <p>
+    قانون طلایی معماری این پلتفرم ساده است: <b>هر لایه فقط به لایه‌ی پایین‌تر وابسته است، هرگز به لایه بالاتر.</b>
+    به همین دلیل پروتکل سریال از Spring بی‌خبر است، موتور بازی از REST بی‌خبر است و اپلیکیشن تنها جایی است که همه چیز به هم وصل می‌شود.
+  </p>
+  <div class="stack">
+    <div class="stack-layer layer-client">
+      <div class="sl-title">🧑‍💻 کلاینت — مرورگر / اپ موبایل / <code>curl</code></div>
+      <div class="sl-desc">HTTP REST برای فرمان‌ها + SSE روی <code>/api/v1/stream/board</code> برای دیدن وضعیت به‌صورت زنده</div>
+    </div>
+    <div class="stack-arrow">⬇︎</div>
+    <div class="stack-layer layer-app">
+      <div class="sl-title">🖥️ <code>tileboard-app</code> — Spring Boot 3.3.4 · Java 17</div>
+      <div class="sl-desc">کنترلرهای Device/Port/Game/Stream، مدیریت چرخه سریال، مانیتور سلامت لینک، اتصال مجدد خودکار، تنظیمات ماندگار JPA/SQLite + کش Caffeine، سلامت Actuator و پیام‌های خطای فارسی</div>
+    </div>
+    <div class="stack-arrow">⬇︎</div>
+    <div class="stack-layer layer-engine">
+      <div class="sl-title">🎮 <code>tileboard-game-engine</code> — هسته بدون فریم‌ورک + آداپتور Spring</div>
+      <div class="sl-desc">GameEngineImpl (مالک انحصاری برد)، GameSession (حلقه tick)، BoardChannel (ادغام نوشتن‌ها)، ۱۶ قابلیت آماده، AnimationSystem، GameEventBus و انتشار SSE</div>
+    </div>
+    <div class="stack-arrow">⬇︎</div>
+    <div class="stack-layer layer-serial">
+      <div class="sl-title">📡 <code>tileboard-serial-protocol</code> — مستقل از ترنسپورت و فریم‌ورک</div>
+      <div class="sl-desc">Board و Position، کدک‌های کاشی، فریم‌بندی 0xFC…#، همگام‌سازی مجدد، TileGatewayClient و هندشیک آدرس‌دهی ID</div>
+    </div>
+    <div class="stack-arrow">⬇︎</div>
+    <div class="stack-layer layer-hw">
+      <div class="sl-title">🔌 سخت‌افزار — تخته LED لمسی m×n (حداکثر ۲۵۵ کاشی)</div>
+      <div class="sl-desc">ارتباط سریال پیش‌فرض 115200-8-N-1؛ یک پورت تمام‌دوطرفه یا دو پورت جدا برای IN و OUT</div>
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="dataflow"><span class="num">۰۲</span> جریان داده — از لمس یک کاشی تا مرورگر بازیکن</h3>
+  <p>مسیر کامل یک لمس و یک پاسخ، در ده قدم:</p>
+  <div class="flow">
+    <div class="flow-step"><span class="fnum">1</span><p><code>TileGatewayClient</code> بایت‌ها را از <code>SerialTransport</code> روی Executor دیمونِ کالبک می‌خواند.</p></div>
+    <div class="flow-step"><span class="fnum">2</span><p><code>DefaultFrameCodec.decode</code> جریان بایت را به فریم‌های پروتکل تبدیل می‌کند — با دیکودِ حالت‌دار و همگام‌سازی مجدد در صورت نویز.</p></div>
+    <div class="flow-step"><span class="fnum">3</span><p><code>EngineFrameRouter</code> تکه‌های ناقص را دوباره سرهم می‌کند و بار <code>DATA_IN</code> را به یک <code>Board&lt;Boolean&gt;</code> لمسی دیکود می‌کند.</p></div>
+    <div class="flow-step"><span class="fnum">4</span><p><code>TouchFrameRouter</code> برد را اسکن می‌کند و رویدادهای <code>TileEvent</code> را به جلسه‌ای که مالک انحصاری برد است می‌فرستد.</p></div>
+    <div class="flow-step"><span class="fnum">5</span><p><code>GameSessionImpl.handleTileEvent</code> در حالت <code>RUNNING</code> تاریخچه لمس و سرعت واکنش را ثبت می‌کند و بازی را صدا می‌زند.</p></div>
+    <div class="flow-step"><span class="fnum">6</span><p>بازی با <code>ctx.setTile</code> یا <code>ctx.publishBoard</code> بردهای رنگی می‌سازد؛ <code>BoardChannel</code> آخرین وضعیت سازگار را ادغام و به سخت‌افزار می‌فرستد.</p></div>
+    <div class="flow-step"><span class="fnum">7</span><p>همان تغییرات به <code>GameEventBus</code> می‌روند، با <code>SseGameEventPublisher</code> به JSON تبدیل و به کلاینت‌های SSE تحویل می‌شوند.</p></div>
+    <div class="flow-step"><span class="fnum">8</span><p>پیکربندی دستگاه و پورت‌ها از طریق <code>SettingsService</code> به JSON در جدول <code>app_settings</code> (SQLite) نوشته می‌شود؛ خواندن‌ها از کش Caffeine.</p></div>
+    <div class="flow-step"><span class="fnum">9</span><p><code>SerialLinkMonitor</code> به‌طور مستقل وجود پورت‌های جلسه روی سیستم‌عامل را بررسی می‌کند؛ بعد از گم‌شدن‌های متوالی، گیت‌وی را آزاد می‌کند.</p></div>
+    <div class="flow-step"><span class="fnum">10</span><p><code>SerialAutoReconnector</code> بعد از برگشتن سخت‌افزار به‌صورت دوره‌ای تلاش مجدد می‌کند؛ قطعِ صریح، تلاش‌های بعدی را تا اتصال بعدی خلع سلاح می‌کند.</p></div>
+  </div>
+
+  <h3 class="sub-title" id="quickstart"><span class="num">۰۳</span> اجرای سریع</h3>
+  <div class="code-window" data-lang="bash">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">terminal — build &amp; run</span><button class="copy-btn">کپی</button></div>
+    <pre><code># build all three modules (tests are hardware-free)
+mvn clean test
+
+# package the Spring Boot app
+mvn clean package -DskipTests
+
+# run it — http://localhost:8080/swagger-ui.html
+java -jar tileboard-app/target/tileboard-app-1.0.0.jar</code></pre>
+  </div>
+  <div class="callout tip">
+    <span class="co-ico">💡</span>
+    <span><b>بدون سخت‌افزار هم می‌شود!</b> همه تست‌های واحد هر سه ماژول بدون برد فیزیکی اجرا می‌شوند.
+    فقط تست انتگرال سخت‌افزاری (<code>TileboardHardwareIT</code>) به برد واقعی نیاز دارد و با پروفایل
+    <code>hardware-tests</code> و دستور <code>mvn verify</code> فعال می‌شود.</span>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>فناوری</th><th>نسخه / ابزار</th><th>کجا استفاده شده</th></tr></thead>
+      <tbody>
+        <tr><td>جاوا</td><td><span class="m m-get">17</span></td><td>هر سه ماژول (record، switch expressions، pattern matching)</td></tr>
+        <tr><td>Spring Boot</td><td><span class="m m-get">3.3.4</span></td><td>فقط tileboard-app + لایه اختیاری Spring در موتور بازی</td></tr>
+        <tr><td>موندگاری</td><td>JPA/Hibernate <span class="m m-get">ddl-auto=update</span> + SQLite</td><td>جدول عمومی <code>app_settings</code> در فایل <code>app.db</code></td></tr>
+        <tr><td>کش</td><td>Caffeine</td><td>کش خواندن تنظیمات با TTL قابل پیکربندی</td></tr>
+        <tr><td>سریال</td><td>jSerialComm <span class="m m-get">2.11.0</span></td><td>اختیاری در پروتکل؛ اپلیکیشن آن را تأمین می‌کند</td></tr>
+        <tr><td>API مستندات</td><td>springdoc (Swagger UI)</td><td><code>/swagger-ui.html</code> در اپلیکیشن</td></tr>
+        <tr><td>پایش</td><td>Actuator + Micrometer</td><td><code>/actuator/health</code> با کامپوننت <code>serialLink</code> + گیج‌های موتور</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     MODULE 1 : SERIAL PROTOCOL
+     ============================================================ -->
+<section class="section" id="module-protocol">
+  <span class="sec-eyebrow">MODULE 1 / 3</span>
+  <h2>ماژول پروتکل سریال <span class="tag tag-cyan">tileboard-serial-protocol</span></h2>
+  <p class="sec-desc">
+    کتابخانه‌ای خالص، سبک و بی‌وابستگی که «زبان مشترک» نرم‌افزار و سخت‌افزار است. این ماژول هیچ ایده‌ای از بازی،
+    امتیاز یا Spring ندارد؛ فقط می‌داند چطور بایت‌ها را به فریم‌های معتبر تبدیل کند و برعکس.
+  </p>
+  <div class="chips">
+    <span class="chip c-cyan">jar مستقل</span>
+    <span class="chip">بدون Spring</span>
+    <span class="chip">jSerialComm اختیاری</span>
+    <span class="chip c-amber">Java 17</span>
+    <span class="chip c-lime">تست کامل بدون سخت‌افزار</span>
+  </div>
+
+  <h3 class="sub-title" id="p-philosophy"><span class="num">۰۱</span> فلسفه وجودی — چرا این ماژول جدا است؟</h3>
+  <div class="philosophy">
+    <h4>PHILOSOPHY</h4>
+    <p>
+      «سخت‌افزار تغییر می‌کند، نویز خط اتفاق می‌افتد، کتابخانه‌های سریال عوض می‌شوند — اما <b>زبان گفتگو</b>
+      باید یک اسکار مقدس و پایدار بماند.» این ماژول همان زبان است: قراردادی کوچک، قابل‌تست و بی‌طرف که هیچ
+      چیز بالادستی (اپلیکیشن، موتور بازی، UI) لازم نیست درباره‌ی جزئیات سیم بداند.
+    </p>
+    <ul>
+      <li><b>مستقل از ترنسپورت (Transport-agnostic):</b> رابط <code>SerialTransport</code> سخت‌افزار را انتزاعی می‌کند؛ jSerialComm به‌صورت <b>اختیاری</b> (<code>&lt;optional&gt;true</code>) ضمیمه شده تا مصرف‌کننده آزاد باشد هر کتابخانه یا Mock خودش را تزریق کند.</li>
+      <li><b>مستقل از فریم‌ورک (Framework-free):</b> هیچ کلاسی از Spring یا انوتیشن‌های آن استفاده نمی‌کند؛ همین ماژول در یک اسکریپت ساده CLI هم اجرا می‌شود.</li>
+      <li><b>مقاوم در برابر نویز:</b> خط سریال بی‌سیم/USB ذاتا کثیف است؛ دیکودر باید بتواند خودش را دوباره همگام کند، نه اینکه برای همیشه قفل شود.</li>
+      <li><b>خطاها قابل ترجمه:</b> همه استثناها از <code>LocalizableException</code> ارث می‌برند و <code>errorCode</code> + آرگومان‌ها را حمل می‌کنند تا لایه بالاتر بتواند پیام فارسی بسازد.</li>
+    </ul>
+  </div>
+
+  <h3 class="sub-title" id="p-problems"><span class="num">۰۲</span> مشکلاتی که این ماژول برطرف می‌کند</h3>
+  <div class="grid grid-2">
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🌫️</span><h5>نویز خط سریال و فریم‌های تکه‌تکه</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> یک فریم ممکن است بین دو بار «read» نصف شود، چند فریم در یک read بیایند، یا نویز الکتریکی بایت‌های بی‌معنی تزریق کند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>DefaultFrameCodec.decode</code> حالت‌دار است (بایت‌ها را بین فراخوانی‌ها جمع می‌کند)، دنبال جفت <code>0xFC</code>+<code>:</code> می‌گردد، طول اعلامی را با بایت پایانی <code>#</code> اعتبارسنجی می‌کند و در صورت خرابی، فقط <b>یک بایت جلوتر</b> دنبال همگام‌سازی می‌رود.</div>
+      <span class="pb-ref">DefaultFrameCodec</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🕳️</span><h5>دام طول دروغین (Plausibility Ceiling)</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> اگر نویز اتفاقی شبیه شروع فریم باشد و دو بایت «طول» آن ۶۰٬۰۰۰ خوانده شود، دیکودر تا ابد منتظر بایت‌هایی می‌ماند که هرگز نمی‌آیند و همه فریم‌های واقعی بعدی را می‌بلعد.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> سقف معقول ۴۰۹۶ بایت — فریم واقعی هرگز این‌قدر بزرگ نیست؛ هر «طول» بزرگ‌تر یعنی نویز، پس بلافاصله یک بایت رد می‌شود و جستجوی همگام‌سازی ادامه می‌یابد.</div>
+      <span class="pb-ref">PLAUSIBLE_PAYLOAD_LENGTH_CEILING</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🧩</span><h5>قفل‌شدن روی کتابخانه سریال خاص</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> اگر کد بازی یا اپلیکیشن مستقیما jSerialComm را صدا بزند، تست بدون سخت‌افزار و تعویض کتابخانه غیرممکن می‌شود.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> لایه انتزاعی <code>SerialTransport</code> + <code>SerialPortRegistry</code> + <code>SerialPortConfig</code>؛ پیاده‌سازی <code>JSerialCommTransport</code> فقط یک افزونه اختیاری است. اپلیکیشن Spring تنها با یک Bean در <code>SerialGatewayConfig</code> آن را سیم‌کشی می‌کند.</div>
+      <span class="pb-ref">transport/ · transport/jserialcomm/</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">⚔️</span><h5>تداخل نوشتن همزمان روی سیم</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> دو نخ (مثلا حلقه tick بازی و نخ کالبک لمس) همزمان بنویسند، بایت‌های دو فریم در سیم قاطی می‌شوند و هر دو فریم خراب می‌شوند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> همه ارسال‌های <code>TileGatewayClient</code> داخل یک <code>writeLock</code> مشترک سریالایز می‌شوند تا هر فریم اتمیک روی سیم برود.</div>
+      <span class="pb-ref">TileGatewayClient#writeLock</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🐌</span><h5>Listener کند یا خطادیده، گلوگاه خواندن سریال</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> اگر کالبک شنونده‌ها مستقیم روی نخِ خواندن سریال اجرا شود، یک listener آهسته همه داده‌های ورودی را عقب می‌اندازد و یک listener معیوب جریان را می‌کُشد.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> کالبک‌ها روی یک <code>Executor</code> جدا (پیش‌فرض: یک نخ دیمون اختصاصی) اجرا می‌شوند؛ استثنای هر listener جدا گرفته و لاگ می‌شود؛ لیست شنونده‌ها <code>CopyOnWriteArrayList</code> است.</div>
+      <span class="pb-ref">TileGatewayClient#dispatch</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">💧</span><h5>نشت هندل OS هنگام بستن</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> اگر در <code>close()</code> اولین <code>transport.close()</code> استثنا بدهد، پورت دوم و نخ Executor برای همیشه باز می‌مانند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>close()</code> چندمرحله‌ایِ best-effort — هر مرحله در بلاک مستقل اجرا می‌شود حتی اگر قبلی خطا بدهد؛ پورت IN و OUT مشترک فقط یک‌بار بسته می‌شود.</div>
+      <span class="pb-ref">TileGatewayClient#close</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🔢</span><h5>آدرس‌دهی کاشی‌ها و هندشیک ID</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> برد بعد از روشن‌شدن نمی‌داند چند کاشی دارد و هر کاشی چه شماره‌ای است؛ اگر تخصیص ID خراب باشد، لمس‌ها به خانه‌های اشتباه مپ می‌شوند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>HandshakeCoordinator</code> به <code>ID/CLEAR</code> برد با <code>ID/SET</code> حاوی <code>DeviceAddress</code> (تعداد کل کاشی‌ها ≤ ۲۵۵ + طول ردیف) جواب می‌دهد و توالی گزارش‌شده را با <code>SequenceValidator</code> اعتبارسنجی می‌کند؛ نامعتبر بودن یعنی شروع دوباره هندشیک.</div>
+      <span class="pb-ref">gateway/handshake/</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🎲</span><h5>اعداد جادویی پراکنده</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> مقدار 0xFC و ترتیب بایت‌های فریم اگر در کل کد پخش باشد، هر تغییر فریم‌ورک یک کابوس می‌شود.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> همه ثابت‌های سیم در <code>ProtocolConstants</code> با نمودار دقیق چیدمان فریم در Javadoc متمرکز شده‌اند؛ enum های <code>Command</code> و <code>CommandType</code> هم مقدار سیمی را فیلد صریح نگه می‌دارند (نه <code>ordinal()</code>) تا افزودن مقدار جدید امن باشد.</div>
+      <span class="pb-ref">ProtocolConstants · Command · CommandType</span>
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="p-frame"><span class="num">۰۳</span> ساختار فریم روی سیم</h3>
+  <p>
+    هر فریمِ بین هاست و کنترلر دقیقا این شکل را دارد — ۷ بایت سربار + بار مفید:
+  </p>
+  <div class="frame-diagram">
+    <div class="frame-byte fb-start"><div class="fb-val">0xFC</div><div class="fb-name">START</div></div>
+    <div class="frame-byte fb-sep"><div class="fb-val">':'</div><div class="fb-name">SEPARATOR</div></div>
+    <div class="frame-byte fb-cmd"><div class="fb-val">CMD</div><div class="fb-name">Command</div></div>
+    <div class="frame-byte fb-type"><div class="fb-val">TYPE</div><div class="fb-name">CommandType</div></div>
+    <div class="frame-byte fb-len"><div class="fb-val">LEN-Hi</div><div class="fb-name">Big-Endian</div></div>
+    <div class="frame-byte fb-len"><div class="fb-val">LEN-Lo</div><div class="fb-name">16-bit</div></div>
+    <div class="frame-byte fb-payload"><div class="fb-val">PAYLOAD 0..N</div><div class="fb-name">up to 65535 (encode guard) · 4096 (decode ceiling)</div></div>
+    <div class="frame-byte fb-end"><div class="fb-val">'#'</div><div class="fb-name">END</div></div>
+  </div>
+
+  <div class="grid grid-2">
+    <div class="card card-accent-cyan">
+      <h5>دستورهای پروتکل — <code>Command</code></h5>
+      <p style="font-size:12.5px">
+        <code>INTRODUCTION(0)</code> · <code>DATA_IN(1)</code> · <code>DATA_OUT(2)</code> · <code>ID(3)</code> ·
+        <code>STOP(4)</code> · <code>START(5)</code> · <code>COMMAND(6)</code> · <code>RESET_PROGRAM(7)</code> ·
+        <code>CLEAR_ID(8)</code>
+      </p>
+    </div>
+    <div class="card card-accent-violet">
+      <h5>نوع دستور — <code>CommandType</code></h5>
+      <p style="font-size:12.5px">
+        <code>SET(0)</code> · <code>GET(1)</code> · <code>CLEAR(2)</code> · <code>SET_EXTENDED(3)</code> ·
+        <code>NA(4)</code> · <code>WAIT(5)</code> — مثال ترکیب: <code>ID/SET</code> یعنی «تخصیص آدرس کاشی‌ها».
+      </p>
+    </div>
+  </div>
+  <div class="callout info">
+    <span class="co-ico">ℹ️</span>
+    <span><code>Frame</code> یک record تغییرناپذیر با <b>کپی تدافعی</b> از payload است؛ هیچ کد بالاتر از کدک، بایت خام دستکاری نمی‌کند.
+    <code>Board&lt;T&gt;</code> هم یک گرید عمومی بدون هیچ دانشی از رنگ یا LED است و فقط هنگام ارسال با <code>TileCodec</code> به سیم ترجمه می‌شود.</span>
+  </div>
+
+  <h3 class="sub-title" id="p-packages"><span class="num">۰۴</span> پکیج‌ها و کلاس‌های کلیدی</h3>
+  <div class="grid grid-3">
+    <div class="card reveal"><span class="cico">🗂️</span><h5><code>board/</code></h5><p><code>Board&lt;T&gt;</code> گرید قابل‌تغییر با پرکردن، پیمایش، فیلتر (<code>positionsWhere</code>)، کپی عمیق و تبدیل سیمی. <code>Position</code> رکورد اعتبارسنجی‌شده (row,col). کدک‌های <code>TileCodec/TileEncoder/TileDecoder/TileTouchCodec</code>.</p></div>
+    <div class="card reveal"><span class="cico">📦</span><h5><code>protocol/</code></h5><p>مدل فریم‌بندی: <code>Frame</code>، <code>Command</code>، <code>CommandType</code>، <code>FrameEncoder/FrameDecoder</code> و پیاده‌سازی مرجع <code>DefaultFrameCodec</code> + <code>TileTouchCodec</code> (حالت‌های 0x00/0x01 لمس).</p></div>
+    <div class="card reveal"><span class="cico">🔌</span><h5><code>transport/</code></h5><p>انتزاع سخت‌افزار: <code>SerialTransport</code> (open/write/close + <code>DataListener</code>)، <code>SerialPortRegistry</code> برای کشف پورت‌ها، <code>SerialPortConfig</code> (baud, parity, flow control) و <code>SerialPortInfo</code>.</p></div>
+    <div class="card reveal"><span class="cico">🚪</span><h5><code>transport/jserialcomm/</code></h5><p>پیاده‌سازی آماده <code>JSerialCommTransport</code> و <code>JSerialCommPortRegistry</code> — وابستگی jSerialComm در این ماژول <b>optional</b> است و اپلیکیشن آن را تأمین می‌کند.</p></div>
+    <div class="card reveal"><span class="cico">🛰️</span><h5><code>gateway/</code></h5><p><code>TileGatewayClient</code>: کلاینت سطح‌بالای builder-based با نوشتن سریالایز‌شده، Executor کالبک دیمون، پشتیبانی IN/OUT جدا یا مشترک، و شنونده‌های <code>FrameListener</code>/<code>BoardListener</code>.</p></div>
+    <div class="card reveal"><span class="cico">🤝</span><h5><code>gateway/handshake/</code></h5><p>آدرس‌دهی کاشی‌ها: <code>DeviceAddress</code> (≤۲۵۵ کاشی)، <code>AddressResolver</code>، <code>HandshakeCoordinator</code> و اعتبارسنج توالی <code>SequentialIdSequenceValidator</code>.</p></div>
+    <div class="card reveal"><span class="cico">💥</span><h5><code>exception/</code> + <code>support/error/</code></h5><p><code>BoardException</code>، <code>ProtocolException</code>، <code>InvalidFrameException</code>، <code>PortNotFoundException</code>، <code>SerialTransportException</code> — همه از <code>LocalizableException</code> با <code>errorCode</code> و <code>args()</code>.</p></div>
+  </div>
+
+  <h3 class="sub-title" id="p-examples"><span class="num">۰۵</span> مثال‌های استفاده — بدون هیچ فریم‌ورکی</h3>
+
+  <h4 class="mini-title">نمونه ۱ — اتصال به برد و روشن کردن یک کاشی</h4>
+  <div class="code-window" data-lang="java">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">MinimalClient.java</span><button class="copy-btn">کپی</button></div>
+    <pre><code>SerialPortRegistry registry = new JSerialCommPortRegistry();
+SerialTransport port = registry.open("COM3", SerialPortConfig.defaults());
+
+TileGatewayClient client = TileGatewayClient.builder()
+        .transport(port)          // one full-duplex port for both directions
+        .build();                 // DefaultFrameCodec is installed automatically
+
+// answer the board's ID/CLEAR handshake and validate its report-backs
+client.enableIdHandshake(() -&gt; DeviceAddress.forBoard(8, 8));
+
+client.addFrameListener(frame -&gt; System.out.println("received " + frame));
+client.start();                   // begin dispatching incoming bytes
+
+Board&lt;TileColor&gt; board = new Board&lt;&gt;(8, 8, TileColor.OFF);
+board.set(0, 0, TileColor.RED);
+client.sendBoard(Command.DATA_OUT, CommandType.SET, board, colorCodec);</code></pre>
+  </div>
+
+  <h4 class="mini-title">نمونه ۲ — دیدن لمس‌ها به‌صورت برد دودویی</h4>
+  <div class="code-window" data-lang="java">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">TouchWatcher.java</span><button class="copy-btn">کپی</button></div>
+    <pre><code>// DATA_IN frames become a decoded Board&lt;Boolean&gt; before your lambda runs
+client.addBoardListener(Command.DATA_IN, 3, 3, TileCodec.booleanState(),
+        touchBoard -&gt; touchBoard.positionsWhere(Boolean.TRUE::equals)
+                .forEach(pos -&gt; System.out.println("touched " + pos)));</code></pre>
+  </div>
+
+  <h4 class="mini-title">نمونه ۳ — دو پورت جدا برای IN و OUT (تخته‌های مادون قرمز دوطرفه)</h4>
+  <div class="code-window" data-lang="java">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">SplitPorts.java</span><button class="copy-btn">کپی</button></div>
+    <pre><code>TileGatewayClient client = TileGatewayClient.builder()
+        .inputTransport(inPort)    // bytes arriving FROM the board
+        .outputTransport(outPort)  // bytes going TO the board
+        .frameCodec(new DefaultFrameCodec())
+        .build();</code></pre>
+  </div>
+
+  <div class="callout warn">
+    <span class="co-ico">⚠️</span>
+    <span>هر نمونه <code>DefaultFrameCodec</code> باید فقط به <b>یک جریان ورودی منطقی</b> اختصاص یابد (یک نمونه به‌ازای هر پورت IN)؛
+    نمونه‌های دیکودر را بین اتصال‌های مستقل به اشتراک نگذارید. بعد از اتصال مجدد ترنسپورت هم <code>reset()</code> کنید تا فریم ناقص قبلی دور ریخته شود.</span>
+  </div>
+
+  <h4 class="mini-title">تست‌های این ماژول</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>تست</th><th>چه چیزی را اثبات می‌کند</th></tr></thead>
+      <tbody>
+        <tr><td><code>BoardTest</code></td><td>ابعاد، مرزها، fill، positionsWhere، کپی عمیق، تبدیل سیمی و خطای طول نامطابق</td></tr>
+        <tr><td><code>DefaultFrameCodecTest</code></td><td>فریم شکسته بین دو read، چند فریم در یک read، همگام‌سازی روی نویز و سقف ۴۰۹۶</td></tr>
+        <tr><td><code>TileGatewayClientTest</code></td><td>Builder، سریالایز شدن نوشتن‌ها، ایزوله‌شدن خطای listener و بستن تمیز</td></tr>
+        <tr><td><code>HandshakeCoordinatorTest</code></td><td>پاسخ ID/SET به ID/CLEAR و اعتبارسنجی توالی گزارش‌شده</td></tr>
+        <tr><td><code>BoardFrameListenerTest</code></td><td>فیلتر فریم بر اساس Command و دیکود برد</td></tr>
+        <tr><td><code>TileboardHardwareIT</code></td><td>تست انتگرال اختیاری روی برد واقعی (پروفایل <code>hardware-tests</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     MODULE 2 : GAME ENGINE
+     ============================================================ -->
+<section class="section" id="module-engine">
+  <span class="sec-eyebrow">MODULE 2 / 3</span>
+  <h2>ماژول موتور بازی <span class="tag tag-violet">tileboard-game-engine</span></h2>
+  <p class="sec-desc">
+    یک موتور بازی آماده‌ی تولید برای برد لمسی: چرخه عمر جلسه، ۱۶ قابلیت آماده، سیستم انیمیشن با لغو تعاونی،
+    Event Bus با سیاست سرریز، DTOهای SSE و یک آداپتور Spring اختیاری. هسته‌ی آن <b>هیچ وابستگی به Spring ندارد</b>.
+  </p>
+  <div class="chips">
+    <span class="chip c-violet">هسته بدون فریم‌ورک</span>
+    <span class="chip">Spring اختیاری (AutoConfiguration.imports)</span>
+    <span class="chip c-amber">مالکیت انحصاری برد</span>
+    <span class="chip c-lime">لغو تعاونی انیمیشن</span>
+    <span class="chip c-pink">SSE آماده</span>
+  </div>
+
+  <h3 class="sub-title" id="e-philosophy"><span class="num">۰۱</span> فلسفه وجودی — چرا موتور جدا از اپلیکیشن؟</h3>
+  <div class="philosophy engine-philosophy">
+    <h4>PHILOSOPHY</h4>
+    <p>
+      «منطق یک بازی، دارایی علمی پایدار است؛ فریم‌ورک‌ها مد می‌آیند و می‌روند.» به همین دلیل این ماژول
+      <b>قانون دو لایه‌ای</b> دارد: هسته‌ی <code>com.tileboard.engine.core/feature/event</code> هیچ چیزی نمی‌داند جز جاوا؛
+      و بسته‌ی <code>com.tileboard.engine.spring</code> فقط یک <b>آداپتور اختیاری</b> است که با
+      <code>AutoConfiguration.imports</code> خودش را پیدا می‌کند. نتیجه: بازی‌ها را می‌توان با JUnit خالص تست کرد،
+      در یک سرور دیگر بدون Spring اجرا کرد، و Spring فقط «نظم تزریق وابستگی» را هدیه می‌آورد.
+    </p>
+    <ul>
+      <li><b>بازی = داده + رفتار، نه زیرساخت:</b> توسعه‌دهنده‌ی بازی فقط <code>Game</code> را پیاده می‌کند؛ همه چیز دیگر (tick، مسیریابی لمس، ارسال برد، رویدادها) کار موتور است.</li>
+      <li><b>مالکیت انحصاری برد:</b> در هر لحظه حداکثر یک جلسه روی برد سلطنت می‌کند — با CAS اتمیک، نه با قفل‌های پراکنده.</li>
+      <li><b>همه قابلیت‌ها per-session:</b> هر <code>FeatureBundle</code> برای یک جلسه ساخته می‌شود؛ بین جلسات هیچ حالت پنهانی نشت نمی‌کند.</li>
+      <li><b>رویداد محور:</b> بازی‌ها و ناظرها (مثل ناشر SSE) فقط با <code>GameEventBus</code> حرف می‌زنند؛ پیوستگی UI به موتور سیم‌کشی نمی‌شود.</li>
+    </ul>
+  </div>
+
+  <h3 class="sub-title" id="e-problems"><span class="num">۰۲</span> مشکلاتی که این ماژول برطرف می‌کند</h3>
+  <div class="grid grid-2">
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🧠</span><h5>حالت مشترکِ ناامن بین جلسات</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> اگر بازیِ Singleton فیلد mutable داشته باشد، جلسه‌ی دوم روی حالت جلسه‌ی قبلی سوار می‌شود (مدل Servlet).</div>
+      <div class="pb-solution"><b>راه‌حل:</b> قرارداد بی‌حالتی <code>Game</code> — هر حالت جلسه باید در <code>ctx.state()</code> (یک <code>GameState</code> تازه به‌ازای هر جلسه، synchronized) یا در قابلیت‌های per-session ذخیره شود. اگر واقعا نمونه‌ی تازه لازم است، <code>GameRegistry.register(GameDescriptor, GameFactory)</code>.</div>
+      <span class="pb-ref">Game · GameState · GameFactory</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">👑</span><h5>دو بازی همزمان روی یک برد!</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> دو درخواست startGame رخدادگر، برد را بین دو جلسه تقسیم می‌کنند و خروجی سیم آشفتگی می‌شود.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>GameEngineImpl</code> با <code>exclusiveSessionId.compareAndSet(null, sessionId)</code> مالکیت را اتمیک می‌گیرد؛ شکست CAS یعنی خطای <code>game.board_already_owned</code>. اگر ساخت Session وسط راه خطا بدهد، مالکیت با rollback آزاد می‌شود.</div>
+      <span class="pb-ref">GameEngineImpl#startGame</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🧟</span><h5>جلسات زامبی و نشت منابع</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> بازی رهاشده که هرگز win/lose نشد، برای همیشه مالک برد می‌ماند و Executor ها را زنده نگه می‌دارد.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> Reaper برنامه‌ریز؛ بعد از <code>session-ttl</code> (پیش‌فرض ۳۰ دقیقه) اگر جلسه هنوز RUNNING/PAUSED بود، اجباری <code>stop()</code> می‌شود. پاکسازی‌های سنگین روی <code>teardownExecutor</code> جدا اجرا می‌شوند تا مسیر درخواست بلاک نشود.</div>
+      <span class="pb-ref">sessionReaper · teardownExecutor</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🧵</span><h5>فریم‌های چندتکه و خارج از ترتیب</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> بار DATA_IN ممکن است در چند بایتِ ورودی پخش شود؛ بافرهای خالی/قدیمی باعث لمس‌های تکراری می‌شوند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>EngineFrameRouter</code> تکه‌ها را با مهلت <code>frame-reassembly-timeout</code> (پیش‌فرض ۵۰۰ms) دوباره سرهم می‌کند و <code>TouchFrameRouter</code> فقط به جلسه‌ی مالک فعلی رویداد می‌دهد؛ بعد از <code>close()</code> مسیریابی با فلگ <code>closed</code> محافظت می‌شود.</div>
+      <span class="pb-ref">EngineFrameRouter · TouchFrameRouter</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">📤</span><h5>سیل نوشتن به سخت‌افزار و فریم‌های کهنه</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> tick بازی + انیمیشن + لمس، همزمان بردهای متفاوتی می‌سازند؛ ارسال تک‌تک آن‌ها یعنی سیم اشباع و نمایش فریم‌های قدیمی بعد از جدید.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>BoardChannel</code> با معنای <b>ادغام (Coalescing)</b>: بافر داخلی زیر <code>stateLock</code> به‌روز می‌شود و هنگام گرفتن <code>gatewayWriteLock</code> دوباره snapshot تازه خوانده می‌شود — پس همیشه آخرین وضعیت سازگار می‌رود، نه وضعیت کهنه‌ی فراخوان.</div>
+      <span class="pb-ref">BoardChannel#sendLatest</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">✨</span><h5>انیمیشن‌های روی هم‌افتاده</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> شروع یک انیمیشن جدید در حالی که قبلی هنوز حلقه‌ی بی‌نهایت standby را می‌چرخد، خروجی سیم را به‌هم می‌ریزد.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>AnimationSystem</code> روی یک تک‌نخی Executor با <b>شمارنده‌ی نسل (generation)</b>: هر انیمیشن جدید نسل قبلی را باطل می‌کند؛ <code>RunToken</code> قبل از هر sleep/show اعتبار نسل خودش را چک می‌کند و با استثنای سبکِ بی‌stacktrace باز می‌پیچد.</div>
+      <span class="pb-ref">AnimationSystem · RunToken</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🌊</span><h5>مصرف‌کننده‌ی کند و اشباع Event Bus</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> مشترک آهسته (مثلا یک SSE قطع‌شده) باعث رشد بی‌حد صف یا بلاک‌شدن بازی می‌شود.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>GameEventBusImpl</code> با صف per-subscriber و دو سیاست سرریز: <code>BLOCK</code> (فشار برگشتی) یا <code>DROP_OLDEST</code> (ریختن قدیمی‌ها)؛ شمارنده‌ی <code>droppedEvents</code> هم برای Metrics نگه داشته می‌شود.</div>
+      <span class="pb-ref">GameEventBusImpl · EventOverflowPolicy</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">⚡</span><h5>قطع/وصل سخت‌افزار وسط بازی</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> اتصال USB می‌پرد؛ موتور به گیت‌وی مرده چسبیده و بعد از برگشتن برد هیچ‌کس دوباره سیم‌کشی نمی‌کند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> رویدادهای Spring ای <code>GatewayConnectedEvent</code> / <code>GatewayDisconnectedEvent</code> که <code>GameEngineManager</code> به آن‌ها گوش می‌دهد: موتور فعلی idempotent بسته و به گیت‌وی تازه بایند می‌شود. رویدادها عمدا در ماژول موتور تعریف شده‌اند تا هر دو طرف به یک تعریف وابسته باشند.</div>
+      <span class="pb-ref">GameEngineManager</span>
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="e-lifecycle"><span class="num">۰۳</span> چرخه عمر یک بازی — قرارداد <code>Game</code></h3>
+  <p>
+    هر بازی فقط یک رابط را پیاده می‌کند. همه‌ی متدها default و no-op هستند، پس فقط همان‌ها را override می‌کنید که لازم دارید:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>متد</th><th>کی صدا زده می‌شود</th><th>نخ اجرا</th></tr></thead>
+      <tbody>
+        <tr><td><code>onStart(ctx)</code></td><td>یک‌بار در شروع جلسه — آماده‌سازی state، روشن کردن برد، ثبت تایمر</td><td>نخِ فراخوانِ <code>startGame</code></td></tr>
+        <tr><td><code>onTileEvent(ctx, event)</code></td><td>هر لمس واقعی، فقط وقتی جلسه <code>RUNNING</code> است</td><td>Executor کالبک گیت‌وی</td></tr>
+        <tr><td><code>onTick(ctx)</code></td><td>هر tick موتور (پیش‌فرض ۱۰۰ms) — برای انیمیشن/شمارش/بررسی زمان</td><td>نخ tick جلسه</td></tr>
+        <tr><td><code>onStop(ctx, result)</code></td><td>پایان جلسه (برد/باخت/توقف) — خاموش کردن برد و آزادسازی</td><td>نخِ توقف</td></tr>
+        <tr><td><code>onError(ctx, error)</code></td><td>هر استثنای فراری از onTileEvent/onTick — پیش‌فرض: توقف جلسه</td><td>نخِ مبدأ خطا</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="code-window" data-lang="java">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">ColorMatchGame.java — اسکلت یک بازی واقعی</span><button class="copy-btn">کپی</button></div>
+    <pre><code>public class ColorMatchGame implements Game {
+
+    private final GameDescriptor descriptor = GameDescriptor
+            .builder("color-match", "Color Match")
+            .category("PUZZLE")
+            .description("کاشی هدف را پیدا کن و لمس کن")
+            .boardSize(3, 3)      // must match the connected device geometry
+            .players(1, 1)
+            .build();
+
+    @Override public GameDescriptor descriptor() { return descriptor; }
+
+    @Override public void onStart(GameContext ctx) {
+        ctx.fillBoard(TileColor.OFF);
+        ctx.scores().resetAll();
+        ctx.timer().startCountdown(Duration.ofSeconds(60), ctx::loseSession);
+        Position target = ctx.random().randomPosition();
+        ctx.state().put("target", target);
+        ctx.setTile(target.row(), target.col(), TileColor.GREEN);
+    }
+
+    @Override public void onTileEvent(GameContext ctx, TileEvent event) {
+        Position target = (Position) ctx.state().get("target");
+        if (event.position().equals(target)) {
+            ctx.scores().add(ctx.players().get(0).id(), 10);
+            ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.SPARKLE);
+            ctx.winSession(ctx.players());
+        } else {
+            ctx.setTile(event.position().row(), event.position().col(), TileColor.RED);
+        }
+    }
+}</code></pre>
+  </div>
+
+  <div class="callout info">
+    <span class="co-ico">ℹ️</span>
+    <span>رجیستر شدن بازی در اپ Spring فقط یک <code>@Bean</code> است — <code>TileboardEngineAutoConfiguration</code>
+    همه‌ی Bean های <code>Game</code> را پیدا و به‌صورت خودکار در <code>GameRegistry</code> ثبت می‌کند. هیچ تغییری در پروتکل یا موتور لازم نیست.</span>
+  </div>
+
+  <h3 class="sub-title" id="e-features"><span class="num">۰۴</span> ۱۶ قابلیت آماده — سبدِ <code>FeatureBundle</code></h3>
+  <p>هر جلسه یک <code>FeatureBundle</code> تازه می‌گیرد. بازی از طریق همان <code>GameContext</code> به همه‌ی آن‌ها دسترسی دارد:</p>
+  <div class="feature-grid">
+    <div class="feature-item"><span class="fico">🏆</span><div><b><code>ScoreSystem</code></b><span>امتیاز per-player، افزودن/کم‌کردن، leader و همه‌ی امتیازها</span></div></div>
+    <div class="feature-item"><span class="fico">❤️</span><div><b><code>HealthSystem</code></b><span>جان هر بازیکن برای بازی‌های حیاتی</span></div></div>
+    <div class="feature-item"><span class="fico">📈</span><div><b><code>LevelSystem</code></b><span>سطح‌بندی و پیشرفت سختی</span></div></div>
+    <div class="feature-item"><span class="fico">🔥</span><div><b><code>ComboTracker</code></b><span>کمبوی لمس‌های پیاپی (thread-safe)</span></div></div>
+    <div class="feature-item"><span class="fico">⏱️</span><div><b><code>GameTimer</code></b><span>کرنومتر یا شمارش معکوس با callback انقضا (checkExpiry هر tick)</span></div></div>
+    <div class="feature-item"><span class="fico">🗂️</span><div><b><code>TouchHistory</code></b><span>حافظه‌ی حلقه‌ای لمس‌ها (پیش‌فرض ۲۰۰۰)</span></div></div>
+    <div class="feature-item"><span class="fico">🔍</span><div><b><code>TouchAnalyzer</code></b><span>تحلیل الگو از روی تاریخچه</span></div></div>
+    <div class="feature-item"><span class="fico">🟦</span><div><b><code>BoardFeature</code></b><span>عملیات کمکی روی برد جاری جلسه</span></div></div>
+    <div class="feature-item"><span class="fico">🕸️</span><div><b><code>NeighborFinder</code></b><span>توپولوژی گرید و همسایه‌ها (پیش‌فرض ۴جهته)</span></div></div>
+    <div class="feature-item"><span class="fico">🧩</span><div><b><code>PatternMatcher</code></b><span>جستجوی الگو روی برد</span></div></div>
+    <div class="feature-item"><span class="fico">🎲</span><div><b><code>RandomFeature</code></b><span>مکان/رنگ تصادفی، pick و chance با seed تزریقی برای تست</span></div></div>
+    <div class="feature-item"><span class="fico">🌊</span><div><b><code>WaveGenerator</code></b><span>امواج رنگی قابل لغو روی برد</span></div></div>
+    <div class="feature-item"><span class="fico">🧠</span><div><b><code>MemoryFeature</code></b><span>پشتیبانی بازی‌های حافظه (فاش‌کردن/مقایسه)</span></div></div>
+    <div class="feature-item"><span class="fico">⚡</span><div><b><code>ReactionSpeedTracker</code></b><span>آمار سرعت واکنش بین دو لمس</span></div></div>
+    <div class="feature-item"><span class="fico">🗺️</span><div><b><code>GraphFeature</code></b><span>پرس‌وجوهای گراف روی گرید (مسیر/اتصال)</span></div></div>
+    <div class="feature-item"><span class="fico">✨</span><div><b><code>AnimationSystem</code></b><span>انیمیشن‌های شمارش/برد/باخت/استندبای با لغو تعاونی</span></div></div>
+  </div>
+
+  <h3 class="sub-title" id="e-animations"><span class="num">۰۵</span> سیستم انیمیشن — عمیق‌ترین کلاس ماژول</h3>
+  <p>
+    <code>AnimationSystem</code> در هر لحظه فقط <b>یک</b> انیمیشن اجرا می‌کند؛ شروع انیمیشن جدید، قبلی را
+    «تعاونی» لغو می‌کند. سه ستون طراحی آن:
+  </p>
+  <div class="grid grid-3">
+    <div class="card card-accent-violet reveal"><span class="cico">1️⃣</span><h5>تک‌نخی Executor</h5><p>نخ دیمون <code>tileboard-animation</code>؛ پس هیچ رقابتی روی ارسال برد بین دو انیمیشن ممکن نیست و صفحه‌ی LED همیشه یک نویسنده دارد.</p></div>
+    <div class="card card-accent-violet reveal"><span class="cico">2️⃣</span><h5>شمارنده‌ی نسل</h5><p><code>AtomicLong generation</code>؛ هر <code>run()</code> نسل جدید می‌سازد و Task/فیوچر قبلی را cancel می‌کند. فیوچرِ انیمیشن باطل‌شده <b>هرگز</b> normally کامل نمی‌شود — cancelled است.</p></div>
+    <div class="card card-accent-violet reveal"><span class="cico">3️⃣</span><h5>توکن تعاونی RunToken</h5><p><code>show()</code> و <code>pause()</code> با اختلال سبک بازمی‌پیچند؛ <code>sleep()</code> فقط false برمی‌گرداند تا حلقه‌ها تمیز خارج شوند. استثنای داخلی بدون stacktrace ساخته می‌شود تا ارزان باشد.</p></div>
+  </div>
+
+  <h4 class="mini-title">انیمیشن‌های داخلی</h4>
+  <div class="anim-row"><span class="anim-label" style="color:var(--amber)">شمارش معکوس</span>
+    <span class="anim-pill ap-count">playCountdown(1000ms)</span>
+    <span style="font-size:12px;color:var(--text-faint)">ارقام ۳→۲→۱ با رندر پیکسلی مقیاس‌پذیر؛ برای بردهای کوچک‌تر از 3×5 حالت ساده تمام‌صفحه</span>
+  </div>
+  <div class="anim-row"><span class="anim-label" style="color:var(--lime)">برد (Win)</span>
+    <span class="anim-pill ap-win">RADIAL_BURST</span><span class="anim-pill ap-win">RAINBOW_SWEEP</span>
+    <span class="anim-pill ap-win">SPARKLE</span><span class="anim-pill ap-win">FIREWORKS</span>
+  </div>
+  <div class="anim-row"><span class="anim-label" style="color:var(--red)">باخت (Lose)</span>
+    <span class="anim-pill ap-lose">FADE_TO_RED</span><span class="anim-pill ap-lose">DESCENDING_CURTAIN</span>
+    <span class="anim-pill ap-lose">CRUMBLE</span><span class="anim-pill ap-lose">PULSE_RED</span>
+  </div>
+  <div class="anim-row"><span class="anim-label" style="color:var(--blue)">استندبای (تا لغو)</span>
+    <span class="anim-pill ap-standby">BREATHING</span><span class="anim-pill ap-standby">CORNER_PULSE</span>
+    <span class="anim-pill ap-standby">WAVE_BORDER</span><span class="anim-pill ap-standby">RANDOM_TWINKLE</span>
+  </div>
+
+  <div class="code-window" data-lang="java">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">استفاده در بازی</span><button class="copy-btn">کپی</button></div>
+    <pre><code>// win — runs on the animation thread, returns a CompletableFuture
+ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.FIREWORKS);
+
+// standby runs FOREVER until cancelled — cap it, then cancel:
+try {
+    ctx.animations().playStandbyAnimation(StandbyAnimationType.BREATHING)
+       .get(2, TimeUnit.SECONDS);
+} catch (TimeoutException e) {
+    ctx.animations().cancelCurrent();   // idempotent
+}
+
+// shutdown (called automatically by FeatureBundle.closeAll on session teardown)
+ctx.animations().shutdown();</code></pre>
+  </div>
+
+  <h3 class="sub-title" id="e-events"><span class="num">۰۶</span> رویدادها و SSE</h3>
+  <div class="grid grid-2">
+    <div class="card card-accent-pink">
+      <h5>GameEventBus</h5>
+      <p style="font-size:13px">انتشار/اشتراک با فیلتر نوع رویداد یا جلسه؛ صف per-subscriber (پیش‌فرض ۲۵۶) با سیاست
+      <code>DROP_OLDEST</code> یا <code>BLOCK</code> (با مهلت ۲۰۰ms). ۱۲ نوع رویداد داخلی:
+      <code>SESSION_STARTED · SESSION_FINISHED · SESSION_STOPPED · TILE_TOUCHED · BOARD_UPDATED · SCORE_CHANGED ·
+      LEVEL_UP · HEALTH_CHANGED · COMBO_HIT · TIMER_EXPIRED · TICK · CUSTOM</code></p>
+    </div>
+    <div class="card card-accent-pink">
+      <h5>لایه SSE موتور</h5>
+      <p style="font-size:13px"><code>SseGameEvent</code> یک DTO مستقل از رویداد داخلی است تا قرارداد SSE بتواند جدا تکامل یابد.
+      <code>GameEventSseEmitter</code> برای هر کلاینت صف ۳۲تایی + heartbeat کامنت هر ۱۵ ثانیه می‌سازد و
+      خطای نوشتن = خروج تمیز مشترک. نام‌های عمومی رویداد:
+      <code>GAME_STATE · BOARD_UPDATE · SCORE_UPDATE · SESSION_LIFECYCLE · TICK · CUSTOM</code></p>
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="e-spring"><span class="num">۰۷</span> لایه اختیاری Spring</h3>
+  <p>
+    بسته‌ی <code>com.tileboard.engine.spring</code> با فایل
+    <code>META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports</code> کشف می‌شود:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>کامپوننت</th><th>نقش</th></tr></thead>
+      <tbody>
+        <tr><td><code>TileboardEngineAutoConfiguration</code></td><td>ساخت <code>GameEventBusImpl</code>، <code>BoardFrameBroadcaster</code>، <code>GameRegistry</code> (ثبت خودکار همه‌ی Bean های Game)، <code>GameEngineManager</code>، <code>SseGameEventPublisher</code> و Scheduler دیمون heartbeat — همه با <code>@ConditionalOnMissingBean</code> تا قابل جایگزینی باشند</td></tr>
+        <tr><td><code>GameEngineManager</code></td><td>بایند مجدد موتور به گیت‌وی فعلی؛ گوش‌به‌زنگ به رویدادهای Connected/Disconnected؛ بستن idempotent در <code>@PreDestroy</code></td></tr>
+        <tr><td><code>SseGameEventPublisher</code></td><td>پل EventBus → <code>SseEmitter</code> برای کنترلر Stream اپلیکیشن</td></tr>
+        <tr><td><code>GameEngineMetricsBinder</code></td><td>گیج‌های Micrometer فقط وقتی <code>MeterRegistry</code> روی classpath باشد (<code>@ConditionalOnBean</code>)</td></tr>
+        <tr><td><code>TileboardEngineProperties</code></td><td>پیشوند <code>tileboard.engine.*</code>: tick-interval، session-ttl، event-bus-queue-capacity، touch-history-max-size و…</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="mini-title">استفاده‌ی خالص (بدون Spring)</h4>
+  <div class="code-window" data-lang="java">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">StandaloneEngine.java</span><button class="copy-btn">کپی</button></div>
+    <pre><code>GameRegistry registry = new DefaultGameRegistry();
+registry.register(new ColorMatchGame());
+
+GameEventBus bus = new GameEventBusImpl(256, EventOverflowPolicy.DROP_OLDEST);
+
+GameEngine engine = new GameEngineImpl(
+        registry, gateway, bus,
+        Duration.ofMillis(100),   // tick interval
+        Duration.ofMinutes(30),   // session TTL
+        Duration.ofMillis(500),   // frame reassembly timeout
+        2_000,                    // touch history size
+        3, 3);                    // connected board geometry
+
+String sessionId = engine.startGame("color-match", List.of(Player.solo("Ali")));</code></pre>
+  </div>
+</section>
+
+<!-- ============================================================
+     MODULE 3 : APP
+     ============================================================ -->
+<section class="section" id="module-app">
+  <span class="sec-eyebrow">MODULE 3 / 3</span>
+  <h2>ماژول اپلیکیشن <span class="tag tag-lime">tileboard-app</span></h2>
+  <p class="sec-desc">
+    پوسته‌ی عملیاتی Spring Boot 3.3.4 که موتور بازی و پروتکل سریال را به یک سرویس وب واقعی تبدیل می‌کند:
+    REST برای فرمان، SSE برای پخش زنده، ماندگاری تنظیمات روی SQLite، مانیتور سلامت لینک، اتصال مجدد خودکار و
+    کاتالوگ پیام خطای فارسی.
+  </p>
+  <div class="chips">
+    <span class="chip c-lime">Spring Boot 3.3.4</span>
+    <span class="chip">JPA + SQLite + Caffeine</span>
+    <span class="chip c-cyan">SSE زنده</span>
+    <span class="chip c-amber">Actuator Health</span>
+    <span class="chip c-pink">پیام‌های فارسی</span>
+    <span class="chip">Swagger UI</span>
+  </div>
+
+  <h3 class="sub-title" id="a-philosophy"><span class="num">۰۱</span> فلسفه وجودی — چرا یک اپ جدا؟</h3>
+  <div class="philosophy app-philosophy">
+    <h4>PHILOSOPHY</h4>
+    <p>
+      «کتابخانه‌ها دانش را نگه می‌دارند؛ اپلیکیشن <b>عملیات</b> را نگه می‌دارد.» وظیفه‌ی این ماژول دانستن
+      هیچ الگوریتم بازی نیست — وظیفه‌اش این است که سخت‌افزار یک بار و فقط یک بار درست سیم‌کشی شود، پیکربندی بعد از ری‌استارت
+      زنده بماند، خرابی لینک دیده شود و هر خطا با پیام فارسیِ قابل فهم به کاربر برسد.
+    </p>
+    <ul>
+      <li><b>یک درزِ سخت‌افزار:</b> تنها جایی که اپ می‌داند jSerialComm استفاده می‌شود، Bean تک‌خطیِ <code>SerialGatewayConfig</code> است؛ تعویض کتابخانه یا گذاشتن Mock یعنی تغییر همان یک متد.</li>
+      <li><b>تنظیمات تایپ‌دار، نه Map بی‌شکل:</b> هر تنظیم یک <code>SettingKey&lt;T&gt;</code> با نوع و پیش‌فرض صریح است؛ افزودن تنظیم جدید فقط یک خط ثابت جدید است.</li>
+      <li><b>سلامت لینک ادعا نیست، اثبات است:</b> <code>SerialLinkMonitor</code> مستقلا لیست پورت‌های سیستم‌عامل را اسکن می‌کند، نه فقط وضعیت داخلی خودش را.</li>
+      <li><b>تجربه کاربری فارسی:</b> <code>messages_fa.properties</code> + <code>GlobalExceptionHandler</code> + دوگانه‌ی <code>message/debugMessage</code> در هر پاسخ.</li>
+    </ul>
+  </div>
+
+  <h3 class="sub-title" id="a-problems"><span class="num">۰۲</span> مشکلاتی که این ماژول برطرف می‌کند</h3>
+  <div class="grid grid-2">
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">💾</span><h5>پیکربندیِ گم‌شده بعد از ری‌استارت</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> ابعاد برد و تخصیص پورت در حافظه یعنی هر بار ری‌استارت، تنظیم دوباره‌ی دستی.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>JpaSettingsService</code> (پیش‌فرض) هر تنظیم را به‌صورت یک سطر JSON در جدول عمومی <code>app_settings</code> روی <code>app.db</code> می‌نویسد؛ خواندن از کش Caffeine؛ <code>@Version</code> برای قفل خوش‌بینانه با یک بار retry در برخورد همزمان. حالت <code>memory</code> هم برای دمو/تست هست.</div>
+      <span class="pb-ref">JpaSettingsService · InMemorySettingsService</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🔌</span><h5>چرخه‌ی اتصال سریال با rollback</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> اگر باز شدن پورت IN موفق و OUT شکست بخورد، پورتِ بازشده هدر می‌رود و وضعیت نیمه‌متصل باقی می‌ماند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>DefaultSerialConnectionManager.connect()</code> هر چه را در همان تلاش باز کرده در <code>openedThisAttempt</code> می‌شمارد و در خطا همه را می‌بندد؛ متدها idempotent هستند و OUT نقش اجباری است (فقط OUT یعنی اتصال فقط-خروجی).</div>
+      <span class="pb-ref">DefaultSerialConnectionManager</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">👻</span><h5>قطع بی‌صدای سخت‌افزار</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> کاربر کابل USB را می‌کَند؛ نوشتن‌ها بی‌سر و صدا شکست می‌خورند و UI فکر می‌کند همه چیز سالم است.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>SerialLinkMonitor</code> هر ۵ ثانیه (قابل پیکربندی) وجود پورت‌های جلسه را در لیست سیستم‌عامل چک می‌کند؛ بعد از <code>loss-confirmations</code> (پیش‌فرض ۲) بار قطعیت، گیت‌وی آزاد و موتور با رویداد بسته می‌شود؛ نتیجه در کامپوننت <code>serialLink</code> از Actuator هم هست.</div>
+      <span class="pb-ref">SerialLinkMonitor · SerialLinkHealthIndicator</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🔁</span><h5>برگشتن سخت‌افزار بدون اپراتور</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> بعد از برگشتن کابل، کسی باید یادش بیفتد دوباره connect بزند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> <code>SerialAutoReconnector</code> هنگام بالا آمدن اپ (اگر پیکربندی کامل باشد) خودش connect را امتحان و تلاش دوره‌ای را «مسلح» می‌کند؛ <b>قطع صریح</b> از REST تلاش‌های بعدی را تا connect بعدی خلع سلاح می‌کند تا اپ با اراده‌ی اپراتور بجنگد.</div>
+      <span class="pb-ref">SerialAutoReconnector</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🈯</span><h5>پیام خطای انگلیسی برای کاربر فارسی‌زبان</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> استثناها در پایین‌ترین لایه با کلید فنی ساخته می‌شوند؛ نمایش خام آن‌ها به کاربر غیرقابل قبول است.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> هر استثنا <code>errorCode</code> + آرگومان دارد؛ <code>GlobalExceptionHandler</code> همان کلید را در <code>messages_fa.properties</code> جست‌وجو می‌کند و اگر نبود، پیام خام انگلیسی را به‌عنوان fallback نشان می‌دهد — یعنی ترجمه‌ی نبودن، درخواست را نمی‌شکند.</div>
+      <span class="pb-ref">i18n/Messages · GlobalExceptionHandler</span>
+    </div>
+    <div class="problem-card reveal">
+      <div class="pb-head"><span class="pb-ico">🧭</span><h5>نامعلوم بودن سلامت سرویس برای DevOps</h5></div>
+      <div class="pb-problem"><b>مشکل:</b> Kubernetes نمی‌داند اپ زنده است یا برد قطع است؛ نبودِ برد نباید کانتینر را ری‌استارت کند.</div>
+      <div class="pb-solution"><b>راه‌حل:</b> کامپوننت <code>serialLink</code> در <code>/actuator/health</code> (HEALTHY→UP، LINK_LOST→DOWN، NOT_CONNECTED→DOWN/UNKNOWN قابل پیکربندی) + پروب‌های liveness/readiness جدا که عمدا شامل serialLink نیستند.</div>
+      <span class="pb-ref">SerialLinkHealthIndicator</span>
+    </div>
+  </div>
+
+  <h3 class="sub-title" id="a-api"><span class="num">۰۳</span> مرجع کامل REST API</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>متد</th><th>مسیر</th><th>توضیح</th></tr></thead>
+      <tbody>
+        <tr><td><span class="m m-get">GET</span></td><td><code>/api/v1/device</code></td><td>پیکربندی فعلی دستگاه (ابعاد برد)</td></tr>
+        <tr><td><span class="m m-post">POST</span></td><td><code>/api/v1/device</code></td><td>ثبت/به‌روزرسانی ابعاد برد — <code>{"width":3,"height":3}</code> (۱ تا ۲۵۵)</td></tr>
+        <tr><td><span class="m m-get">GET</span></td><td><code>/api/v1/ports</code></td><td>فهرست پورت‌های سریال موجود روی سیستم</td></tr>
+        <tr><td><span class="m m-post">POST</span></td><td><code>/api/v1/ports/{role}/assign</code></td><td>تخصیص پورت به نقش <code>IN</code> یا <code>OUT</code> — <code>{"portName":"COM3"}</code></td></tr>
+        <tr><td><span class="m m-get">GET</span></td><td><code>/api/v1/ports/status</code></td><td>وضعیت اتصال، تخصیص‌ها و سلامت لینک</td></tr>
+        <tr><td><span class="m m-post">POST</span></td><td><code>/api/v1/ports/connect</code></td><td>باز کردن پورت‌ها، ارسال INTRODUCTION/START و بایند موتور بازی</td></tr>
+        <tr><td><span class="m m-post">POST</span></td><td><code>/api/v1/ports/disconnect</code></td><td>قطع صریح + خلع سلاح اتصال مجدد خودکار</td></tr>
+        <tr><td><span class="m m-get">GET</span></td><td><code>/api/v1/games</code></td><td>فهرست بازی‌های ثبت‌شده در رجیستری</td></tr>
+        <tr><td><span class="m m-post">POST</span></td><td><code>/api/v1/games/sessions</code></td><td>شروع جلسه — <code>{"gameId":"sequential-touch","players":[{"name":"Ali","role":"SOLO"}]}</code></td></tr>
+        <tr><td><span class="m m-get">GET</span></td><td><code>/api/v1/games/sessions</code></td><td>جلسات فعال</td></tr>
+        <tr><td><span class="m m-get">GET</span></td><td><code>/api/v1/games/sessions/{sessionId}</code></td><td>وضعیت کامل یک جلسه (اسنپ‌شات)</td></tr>
+        <tr><td><span class="m m-post">POST</span></td><td><code>/api/v1/games/sessions/{sessionId}/stop</code></td><td>توقف جلسه</td></tr>
+        <tr><td><span class="m m-sse">SSE</span></td><td><code>/api/v1/stream/board</code></td><td>پخش زنده‌ی همه‌ی رویدادهای بازی</td></tr>
+        <tr><td><span class="m m-sse">SSE</span></td><td><code>/api/v1/stream/board/{sessionId}</code></td><td>پخش زنده‌ی رویدادهای یک جلسه‌ی مشخص</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="mini-title">سناریوی کامل با curl — از صفر تا شروع بازی</h4>
+  <div class="code-window" data-lang="bash">
+    <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">workflow.sh</span><button class="copy-btn">کپی</button></div>
+    <pre><code>BASE=http://localhost:8080/api/v1
+
+# 1) introduce the board geometry (persisted in app_settings)
+curl -X POST $BASE/device -H "Content-Type: application/json" \
+     -d '{"width": 3, "height": 3}'
+
+# 2) discover ports and assign roles (full-duplex: same port for both)
+curl $BASE/ports
+curl -X POST $BASE/ports/IN/assign  -H "Content-Type: application/json" -d '{"portName":"COM3"}'
+curl -X POST $BASE/ports/OUT/assign -H "Content-Type: application/json" -d '{"portName":"COM3"}'
+
+# 3) connect — handshake runs, engine binds, standby animations become possible
+curl -X POST $BASE/ports/connect
+
+# 4) start the tutorial game
+curl -X POST $BASE/games/sessions -H "Content-Type: application/json" \
+     -d '{"gameId":"sequential-touch","players":[{"name":"Ali","role":"SOLO"}]}'
+
+# 5) watch it live from any browser / JS:
+#    new EventSource("/api/v1/stream/board")</code></pre>
+  </div>
+
+  <div class="callout tip">
+    <span class="co-ico">💡</span>
+    <span>همه‌ی پاسخ‌ها پاکت استاندارد <code>ApiResponse{status, message, data, extra, debugMessage}</code> را دارند:
+    <code>message</code> فارسی و کاربرپسند، <code>debugMessage</code> خام و انگلیسی برای دیباگ. مستندات تعاملی هم روی
+    <code>/swagger-ui.html</code> در دسترس است.</span>
+  </div>
+
+  <h3 class="sub-title" id="a-serial"><span class="num">۰۴</span> چرخه‌ی اتصال سریال — از تخصیص تا بازیابی</h3>
+  <div class="flow">
+    <div class="flow-step"><span class="fnum">1</span><p><b>پیکربندی دستگاه</b> — ابعاد برد در <code>app_settings</code> ذخیره می‌شود؛ بدون آن هیچ connect ای معنا ندارد.</p></div>
+    <div class="flow-step"><span class="fnum">2</span><p><b>تخصیص نقش‌ها</b> — <code>IN</code> و <code>OUT</code> می‌توانند یک پورت مشترک باشند (تمام‌دوطرفه). فقط OUT یعنی اتصال فقط-خروجی: لمس‌ها و هندشیک ورودی دریافت نمی‌شوند.</p></div>
+    <div class="flow-step"><span class="fnum">3</span><p><b>connect</b> — باز کردن ترنسپورت‌ها با rollback، ساخت <code>TileGatewayClient</code>، فعال‌سازی هندشیک ID، ارسال <code>INTRODUCTION</code> و <code>START</code> و انتشار <code>GatewayConnectedEvent</code> → موتور بازی بایند می‌شود و auto-reconnect مسلح می‌شود.</p></div>
+    <div class="flow-step"><span class="fnum">4</span><p><b>پایش مستقل</b> — هر ۵ ثانیه، اسکن کش‌دار (TTL یک‌ثانیه‌ای) لیست پورت‌های سیستم؛ دو تأیید متوالیِ نبودن یعنی LINK_LOST.</p></div>
+    <div class="flow-step"><span class="fnum">5</span><p><b>آزادسازی</b> — گیت‌وی release می‌شود، <code>GatewayDisconnectedEvent</code> منتشر و موتور بازی بسته می‌شود؛ <code>serialLink</code> در Actuator به DOWN می‌رود.</p></div>
+    <div class="flow-step"><span class="fnum">6</span><p><b>بازیابی</b> — اگر مسلح باشد، هر ۱ دقیقه تلاش مجدد؛ برگشتن پورت = اتصال دوباره. <b>قطع صریح</b> از REST، مسلح‌شدن را تا connect بعدی غیرفعال می‌کند.</p></div>
+  </div>
+
+  <h3 class="sub-title" id="a-settings"><span class="num">۰۵</span> تنظیمات ماندگار — یک جدول برای همه‌چیز</h3>
+  <p>
+    به‌جای یک جدول برای هر تنظیم، کل اپ از <b>یک</b> جدول عمومی استفاده می‌کند:
+    <code>app_settings(setting_key PK, value_json, updated_at, version)</code>. هر تنظیم یک
+    <code>SettingKey&lt;T&gt;</code> است: شناسه‌ی پایدار + نوع جاوا + پیش‌فرض. سریالایز JSON با یک
+    <code>ObjectMapper</code> اختصاصیِ تنظیمات (<code>SettingsSerializationConfig</code>) انجام می‌شود.
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>کلید فعلی</th><th>نوع</th><th>پیش‌فرض</th><th>توضیح</th></tr></thead>
+      <tbody>
+        <tr><td><code>device.configuration</code></td><td><code>DeviceConfiguration</code></td><td><b>ندارد</b> — «تنظیم‌نشده» یک حالت واقعی است</td><td>ابعاد فیزیکی برد (w×h)</td></tr>
+        <tr><td><code>serial.port-assignment</code></td><td><code>PortAssignment</code></td><td><code>PortAssignment.empty()</code></td><td>پورت‌های تخصیص‌یافته به IN/OUT</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <span class="co-ico">⚠️</span>
+    <span>شناسه‌ی کلید مثل یک <b>قرارداد سیمی/DB</b> رفتار کنید: افزودن کلید جدید آزاد است؛ <b>تغییرنام یا استفاده‌ی مجدد از کلید قدیمی ممنوع.</b>
+    هم‌چنین اسکیمای فعلی با <code>ddl-auto=update</code> مدیریت می‌شود — قبل از هر تغییر ناسازگار در موجودیت‌ها، به یک راهبرد مهاجرت نسخه‌بندی‌شده (مثل Flyway) نیاز خواهید داشت.</span>
+  </div>
+
+  <h3 class="sub-title" id="a-health"><span class="num">۰۶</span> پایش، سلامت و پیکربندی</h3>
+  <div class="grid grid-2">
+    <div class="card card-accent-lime">
+      <h5>نقشه‌ی سلامت</h5>
+      <p style="font-size:13px">
+        <code>HEALTHY → UP</code> · <code>LINK_LOST → DOWN</code> ·
+        <code>NOT_CONNECTED → DOWN</code> (یا UNKNOWN وقتی <code>not-connected-is-down=false</code>) ·
+        خطای خودِ اندیکاتور → DOWN با پیام «Serial link health check failed».<br>
+        پروب‌های liveness/readiness عمدا <b>بدون</b> serialLink هستند تا نبودِ برد هرگز کانتینر را ری‌استارت نکند.
+      </p>
+    </div>
+    <div class="card card-accent-lime">
+      <h5>کلیدهای پیکربندی مهم (application.yml)</h5>
+      <p style="font-size:13px">
+        <code>tileboard.serial.*</code> — baud/data/stop/timeout ها<br>
+        <code>tileboard.serial-monitor.*</code> — interval, scan-cache-ttl, loss-confirmations<br>
+        <code>tileboard.serial-auto-reconnect.*</code> — enabled, interval<br>
+        <code>tileboard.engine.*</code> — tick-interval, session-ttl, event-bus-queue-capacity<br>
+        <code>tileboard.settings.store</code> — <code>jpa</code> (پیش‌فرض) یا <code>memory</code><br>
+        <code>tileboard.cache.*</code> — settings-ttl-seconds, settings-max-size
+      </p>
+    </div>
+  </div>
+
+  <h4 class="mini-title">تست‌های این ماژول — همه بدون سخت‌افزار</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>تست</th><th>پوشش</th></tr></thead>
+      <tbody>
+        <tr><td><code>ControllerUnitTest</code></td><td>رفتار کنترلرهای device/port/game/session و حالت engine-disconnected</td></tr>
+        <tr><td><code>DefaultSerialConnectionManagerTest</code></td><td>کشف پورت، تخصیص، اجباری‌بودن OUT، cleanup و idempotency</td></tr>
+        <tr><td><code>SerialLinkMonitorTest</code></td><td>تأیید گم‌شدن‌های متوالی و ایزوله‌سازی استثنا</td></tr>
+        <tr><td><code>SerialAutoReconnectorTest</code></td><td>مسلح‌شدن در استارت‌آپ، پیکربندی ناقص و ایزوله خطای scheduler</td></tr>
+        <tr><td><code>SerialLinkHealthIndicatorTest</code></td><td>هر پنج حالت سلامت: healthy/lost/unverified/not-connected/failing</td></tr>
+        <tr><td><code>InMemoryDeviceGeneralConfigurationServiceTest</code></td><td>محدودیت‌های ابعاد دستگاه</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     TUTORIALS
+     ============================================================ -->
+<section class="section" id="tutorials">
+  <span class="sec-eyebrow">HANDS-ON WORKSHOP</span>
+  <h2>آموزش‌های گام‌به‌گام — توسعه‌ی آینده</h2>
+  <p class="sec-desc">
+    پلتفرم عمدا طوری طراحی شده که افزودن قابلیت جدید <b>افزودنی (additive)</b> باشد: کد موجود را بازنویسی نمی‌کنید،
+    فقط یک تکه‌ی جدید اضافه می‌کنید. شش دستورپخت پرکاربرد:
+  </p>
+
+  <!-- ================= TUT 1 : ANIMATION ================= -->
+  <div class="tutorial-box engine-tut" id="t-animation">
+    <div class="tb-head"><span class="tico">✨</span><h4>افزودن یک انیمیشن جدید</h4><span class="tbadge">tileboard-game-engine</span></div>
+    <p class="tb-lead">
+      مثال کامل: انیمیشن بردِ <code>HEARTBEAT</code> (ضربان قلب) را به خانواده‌ی Win اضافه می‌کنیم.
+      معماری لغو تعاونیِ AnimationSystem یعنی انیمیشن شما باید فقط با توکن <code>RunToken</code> نفس بکشد — قاعده‌ی طلایی این کارگاه.
+    </p>
+    <div class="steps">
+      <div class="step">
+        <span class="snum">۱</span>
+        <h5>یک ثابت به enum خانواده‌ی موردنظر اضافه کنید</h5>
+        <p>فایل <code>AnimationSystem.java</code> در انتهای کلاس سه enum عمومی دارد. مقادیر سیمی نیستند، پس افزودن امن است:</p>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">AnimationSystem.java</span><button class="copy-btn">کپی</button></div>
+        <pre><code>public enum WinAnimationType { RADIAL_BURST, RAINBOW_SWEEP, SPARKLE, FIREWORKS, HEARTBEAT }</code></pre></div>
+      </div>
+      <div class="step">
+        <span class="snum">۲</span>
+        <h5>انیمیشن را در switch مسیریابِ خانواده وصل کنید</h5>
+        <p>داخل <code>playWinAnimation(WinAnimationType)</code> یک case اضافه کنید:</p>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">AnimationSystem.java — playWinAnimation</span><button class="copy-btn">کپی</button></div>
+        <pre><code>public CompletableFuture&lt;Void&gt; playWinAnimation(WinAnimationType type) {
+    return run(token -&gt; {
+        switch (type) {
+            case RADIAL_BURST  -&gt; playRadialBurst(token);
+            case RAINBOW_SWEEP -&gt; playRainbowSweep(token);
+            case SPARKLE       -&gt; playSparkle(token);
+            case FIREWORKS     -&gt; playFireworks(token);
+            case HEARTBEAT     -&gt; playHeartbeat(token);   // ← new
+        }
+    });
+}</code></pre></div>
+      </div>
+      <div class="step">
+        <span class="snum">۳</span>
+        <h5>بدنه‌ی انیمیشن را بنویسید — فقط از RunToken استفاده کنید</h5>
+        <p>
+          قواعد اجباری: هر خروجی فقط با <code>token.show(board)</code>؛ هر مکث فقط با <code>token.pause(ms)</code>
+          (اگر لغو شد خودش می‌پیچد) یا <code>token.sleep(ms)</code> داخل حلقه‌ها (false یعنی تمیز خارج شو)؛
+          <code>Thread.sleep</code> مستقیم و <code>boardPublisher.accept</code> خام ممنوع — وگرنه انیمیشن لغوشده
+          روی برد باقی می‌ماند. برای شکل‌های دایره‌ای از هِلپرهای آماده‌ی <code>ringBoard</code> استفاده کنید:
+        </p>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">AnimationSystem.java — new private method</span><button class="copy-btn">کپی</button></div>
+        <pre><code>/** دو ضربان سریع + استراحت؛ قلب کوچک بزرگ می‌شود و دوباره جمع می‌شود. */
+private void playHeartbeat(RunToken token) {
+    Position center = new Position(height / 2, width / 2);
+    TileColor color = TileColor.PINK;
+
+    for (int beat = 0; beat &lt; 6; beat++) {          // 6 beats
+        for (int radius : new int[]{1, 2}) {        // thump-thump
+            token.show(ringBoard(center, color, radius));
+            token.pause(90);
+            token.show(ringBoard(center, color, 0));
+            token.pause(90);
+        }
+        token.pause(450);                            // rest between beats
+    }
+    token.clear();                                   // leave the board OFF
+}</code></pre></div>
+        <ul>
+          <li><code>pause()</code> → اگر لغو شده باشد استثنای داخلی می‌اندازد و بدنه تمیز باز می‌پیچد (برای مکث‌های «اجباری»).</li>
+          <li><code>sleep()</code> → فقط <code>false</code> برمی‌گرداند؛ برای حلقه‌های شرطی ایده‌آل است: <code>while (token.sleep(300)) { ... }</code></li>
+          <li>انیمیشن‌های standby (بی‌نهایت) باید شرط حلقه را <code>!token.isCancelled()</code> یا الگوی sleep بگذارند و شمارنده‌ها را mod بگیرند تا سرریز نکنند (نگاه کنید به <code>playWaveBorder</code>).</li>
+          <li>برای تصادفی‌سازی از <code>rng</code> همین کلاس استفاده کنید تا در تست‌ها با seed قابل تکرار باشد.</li>
+        </ul>
+      </div>
+      <div class="step">
+        <span class="snum">۴</span>
+        <h5>تست بنویسید — لغو و مسیر خوش‌حال</h5>
+        <p>کنار <code>AnimationSystemCancellationTest</code>؛ با سازنده‌ی package-private و RNG با seed، deterministic تست کنید:</p>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">AnimationSystemHeartbeatTest.java</span><button class="copy-btn">کپی</button></div>
+        <pre><code>@Test
+void heartbeatPublishesFramesAndCompletes() {
+    List&lt;Board&lt;TileColor&gt;&gt; frames = new CopyOnWriteArrayList&lt;&gt;();
+    AnimationSystem animations = new AnimationSystem(5, 5, frames::add, new Random(42));
+
+    animations.playWinAnimation(AnimationSystem.WinAnimationType.HEARTBEAT).join();
+
+    assertTrue(frames.size() &gt;= 24);            // 6 beats × 4 frames
+    frames.forEach(f -&gt; assertEquals(5, f.width()));
+}
+
+@Test
+void startingNewAnimationCancelsRunningOne() {
+    // ...
+    CompletableFuture&lt;Void&gt; f1 = animations.playWinAnimation(...HEARTBEAT);
+    animations.playWinAnimation(...SPARKLE);
+    assertTrue(f1.isCancelled());               // superseded = cancelled, never normal
+}</code></pre></div>
+      </div>
+      <div class="step">
+        <span class="snum">۵</span>
+        <h5>از بازی صدا بزنید و اجرا کنید</h5>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">هر Game دلخواه</span><button class="copy-btn">کپی</button></div>
+        <pre><code>ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.HEARTBEAT);
+ctx.winSession(ctx.players());</code></pre></div>
+      </div>
+    </div>
+
+    <div class="callout tip">
+      <span class="co-ico">🛠️</span>
+      <span><b>مسیر جایگزین — <code>AnimationRegistry</code> و <code>BoardAnimation</code>:</b> موتور یک رابط تابعی
+      <code>BoardAnimation.run(token, width, height, publisher)</code> و یک رجیستری کلید‌محور هم دارد که به‌عنوان
+      بستر انیمیشن‌های سفارشی کاشته شده است. توجه: متدهای <code>RunToken</code> فعلا package-private هستند،
+      پس این مسیر در عمل برای کلاس‌های همان پکیج (یا نسل بعدی بازسازی API برای عموم) است؛ الگوی مطمئن و سازگار با موجود،
+      همان مسیر enum + متد خصوصی است که بالا دیدید.</span>
+    </div>
+    <div class="callout warn">
+      <span class="co-ico">⚠️</span>
+      <span>هرگز داخل بدنه‌ی انیمیشن قفل نگه ندارید یا I/O بلاک‌کننده انجام ندهید — آن کد روی تک‌نخِ
+      <code>tileboard-animation</code> اجرا می‌شود و انیمیشن بعدی را عقب می‌اندازد.</span>
+    </div>
+  </div>
+
+  <!-- ================= TUT 2 : GAME ================= -->
+  <div class="tutorial-box engine-tut" id="t-game">
+    <div class="tb-head"><span class="tico">🎮</span><h4>افزودن یک بازی جدید</h4><span class="tbadge">engine + app</span></div>
+    <p class="tb-lead">افزودن بازی در معماری این پلتفرم «فقط یک Bean» است — بدون هیچ تغییری در پروتکل یا موتور.</p>
+    <div class="steps">
+      <div class="step"><span class="snum">۱</span>
+        <h5>کلاس بازی را بسازید و Game را پیاده کنید</h5>
+        <p>اسکلت کامل را در بخش «چرخه عمر یک بازی» (بالا) دیدید. سه قانون: حالت جلسه فقط در <code>ctx.state()</code>، خروجی برد فقط از <code>GameContext</code>، و <code>boardSize</code> در descriptor باید دقیقا با ابعاد دستگاه متصل یکی باشد وگرنه <code>GameEngineImpl</code> با <code>game.board_size_mismatch</code> جلوی شروع را می‌گیرد.</p>
+      </div>
+      <div class="step"><span class="snum">۲</span>
+        <h5>آن را به‌عنوان Spring Bean ثبت کنید</h5>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">GameBeansConfig.java</span><button class="copy-btn">کپی</button></div>
+        <pre><code>@Bean
+public Game colorMatchGame() {
+    return new ColorMatchGame();     // auto-registered by the engine auto-config
+}</code></pre></div>
+      </div>
+      <div class="step"><span class="snum">۳</span>
+        <h5>بدون سخت‌افزار تست کنید</h5>
+        <p>یک <code>TileGatewayClient</code> ساختگی/دوطرفه + <code>GameEngineImpl</code> را مثل نمونه‌ی Standalone بسازید؛ الگوهای آماده در <code>GameSessionImplTest</code> و <code>GameEngineManagerTest</code> هستند.</p>
+      </div>
+      <div class="step"><span class="snum">۴</span>
+        <h5>از REST شروع کنید</h5>
+        <p><code>GET /api/v1/games</code> بازی را در فهرست نشان می‌دهد؛ سپس <code>POST /api/v1/games/sessions</code> با <code>gameId</code> جدید و بازیکنان (نقش‌ها: <code>SOLO, PLAYER_ONE, PLAYER_TWO, TEAM_A, TEAM_B, SPECTATOR</code>).</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TUT 3 : COLOR ================= -->
+  <div class="tutorial-box engine-tut" id="t-color">
+    <div class="tb-head"><span class="tico">🎨</span><h4>افزودن رنگ جدید به پالت</h4><span class="tbadge">model + codec</span></div>
+    <p class="tb-lead">پالت <code>TileColor</code> عمدا «نقطه‌ی شروع قابل توسعه» است، نه پالت نهایی سخت‌افزار.</p>
+    <div class="steps">
+      <div class="step"><span class="snum">۱</span>
+        <h5>ثابت جدید با کد سیمی منحصربه‌فرد</h5>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">TileColor.java</span><button class="copy-btn">کپی</button></div>
+        <pre><code>public enum TileColor {
+    OFF(0), RED(1), GREEN(2), BLUE(3), PINK(4),
+    LIGHT_BLUE(5), YELLOW(6), WHITE(7),
+    ORANGE(8);          // ← new; wire code agreed with the firmware!</code></pre></div>
+        <p>جدول جست‌وجوی ۲۵۶تایی (<code>BY_WIRE_CODE</code>) به‌طور خودکار بازسازی می‌شود؛ کدهای ناشناخته به OFF برگردند، پس سازگاری رو به جلو حفظ می‌شود.</p>
+      </div>
+      <div class="step"><span class="snum">۲</span>
+        <h5>هماهنگی با فرم‌ور</h5>
+        <p>کد سیمی باید با فرم‌ورِ برد توافق شده باشد (<code>ColorTileCodec</code> همین enum را به بایت ترجمه می‌کند). اگر فرم‌ور پالت کاملا متفاوتی دارد، به‌جای تغییر enum، یک <code>TileCodec</code> اختصاصی بسازید — موتور عمدا به پالت خاصی قفل نیست.</p>
+      </div>
+      <div class="step"><span class="snum">۳</span>
+        <h5>تست</h5>
+        <p>تست <code>ColorTileCodecTest</code> را با رفت‌وبرگشت رنگ جدید (encode→decode) گسترش دهید.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TUT 4 : SETTING ================= -->
+  <div class="tutorial-box app-tut" id="t-setting">
+    <div class="tb-head"><span class="tico">⚙️</span><h4>افزودن یک تنظیم ماندگار جدید</h4><span class="tbadge">tileboard-app</span></div>
+    <p class="tb-lead">هیچ جدول، مهاجرت یا کنترلر جدیدی لازم نیست — همه‌چیز در همان <code>app_settings</code> به‌صورت JSON ذخیره می‌شود.</p>
+    <div class="steps">
+      <div class="step"><span class="snum">۱</span>
+        <h5>یک ثابت به SettingKeys اضافه کنید (append-only)</h5>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">SettingKeys.java</span><button class="copy-btn">کپی</button></div>
+        <pre><code>public static final SettingKey&lt;Boolean&gt; SOUND_ENABLED =
+        SettingKey.of("ui.sound-enabled", Boolean.class, Boolean.TRUE);
+
+public static final SettingKey&lt;Integer&gt; DEFAULT_GAME_DURATION_SECONDS =
+        SettingKey.of("game.default-duration", Integer.class, 90);</code></pre></div>
+      </div>
+      <div class="step"><span class="snum">۲</span>
+        <h5>استفاده در سرویس</h5>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">هر سرویس</span><button class="copy-btn">کپی</button></div>
+        <pre><code>boolean sound = settings.getOrDefault(SettingKeys.SOUND_ENABLED);
+settings.set(SettingKeys.SOUND_ENABLED, false);   // persisted + cache evicted</code></pre></div>
+      </div>
+      <div class="step"><span class="snum">۳</span>
+        <h5>قواعد</h5>
+        <ul>
+          <li>کلید مثل قرارداد DB است: افزودن آزاد، تغییرنام/استفاده‌ی مجدد ممنوع.</li>
+          <li>اگر «تنظیم‌نشده» برایتان معنا دارد، از نسخه‌ی بدون پیش‌فرض <code>SettingKey.of(id, type)</code> استفاده کنید (مثل ابعاد دستگاه).</li>
+          <li>برای نوع‌های جدید فقط درصدی serialization Jackson باید کار کند؛ <code>ObjectMapper</code> تنظیمات جدا از ObjectMapper وب است.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TUT 5 : ENDPOINT ================= -->
+  <div class="tutorial-box app-tut" id="t-endpoint">
+    <div class="tb-head"><span class="tico">🧭</span><h4>افزودن یک REST Endpoint جدید</h4><span class="tbadge">tileboard-app</span></div>
+    <div class="steps">
+      <div class="step"><span class="snum">۱</span>
+        <h5>DTO ورودی/خروجی را به‌صورت record بسازید</h5>
+        <p>با انوتیشن‌های <code>jakarta.validation</code> (<code>@NotBlank</code>، <code>@Min/@Max</code>…) — پیام‌های خطای اعتبارسنجی هم از همان کاتالوگ فارسی می‌آیند.</p>
+      </div>
+      <div class="step"><span class="snum">۲</span>
+        <h5>متد کنترلر با پاکت ApiResponse</h5>
+        <div class="code-window" data-lang="java"><div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">NewController.java</span><button class="copy-btn">کپی</button></div>
+        <pre><code>@RestController
+@RequestMapping(path = "/api/v1/effects", produces = MediaType.APPLICATION_JSON_VALUE)
+public class EffectsController {
+
+    @PostMapping("/celebrate")
+    public ResponseEntity&lt;ApiResponse&gt; celebrate() {
+        engineManager.require()                 // throws engine.not_ready if unbound
+                     .activeSessions() /* trigger effect on a session */;
+        return ResponseEntity.ok(ApiResponse.success("جشن اجرا شد."));
+    }
+}</code></pre></div>
+      </div>
+      <div class="step"><span class="snum">۳</span>
+        <h5>خطاهای دامنه را با ApiException + کلید i18n اعلام کنید</h5>
+        <p>برای هر خطای جدید یک کلید به <code>messages.properties</code> و <code>messages_fa.properties</code> اضافه کنید؛ اگر ترجمه جا بماند، fallback انگلیسی خام است و چیزی نمی‌شکند.</p>
+      </div>
+      <div class="step"><span class="snum">۴</span>
+        <h5>تست کنترلر</h5>
+        <p>الگوی <code>ControllerUnitTest</code> را کپی کنید — همان زیرساخت Mock بدون سخت‌افزار.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= TUT 6 : TRANSPORT ================= -->
+  <div class="tutorial-box" id="t-transport">
+    <div class="tb-head"><span class="tico">🔁</span><h4>تعویض کتابخانه سریال یا اجرای بدون سخت‌افزار</h4><span class="tbadge">tileboard-app</span></div>
+    <p class="tb-lead">تنها درزِ شناخت سخت‌افزار در کل اپ، یک Bean است — بقیه‌ی کد از <code>SerialTransport</code> انتزاعی حرف می‌زند.</p>
+    <div class="code-window" data-lang="java">
+      <div class="code-head"><span class="dots"><i></i><i></i><i></i></span><span class="fname">SerialGatewayConfig.java — نقطه‌ی تغییر</span><button class="copy-btn">کپی</button></div>
+      <pre><code>@Configuration
+public class SerialGatewayConfig {
+
+    @Bean
+    public SerialPortRegistry serialPortRegistry() {
+        return new JSerialCommPortRegistry();      // swap this line only
+        // return new MockSerialPortRegistry();    // hardware-less demo mode
+    }
+}</code></pre>
+    </div>
+    <div class="callout info">
+      <span class="co-ico">ℹ️</span>
+      <span>همین طراحی است که همه‌ی تست‌های اپ را بدون برد فیزیکی ممکن کرده: تست‌ها با ترنسپورت‌های Mock/In-memory، تمام مسیر
+      connect/monitor/reconnect و حتی جلسات بازی واقعی را پوشش می‌دهند.</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================
+     CONCURRENCY
+     ============================================================ -->
+<section class="section" id="concurrency">
+  <span class="sec-eyebrow">REFERENCE</span>
+  <h2>مدل همزمانی در سراسر پلتفرم</h2>
+  <p class="sec-desc">
+    برد LED یک منبع مشترک است و لمس‌ها غیرقابل پیش‌بینی می‌آیند؛ به همین دلیل هر ماژول ابزار همزمانی مشخصی دارد.
+    این جدول نقشه‌ی کامل «چه چیزی، کجا، چرا» است:
+  </p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ابزار</th><th>کجا</th><th>چه مشکلی را حل می‌کند</th></tr></thead>
+      <tbody>
+        <tr><td><code>ConcurrentHashMap</code></td><td>GameEngineImpl (جلسات/جان‌سوزها) · InMemorySettingsService</td><td>دسترسی همزمان امن بدون قفل‌گذاری بیرونی</td></tr>
+        <tr><td><code>AtomicReference + CAS</code></td><td>مالکیت انحصاری برد در GameEngineImpl</td><td>دو startGame همزمان هرگز برد را تقسیم نمی‌کنند</td></tr>
+        <tr><td><code>AtomicLong generation</code></td><td>AnimationSystem</td><td>لغو تعاونی انیمیشن قبلی هنگام شروع انیمیشن جدید</td></tr>
+        <tr><td><code>ReentrantLock</code></td><td>BoardChannel (stateLock) · DefaultSerialConnectionManager (scanLock)</td><td>بافر برد و اسکن پورت بدون رقابت به‌روز می‌شوند</td></tr>
+        <tr><td><code>synchronized</code></td><td>TileGatewayClient.writeLock · DefaultFrameCodec.decode · connect/disconnect اپ</td><td>سریال شدن نوشتن روی سیم، دیکود تک‌جریانی و چرخه‌ی اتصال</td></tr>
+        <tr><td><code>CopyOnWriteArrayList</code></td><td>شنونده‌های گیت‌وی · اشتراک‌های Event Bus</td><td>پیمایش امن بدون قفل، حتی وقتی وسط انتشار کسی ثبت‌نام/لغو می‌کند</td></tr>
+        <tr><td>نخ‌های دیمون اختصاصی</td><td>callback گیت‌وی · tick جلسه · انیمیشن · reaper · teardown · heartbeat</td><td>هیچ کامپوننتی جلوی دیگری را نمی‌گیرد و JVM تمیز خاموش می‌شود</td></tr>
+        <tr><td>ادغام نوشتن (Coalescing)</td><td>BoardChannel.sendLatest</td><td>همیشه آخرین وضعیت سازگار ارسال می‌شود؛ نه فریم‌های کهنه‌ی out-of-order</td></tr>
+        <tr><td>صف + سیاست سرریز</td><td>GameEventBus (BLOCK / DROP_OLDEST) · SseEmitter per-client (32)</td><td>مصرف‌کننده‌ی کند، بازی و نخ‌های موتور را بلاک نمی‌کند</td></tr>
+        <tr><td>قفل خوش‌بینانه <code>@Version</code></td><td>ApplicationSetting (JPA)</td><td>برخورد دو نوشتن همزمان؛ یک retry با last-write-wins</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================
+     FAQ
+     ============================================================ -->
+<section class="section" id="faq">
+  <span class="sec-eyebrow">FAQ</span>
+  <h2>سوالات متداول</h2>
+  <details class="faq" open>
+    <summary>می‌توانم بدون سخت‌افزار توسعه بدهم؟</summary>
+    <div class="faq-body">بله. همه‌ی تست‌های واحد هر سه ماژول بدون برد اجرا می‌شوند. فقط <code>TileboardHardwareIT</code> به برد واقعی نیاز دارد و با پروفایل <code>hardware-tests</code> از طریق <code>mvn verify</code> (نه فقط <code>test</code>، چون به Failsafe بایند است) اجرا می‌شود.</div>
+  </details>
+  <details class="faq">
+    <summary>چطور یک بازی جدید اضافه کنم؟</summary>
+    <div class="faq-body"><code>Game</code> را پیاده کنید، حالت جلسه را در <code>ctx.state()</code> نگه دارید، <code>GameDescriptor</code> را با ابعاد دستگاه متصل هم‌اندازه کنید و به‌عنوان Spring <code>@Bean</code> ثبتش کنید — موتور خودش رجیستر می‌کند. آموزش کامل در بخش کارگاه.</div>
+  </details>
+  <details class="faq">
+    <summary>برد تمام‌دوطرفه را چطور پیکربندی کنم؟</summary>
+    <div class="faq-body">همان یک پورت سیستم را هم به <code>IN</code> و هم به <code>OUT</code> تخصیص دهید. تخصیصِ فقط OUT یعنی اتصال فقط-خروجی؛ لمس‌ها و هندشیک ورودی دریافت نمی‌شوند.</div>
+  </details>
+  <details class="faq">
+    <summary>اگر آداپتور USB سریال را بکَنم چه می‌شود؟</summary>
+    <div class="faq-body">بعد از <code>loss-confirmations</code> (پیش‌فرض ۲) بررسی متوالی، <code>serialLink</code> به DOWN می‌رود، watchdog گیت‌وی را آزاد و موتور را unbind می‌کند. اگر auto-reconnect مسلح باشد، بعد از برگشتن پورت خودکار دوباره وصل می‌شود. برای قطع عمدی و توقف تلاش‌ها: <code>POST /api/v1/ports/disconnect</code>.</div>
+  </details>
+  <details class="faq">
+    <summary>پیکربندی من کجا ذخیره می‌شود؟</summary>
+    <div class="faq-body">در حالت پیش‌فرض <code>tileboard.settings.store=jpa</code>: به‌صورت JSON در جدول <code>app_settings</code> داخل فایل SQLite با نام <code>app.db</code> (کنار پوشه‌ی اجرای پروسه) با کش خواندن Caffeine. حالت <code>memory</code> فقط در حافظه است. هندل‌های زنده‌ی سریال، جلسات بازی و مشترکان SSE هرگز persist نمی‌شوند.</div>
+  </details>
+  <details class="faq">
+    <summary>Flyway یا H2 استفاده شده؟</summary>
+    <div class="faq-body">نه. اسکیمای فعلی با <code>spring.jpa.hibernate.ddl-auto=update</code> ساخته می‌شود و هیچ وابستگی Flyway/دایرکتوری مهاجرت/H2 وجود ندارد. قبل از تغییرات ناسازگار در موجودیت‌ها، نقشه‌راه مهاجرت نسخه‌بندی‌شده باز است.</div>
+  </details>
+  <details class="faq">
+    <summary>نام‌های رویداد SSE چیست؟</summary>
+    <div class="faq-body">استریم عمومی بازی‌ها: <code>SESSION_LIFECYCLE</code>، <code>BOARD_UPDATE</code>، <code>TICK</code>، <code>SCORE_UPDATE</code>، <code>GAME_STATE</code> و <code>CUSTOM</code>. پخش‌کننده‌ی جداگانه‌ی برد خام رویداد <code>board-frame</code> دارد اما فعلا از کنترلری عمومی افشا نشده است.</div>
+  </details>
+  <details class="faq">
+    <summary>مدل همزمانی را از کجا شروع کنم؟</summary>
+    <div class="faq-body">جدول «مدل همزمانی» در همین صفحه + بخش‌های Deep Dive در README هر ماژول. قانون کلی: هیچ کد بازی‌ای نخِ خودش را نسازد؛ همه‌چیز از طریق GameContext و قابلیت‌های per-session امن است.</div>
+  </details>
+</section>
+
+<!-- ============================================================
+     ROADMAP
+     ============================================================ -->
+<section class="section" id="roadmap">
+  <span class="sec-eyebrow">ROADMAP</span>
+  <h2>نقشه راه</h2>
+  <p class="sec-desc">انجام‌شده‌ها و صف کار بعدی تیم — هر آیتم باز، یک فرصت تمرین با آموزش‌های همین صفحه است.</p>
+  <div class="roadmap">
+    <div class="road-item done"><span class="ri-ico">✔</span><span>پروتکل سریال مستقل از ترنسپورت (فریم‌بندی، گیت‌وی، هندشیک، خطاهای قابل ترجمه)</span></div>
+    <div class="road-item done"><span class="ri-ico">✔</span><span>موتور بازی تولیدی (قابلیت‌ها، انیمیشن‌ها، Event Bus، DTOهای SSE، آداپتور Spring)</span></div>
+    <div class="road-item done"><span class="ri-ico">✔</span><span>بک‌اند Spring Boot (REST دستگاه/پورت/بازی، SSE، کاتالوگ خطای فارسی)</span></div>
+    <div class="road-item done"><span class="ri-ico">✔</span><span>SequentialTouchGame هم‌اندازه‌ی دستگاه با شمارش معکوس، استندبای، برد و باخت</span></div>
+    <div class="road-item done"><span class="ri-ico">✔</span><span>سلامت سریال تأییدشده + watchdog گم‌شدن پورت + اتصال مجدد خودکار</span></div>
+    <div class="road-item done"><span class="ri-ico">✔</span><span>تنظیمات ماندگار عمومی با JPA/SQLite، @Version و Caffeine (+ حالت memory)</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>راهبرد مهاجرت اسکیمای نسخه‌بندی‌شده پیش از تغییرات ناسازگار موجودیت‌ها</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>فرانت‌اند وب (React/Vue) برای نمایش برد و کنترل بازی</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>افشای endpoint استریم برد خامِ <code>SseBoardStateBroadcaster</code></span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>API مدیریتی تنظیمات (لیست/پاک‌کردن کلیدها از HTTP)</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>ذخیره‌گاه تنظیمات توزیع‌شده و کش کلاستر-امن (Redis/etcd پشت SettingsService)</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>احراز هویت و امنیت (Spring Security)</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>بازی‌های بیشتر (Color Match، Memory، Reaction و…)</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>پشتیبانی چند-برد؛ موتور فعلا تک‌مالک انحصاری است</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>انتشار رویدادهای بیشترِ قابلیت‌ها مثل SCORE_CHANGED و LEVEL_UP</span></div>
+    <div class="road-item"><span class="ri-ico">▢</span><span>راهنمای استقرار Docker و Kubernetes</span></div>
+  </div>
+</section>
+
+</main>
+</div><!-- /layout -->
+
+<footer>
+  <div class="f-brand">Tileboard Platform — مستندات آموزشی ماژول‌ها</div>
+  <div>ساخته‌شده برای تیم توسعه · Java 17 · Spring Boot 3.3.4 · نسخه ۱.۰.۰</div>
+  <div class="f-chips">
+    <span class="chip c-cyan">tileboard-serial-protocol</span>
+    <span class="chip c-violet">tileboard-game-engine</span>
+    <span class="chip c-lime">tileboard-app</span>
+  </div>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
