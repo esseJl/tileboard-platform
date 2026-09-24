@@ -61,6 +61,28 @@ public interface SerialConnectionManager {
      */
     void connect();
 
-    /** Closes the gateway client and any open transports, publishing {@link GatewayDisconnectedEvent}. */
+    /**
+     * Closes the gateway client and any open transports, publishing {@link GatewayDisconnectedEvent}.
+     * This is an <em>explicit</em> (operator) action: it also disarms auto-reconnect, so the
+     * scheduler stays out of the way until {@link #connect()} is called again.
+     */
     void disconnect();
+
+    /**
+     * Declares that the link should be kept up, allowing {@link #reconnectIfNeeded()} to act.
+     * Called once at startup when the device and both ports are configured. Does not connect.
+     */
+    void armAutoReconnect();
+
+    /** {@code true} while {@link #reconnectIfNeeded()} is allowed to re-establish the link. */
+    boolean isAutoReconnectArmed();
+
+    /**
+     * Scheduler entry point. Re-establishes the link if - and only if - auto-reconnect is armed
+     * (no explicit {@link #disconnect()} since) and there is no healthy session. Never throws for
+     * an operational failure (missing port, port busy...): it just reports {@code false}.
+     *
+     * @return {@code true} if a new session was established by this call
+     */
+    boolean reconnectIfNeeded();
 }

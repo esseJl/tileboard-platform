@@ -1,5 +1,6 @@
 package com.tileboard.app.service.serial;
 
+import com.tileboard.app.config.DeviceConfiguration;
 import com.tileboard.app.config.SerialMonitorProperties;
 import com.tileboard.app.config.TileboardProperties;
 import com.tileboard.app.exception.PortsNotAssignedException;
@@ -15,6 +16,7 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -145,5 +147,116 @@ class DefaultSerialConnectionManagerTest {
         verify(publisher).publishEvent(any(GatewayDisconnectedEvent.class));
         assertEquals(LinkCondition.NOT_CONNECTED, manager.linkStatus().condition());
         assertFalse(manager.releaseIfLinkLost(), "second call is a no-op");
+    }
+
+    // ---------------------------------------------------------------- auto-reconnect
+
+    /** Device configured, IN == OUT == COM3 assigned, no live session. */
+    private static DefaultSerialConnectionManager configuredManager(SerialPortRegistry registry,
+                                                                    ApplicationEventPublisher publisher) {
+        DeviceConfigurationService device = mock(DeviceConfigurationService.class);
+        when(device.current()).thenReturn(Optional.of(new DeviceConfiguration(2, 2)));
+        SettingsService settings = new InMemorySettingsService();
+        DefaultSerialConnectionManager manager = new DefaultSerialConnectionManager(
+                registry, new TileboardProperties(115200, 8, 1, 50, 50, 0), NO_CACHE, device, settings, publisher);
+        manager.assign(PortRole.IN, "COM3");
+        manager.assign(PortRole.OUT, "COM3");
+        return manager;
+    }
+
+    @Test
+    void reconnectDoesNothingUntilArmed() {
+        SerialPortRegistry registry = mock(SerialPortRegistry.class);
+        when(registry.listPorts()).thenReturn(List.of(new SerialPortInfo("COM3", "USB")));
+        DefaultSerialConnectionManager manager = configuredManager(registry, mock(ApplicationEventPublisher.class));
+
+        assertFalse(manager.isAutoReconnectArmed());
+        assertFalse(manager.reconnectIfNeeded());
+        verify(registry, never()).open(anyString(), any());
+    }
+
+    @Test
+    void reconnectWaitsWhileTheAdapterIsStillUnplugged() {
+        SerialPortRegistry registry = mock(SerialPortRegistry.class);
+        when(registry.listPorts()).thenReturn(List.of());
+        DefaultSerialConnectionManager manager = configuredManager(registry, mock(ApplicationEventPublisher.class));
+        manager.armAutoReconnect();
+
+        assertFalse(manager.reconnectIfNeeded());
+        verify(registry, never()).open(anyString(), any());
+        assertTrue(manager.isAutoReconnectArmed(), "still armed - it must retry on the next tick");
+    }
+
+    @Test
+    void reconnectAttemptsToOpenThePortsOnceTheyReappearAndSurvivesFailure() {
+        SerialPortRegistry registry = mock(SerialPortRegistry.class);
+        when(registry.listPorts()).thenReturn(List.of(new SerialPortInfo("COM3", "USB")));
+        when(registry.open(eq("COM3"), any())).thenThrow(new IllegalStateException("busy"));
+        DefaultSerialConnectionManager manager = configuredManager(registry, mock(ApplicationEventPublisher.class));
+        manager.armAutoReconnect();
+
+        assertFalse(manager.reconnectIfNeeded(), "failed attempt is reported, not thrown");
+        verify(registry, times(1)).open(eq("COM3"), any());
+        assertTrue(manager.isAutoReconnectArmed());
+    }
+
+    @Test
+    void adminDisconnectDisarmsSoTheSchedulerNeverReconnects() {
+        SerialPortRegistry registry = mock(SerialPortRegistry.class);
+        when(registry.listPorts()).thenReturn(List.of(new SerialPortInfo("COM3", "USB")));
+        DefaultSerialConnectionManager manager = configuredManager(registry, mock(ApplicationEventPublisher.class));
+        manager.attachSessionForTest(mock(TileGatewayClient.class), "COM3", "COM3");
+        manager.armAutoReconnect();
+
+        manager.disconnect();
+
+        assertFalse(manager.isAutoReconnectArmed());
+        assertFalse(manager.reconnectIfNeeded());
+        verify(registry, never()).open(anyString(), any());
+    }
+
+    @Test
+    void adminDisconnectOnAnAlreadyLostLinkStillDisarms() {
+        SerialPortRegistry registry = mock(SerialPortRegistry.class);
+        when(registry.listPorts()).thenReturn(List.of(new SerialPortInfo("COM3", "USB")));
+        DefaultSerialConnectionManager manager = configuredManager(registry, mock(ApplicationEventPublisher.class));
+        manager.armAutoReconnect(); // no live session
+
+        manager.disconnect();
+
+        assertFalse(manager.isAutoReconnectArmed());
+        assertFalse(manager.reconnectIfNeeded());
+        verify(registry, never()).open(anyString(), any());
+    }
+
+    @Test
+    void anUnexpectedLossReleasesTheSessionButKeepsAutoReconnectArmed() {
+        SerialPortRegistry registry = mock(SerialPortRegistry.class);
+        when(registry.listPorts()).thenReturn(List.of(new SerialPortInfo("COM3", "USB")));
+        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
+        DefaultSerialConnectionManager manager = configuredManager(registry, publisher);
+        manager.attachSessionForTest(mock(TileGatewayClient.class), "COM3", "COM3");
+        manager.armAutoReconnect();
+
+        when(registry.listPorts()).thenReturn(List.of()); // cable pulled
+
+        assertFalse(manager.reconnectIfNeeded(), "port is gone, so no new session yet");
+        verify(publisher).publishEvent(any(GatewayDisconnectedEvent.class));
+        assertTrue(manager.isAutoReconnectArmed());
+        assertEquals(ConnectionState.DISCONNECTED, manager.connectionState());
+    }
+
+    @Test
+    void reconnectLeavesAHealthySessionAlone() {
+        SerialPortRegistry registry = mock(SerialPortRegistry.class);
+        when(registry.listPorts()).thenReturn(List.of(new SerialPortInfo("COM3", "USB")));
+        ApplicationEventPublisher publisher = mock(ApplicationEventPublisher.class);
+        DefaultSerialConnectionManager manager = configuredManager(registry, publisher);
+        manager.attachSessionForTest(mock(TileGatewayClient.class), "COM3", "COM3");
+        manager.armAutoReconnect();
+
+        assertFalse(manager.reconnectIfNeeded());
+        verifyNoInteractions(publisher);
+        verify(registry, never()).open(anyString(), any());
     }
 }

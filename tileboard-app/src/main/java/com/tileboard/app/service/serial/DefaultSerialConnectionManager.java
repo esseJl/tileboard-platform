@@ -72,6 +72,15 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
     /** Written only while holding this monitor; read lock-free. {@code null} = no session. */
     private volatile LinkSession session;
 
+    /**
+     * Operator intent: {@code true} = the link SHOULD be up, so {@link #reconnectIfNeeded()} may
+     * bring it back after an unexpected loss. Set by {@link #armAutoReconnect()} (startup) and by
+     * an explicit {@link #connect()}; cleared ONLY by an explicit {@link #disconnect()}.
+     * A link that is lost on its own (cable pulled) never clears it.
+     * Written under this monitor, read lock-free.
+     */
+    private volatile boolean autoReconnectArmed;
+
     /** Most recent host port enumeration (rate-limits OS scans). */
     private volatile PortScan lastScan;
     private final ReentrantLock scanLock = new ReentrantLock();
@@ -212,10 +221,22 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
     @Override
     public synchronized void connect() {
+        doConnect(true);
+    }
+
+    /**
+     * @param explicit {@code true} when an operator asked for the connection: that is a statement
+     *                 of intent, so auto-reconnect is (re)armed. The scheduler passes {@code false}
+     *                 and therefore can never re-arm something an admin switched off.
+     */
+    private void doConnect(boolean explicit) {
         if (session != null) {
             // A remembered session is NOT proof of a working link: without this check a
             // stale session would make connect() a no-op forever after a cable pull.
             if (!tearDownIfLinkLost()) {
+                if (explicit) {
+                    autoReconnectArmed = true;
+                }
                 return; // genuinely connected - idempotent
             }
             log.warn("Previous serial link was lost; establishing a new one.");
@@ -232,6 +253,12 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         // been stored, via Optional.get(), leaving a half-connected state behind.)
         DeviceConfiguration device = deviceConfigurationService.current()
                 .orElseThrow(DeviceNotConfiguredException::new);
+
+        if (explicit) {
+            // Armed once the request is valid, BEFORE opening: if the open fails (port busy,
+            // adapter still enumerating) the scheduler keeps retrying it.
+            autoReconnectArmed = true;
+        }
 
         SerialPortConfig config = SerialPortConfig.builder()
                 .baudRate(properties.baudRate())
@@ -302,11 +329,68 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
     @Override
     public synchronized void disconnect() {
+        // Disarm FIRST and unconditionally - also when there is no live session (e.g. the link was
+        // already lost and the admin wants the scheduler to stop retrying). Same monitor as
+        // reconnectIfNeeded(), so an in-flight reconnect can never slip in behind this call.
+        autoReconnectArmed = false;
         LinkSession live = session;
         if (live == null) {
             return; // idempotent
         }
         tearDown(live, true);
+    }
+
+    // ------------------------------------------------------------------ auto-reconnect
+
+    @Override
+    public synchronized void armAutoReconnect() {
+        autoReconnectArmed = true;
+    }
+
+    @Override
+    public boolean isAutoReconnectArmed() {
+        return autoReconnectArmed;
+    }
+
+    @Override
+    public synchronized boolean reconnectIfNeeded() {
+        if (!autoReconnectArmed) {
+            return false; // never armed, or an admin disconnected on purpose
+        }
+        if (session != null && !tearDownIfLinkLost()) {
+            return false; // link is alive - nothing to do
+        }
+
+        PortAssignment assignment = currentAssignment();
+        String outPort = assignment.outPort().orElse(null);
+        if (outPort == null || deviceConfigurationService.current().isEmpty()) {
+            log.debug("Auto-reconnect skipped: device or output port is no longer configured");
+            return false;
+        }
+
+        // Cheap pre-check: while the adapter is still unplugged do not even try to open it.
+        PortScan scan = scanNow();
+        lastScan = scan;
+        if (scan.ok()) {
+            Set<String> wanted = new LinkedHashSet<>();
+            wanted.add(outPort);
+            assignment.inPort().ifPresent(wanted::add);
+            wanted.removeAll(scan.names());
+            if (!wanted.isEmpty()) {
+                log.debug("Auto-reconnect waiting: port(s) {} not present on the host yet", wanted);
+                return false;
+            }
+        }
+
+        try {
+            doConnect(false);
+            return session != null;
+        } catch (RuntimeException e) {
+            // Expected while the hardware is away or busy; the next tick simply tries again.
+            log.warn("Auto-reconnect attempt failed: {}", e.getMessage());
+            log.debug("Auto-reconnect failure details", e);
+            return false;
+        }
     }
 
     @Override
