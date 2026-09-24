@@ -30,7 +30,28 @@ public interface SerialConnectionManager {
 
     PortAssignment currentAssignment();
 
+    /**
+     * Live-verified connection state: {@code CONNECTED} only while a session exists AND its
+     * ports are still present on the host. Shorthand for {@code linkStatus().state()}.
+     */
     ConnectionState connectionState();
+
+    /**
+     * Point-in-time, verified status of the serial link. Unlike a remembered flag this
+     * re-checks the host's port list (rate-limited by {@code tileboard.serial-monitor.scan-cache-ttl}),
+     * so an unplugged adapter is reported even though nothing called {@link #disconnect()}.
+     * Never blocks on {@link #connect()}/{@link #disconnect()}, so it is safe for health probes.
+     */
+    SerialLinkStatus linkStatus();
+
+    /**
+     * If the current session's port has vanished from the host, releases the dead session
+     * (closes the client, publishes {@link GatewayDisconnectedEvent} so the game engine unbinds).
+     * Re-verifies with a fresh host scan before acting, and never acts when the scan itself fails.
+     *
+     * @return {@code true} if a dead session was released
+     */
+    boolean releaseIfLinkLost();
 
     /**
      * Opens the assigned port(s) and brings up the gateway client, publishing

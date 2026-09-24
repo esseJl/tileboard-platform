@@ -53,7 +53,7 @@
 │  │      currently no controller exposes it — see SSE section)           │
 │  └─ Messages (fixed-fa i18n) + GlobalExceptionHandler                   │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  Persistence (Hibernate ddl-auto=validate + Flyway V1)                  │
+│  Persistence (Hibernate ddl-auto=update, no Flyway)                      │
 │  ├─ app_settings(setting_key PK, value_json, updated_at, version)       │
 │  ├─ Dev: H2 file DB ./data/tileboard (MODE=PostgreSQL)                  │
 │  ├─ Prod: SQLite ./data/app.db (+ hibernate-community-dialects)         │
@@ -96,8 +96,7 @@
 - **jSerialComm 2.11.0** for serial communication (declared here — it is `optional` in the protocol library, and the app is the module that talks to real hardware)
 - **springdoc-openapi 2.6.0** (`springdoc-openapi-starter-webmvc-ui`) — Swagger UI at the springdoc default path
 - **Jackson** for JSON (via `spring-boot-starter-web` + engine's `jackson-databind`/`jsr310`)
-- **spring-boot-starter-data-jpa** (Hibernate ORM) with `spring.jpa.hibernate.ddl-auto: validate` — Hibernate never changes the schema, it only checks it
-- **Flyway** (`flyway-core`, migrations in `src/main/resources/db/migration/`) as the only owner of the schema
+- **spring-boot-starter-data-jpa** (Hibernate ORM) with `spring.jpa.hibernate.ddl-auto: update` — Hibernate creates the `app_settings` table (and adds missing columns) from the entity
 - **H2** (runtime scope) as the dev file DB — `jdbc:h2:file:./data/tileboard;MODE=PostgreSQL`
 - **SQLite** (`org.xerial:sqlite-jdbc`, version managed by the Boot BOM) + `hibernate-community-dialects` (`SQLiteDialect`) as the prod DB — `jdbc:sqlite:./data/app.db`
 - **spring-boot-starter-cache** + **Caffeine** for the `settings` read cache
@@ -120,7 +119,6 @@
 | `settings` | `SettingsService` (generic typed store), `SettingKey<T>`, `SettingKeys` (append-only registry), `InMemorySettingsService` (`store=memory`), `JpaSettingsService` (`store=jpa`, default), `SettingsPersistenceException` |
 | `settings.conf` | `SettingsSerializationConfig` — the settings-only `ObjectMapper` (`settingsObjectMapper`: `Jdk8Module`, `JavaTimeModule`, `FAIL_ON_UNKNOWN_PROPERTIES=false`) |
 | `settings.persistence` | `ApplicationSetting` (`@Entity @Table(name="app_settings")`, `@Version`), `SettingRepository` (`JpaRepository<ApplicationSetting, String>`) |
-| `resources/db/migration` | Flyway SQL: `V1__create_app_settings.sql` |
 | `exception` | `ApiException` + subclasses (`DeviceNotConfiguredException`, `GatewayNotConnectedException`, `NoActiveGameException`, `PortsNotAssignedException`, `SerialPortOperationException`) + `handler.GlobalExceptionHandler` |
 | `i18n` | `Messages` (fixed-`fa` `MessageSource` wrapper) |
 | `game` | Sample game: `SequentialTouchGame` (default 3×3) + `GameBeansConfig` (`@Bean` registration) |
@@ -141,11 +139,8 @@ spring:
     password: ${TILEBOARD_DB_PASSWORD:}
   jpa:
     hibernate:
-      ddl-auto: validate    # Hibernate only checks the schema; Flyway owns it
+      ddl-auto: update    # Hibernate creates/extends the schema from the entities
     open-in-view: false
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
 
 server:
   port: 8080
@@ -182,8 +177,8 @@ logging:
 ```
 
 - **Datasource:** an H2 **file** DB (`./data/tileboard`, `MODE=PostgreSQL`) created on first start; everything is overridable with `TILEBOARD_DB_URL` / `TILEBOARD_DB_USER` / `TILEBOARD_DB_PASSWORD` without touching the file.
-- **`ddl-auto: validate` + Flyway:** the schema comes from `db/migration/*.sql` (today `V1__create_app_settings.sql`); a mismatch between entity and migration fails the boot instead of silently altering a table.
-- **`tileboard.settings.store: memory`:** the **dev default** keeps settings in a `ConcurrentHashMap` — the DB is migrated and Hibernate validates it anyway, but nothing is written to `app_settings`. Use `jpa` (or the `prod` profile) to persist.
+- **`ddl-auto: update`:** Hibernate owns the schema - on startup it creates `app_settings` from `ApplicationSetting` if missing and adds new mapped columns. It never drops or renames anything, so removing/renaming a column or changing a type must be done by hand.
+- **`tileboard.settings.store: memory`:** the **dev default** keeps settings in a `ConcurrentHashMap` — Hibernate still creates the table anyway, but nothing is written to `app_settings`. Use `jpa` (or the `prod` profile) to persist.
 - **`tileboard.cache`:** the Caffeine cache sitting in front of settings reads — `settings-ttl-seconds` bounds how long another instance's write can stay invisible, `settings-max-size` is a safety bound (non-positive values are clamped back to 300/100 by `CacheSettingsProperties`).
 
 ### application-prod.yml
@@ -205,11 +200,7 @@ spring:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
     open-in-view: false
     hibernate:
-      ddl-auto: validate
-
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
+      ddl-auto: update    # Hibernate creates/extends the schema from the entities
 logging:
   level:
     root: INFO
@@ -548,7 +539,7 @@ public enum Status { SUCCESS, INFO, WARNING, ERROR }
 The application persists its configuration — and only its configuration — in a single generic
 key/value table. Everything configurable (board geometry today, serial port assignment today,
 anything added tomorrow) is stored as opaque JSON with a stable string key, through one interface,
-so a new setting never means a new table, entity, repository or migration.
+so a new setting never means a new table, entity, repository or schema change.
 
 ```
 DeviceController ──────→ SettingsBackedDeviceConfigurationService ─┐
@@ -582,23 +573,25 @@ SerialPortController ──→ DefaultSerialConnectionManager ──────
 | `SettingRepository` | `settings.persistence` | `JpaRepository<ApplicationSetting, String>` (the key is the id) |
 | `CacheConfig` / `CacheSettingsProperties` | `config` | `@EnableCaching` + Caffeine cache manager, `tileboard.cache.*` |
 
-### Flyway Migration — `V1__create_app_settings.sql`
+### Schema — created by Hibernate
+
+There are no SQL migrations. `spring.jpa.hibernate.ddl-auto: update` makes Hibernate build the table from
+`ApplicationSetting` at startup:
 
 ```sql
-CREATE TABLE app_settings
-(
-    setting_key VARCHAR(200) PRIMARY KEY,
-    value_json  TEXT      NOT NULL,
-    updated_at  TIMESTAMP NOT NULL,
-    version     BIGINT    NOT NULL DEFAULT 0
+-- what Hibernate generates (approximately; exact types depend on the dialect)
+CREATE TABLE app_settings (
+    setting_key VARCHAR(200) NOT NULL PRIMARY KEY,
+    value_json  TEXT         NOT NULL,
+    updated_at  TIMESTAMP    NOT NULL,
+    version     BIGINT       NOT NULL
 );
 ```
 
-- `spring.flyway.enabled: true`, `locations: classpath:db/migration`; Flyway also creates its own `flyway_schema_history` table and runs before the entity manager is validated.
-- The naming convention is Flyway's (`V<version>__<description>.sql`) — the next schema change is `V2__...sql`, never an edit of `V1`.
-- `value_json` is `TEXT` (not JSON-typed) on purpose: the DB never parses it, which is exactly why new settings need no migration.
-- `spring.jpa.hibernate.ddl-auto: validate` means Hibernate will compare the entity with this table at startup and **fail fast** on any drift, instead of altering the schema behind Flyway's back.
-- H2 and SQLite support lives inside `flyway-core` (Flyway 10 moved *most* other databases into `flyway-database-*` modules), so the POM needs no extra Flyway artifact for either profile.
+- `update` only **creates** tables and **adds** missing columns; it never drops/renames columns or changes types. Those changes are manual.
+- SQLite cannot add a `NOT NULL` column without a default to an existing table - give new mapped columns a default (`columnDefinition`) or make them nullable.
+- `value_json` is `TEXT` (not JSON-typed) on purpose: the DB never parses it, which is exactly why new settings need no schema change.
+- Databases created earlier by Flyway keep working unchanged: `app_settings` already exists, and the leftover `flyway_schema_history` table is inert (drop it whenever you like: `DROP TABLE flyway_schema_history;`).
 
 ### The Entity
 
@@ -786,7 +779,7 @@ curl http://localhost:8080/api/v1/ports/status  # → 200 data{state:"DISCONNECT
 
 The data files (`./data/tileboard.mv.db` in dev, `./data/app.db` in prod) are created on demand; the
 H2 file is listed in `.gitignore`. `TileboardApplicationTests` (`@SpringBootTest`) boots this whole
-stack, so a broken migration or an entity/table mismatch fails `mvn test` immediately, without any
+stack, so a broken entity mapping or a datasource problem fails `mvn test` immediately, without any
 external database.
 
 ---
@@ -967,7 +960,7 @@ Persistence failures are **not** translated: `SettingsPersistenceException` (and
 
 - Java 17+, Maven 3.8+
 - Tileboard board connected via USB (or a Mock `SerialTransport` for hardware-less tests — unit tests need no hardware)
-- No database server: the app creates its own file DB (H2 `./data/tileboard` in dev, SQLite `./data/app.db` in prod) via Flyway on first start
+- No database server: the app creates its own file DB (H2 `./data/tileboard` in dev, SQLite `./data/app.db` in prod) via Hibernate on first start
 
 ### Step 1: Build
 
@@ -989,8 +982,7 @@ java -jar target/tileboard-app-1.0.0.jar
 java -jar target/tileboard-app-1.0.0.jar --spring.profiles.active=prod
 ```
 
-App runs on `http://localhost:8080`. On startup Flyway applies `V1__create_app_settings.sql` and
-Hibernate validates the schema against the entity; the H2 file appears at `./data/tileboard.mv.db`.
+App runs on `http://localhost:8080`. On startup Hibernate creates the `app_settings` table from the entity; the H2 file appears at `./data/tileboard.mv.db`.
 
 - Swagger UI: springdoc default (starter `2.6.0` is on the classpath)
 - Actuator: `http://localhost:8080/actuator/health` (only `health,info` are exposed)
@@ -1730,7 +1722,7 @@ mvn test -pl tileboard-app
 
 Actual test classes:
 
-- `TileboardApplicationTests`: `contextLoads` — a full `@SpringBootTest` context, so it also proves the Flyway migration applies and Hibernate's `validate` accepts the entity against the H2 file DB
+- `TileboardApplicationTests`: `contextLoads` — a full `@SpringBootTest` context, so it also proves Hibernate can create the schema from the entity
 - `TileboardPropertiesTest`: record defaults (115200/8/1/50/50/0)
 - `ControllerUnitTest`: pure unit tests (Mockito, no MockMvc) for `DeviceController`, `SerialPortController`, `GameController` (device read/update, port list/assign/status/connect/disconnect, game list/start/sessions/get/stop + disconnected-engine cases)
 - `InMemoryDeviceGeneralConfigurationServiceTest`: `DeviceConfiguration` geometry limits (the settings-backed configure/current test is currently commented out in the source)
@@ -1817,6 +1809,26 @@ persisted device geometry and port assignment across container restarts. Without
 |--------|------|
 | GET | /actuator/health |
 | GET | /actuator/info |
+| GET | /actuator/health/liveness , /actuator/health/readiness |
+
+#### `serialLink` health component (verified, not remembered)
+
+`/actuator/health` contains a `serialLink` component built by `com.tileboard.app.health.SerialLinkHealthIndicator`.
+It is computed on every call from `SerialConnectionManager.linkStatus()`, which checks that every port of the
+live session is still enumerated by the host OS (rate-limited by `tileboard.serial-monitor.scan-cache-ttl`).
+Unplugging the adapter therefore turns it `DOWN` without anyone calling `/disconnect`.
+
+| Condition | Health status | Meaning |
+|-----------|---------------|---------|
+| `HEALTHY` | `UP` | session exists and all its ports are present |
+| `LINK_LOST` | `DOWN` | session exists in memory but a port vanished (`missingPorts` lists it) |
+| `UNVERIFIED` | `UNKNOWN` | the host port list could not be read - nothing is claimed either way |
+| `NOT_CONNECTED` | `DOWN` (or `UNKNOWN` if `not-connected-is-down: false`) | no session |
+
+`SerialLinkMonitor` (scheduled every `tileboard.serial-monitor.interval`) additionally *acts* on `LINK_LOST`: after
+`loss-confirmations` consecutive misses it calls `releaseIfLinkLost()`, which closes the dead client and publishes
+`GatewayDisconnectedEvent` so the game engine unbinds. After re-plugging, `POST /api/v1/ports/connect` works again.
+Use `/actuator/health/liveness|readiness` for container probes - they do not include `serialLink`.
 
 ### Error envelope
 
@@ -1830,8 +1842,8 @@ This application:
 
 1. **Abstracts hardware:** Only knows `SerialPortRegistry`/`SerialTransport` interfaces, not jSerialComm (single seam: `SerialGatewayConfig`).
 2. **Is thread-safe:** Correctly uses `synchronized`, `ConcurrentHashMap`, `volatile`, CAS, Caffeine/`@Transactional`/`@Version` for persistence — documented per class above.
-3. **Is extensible:** Adding a new game is just a `@Bean` (auto-registered by the engine); adding a new *setting* is just one `SettingKeys` constant (no migration, no table).
-4. **Is production-ready:** Per-session TTL, connect rollback, idempotent (dis)connect, `INTRODUCTION`/`START`/`STOP` hardware protocol, CORS, Actuator (`health,info`), Swagger starter, prod logging profile, localized error catalog, embedded H2/SQLite stores with Flyway-owned schema.
+3. **Is extensible:** Adding a new game is just a `@Bean` (auto-registered by the engine); adding a new *setting* is just one `SettingKeys` constant (no schema change, no table).
+4. **Is production-ready:** Per-session TTL, connect rollback, idempotent (dis)connect, `INTRODUCTION`/`START`/`STOP` hardware protocol, CORS, Actuator (`health,info`), Swagger starter, prod logging profile, localized error catalog, embedded H2/SQLite stores with a Hibernate-managed schema.
 5. **Persists what matters:** Device geometry and serial port assignment live in one generic `app_settings` table (JPA/Hibernate) with a Caffeine read cache; live serial handles and running sessions deliberately stay in memory.
 6. **Is educational:** Sample game `SequentialTouchGame` (3×3 default) demonstrates standby/countdown/win/lose animations and the concurrency patterns.
 
@@ -1843,4 +1855,4 @@ For more questions, see the READMEs of the `tileboard-serial-protocol` and `tile
 **Version:** 1.0.0  
 **Java:** 17+  
 **Spring Boot:** 3.3.4  
-**Persistence:** JPA/Hibernate (`ddl-auto: validate`) + Flyway + H2 (dev) / SQLite (prod) + Caffeine cache
+**Persistence:** JPA/Hibernate (`ddl-auto: update`) + H2 (dev) / SQLite (prod) + Caffeine cache

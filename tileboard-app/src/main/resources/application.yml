@@ -8,10 +8,7 @@ spring:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
     open-in-view: false
     hibernate:
-      ddl-auto: validate
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
+      ddl-auto: update    # Hibernate creates/extends the schema from the entities
 
 server:
   port: 8080
@@ -29,6 +26,12 @@ tileboard:
     read-timeout-millis: 50
     write-timeout-millis: 50
     handshake-min-sequence: 0
+  serial-monitor:
+    enabled: true
+    interval: 5s
+    scan-cache-ttl: 1s
+    loss-confirmations: 2
+    not-connected-is-down: true
   engine:
     tick-interval: 100ms
     session-ttl: 30m
@@ -41,6 +44,14 @@ management:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      # Needed so /actuator/health shows the serialLink component (state, ports, reason).
+      # This app has no authentication: on an untrusted network use "when-authorized" + Spring Security.
+      show-details: always
+      # /actuator/health/liveness and /readiness (exclude serialLink -> a missing board never restarts the container)
+      probes:
+        enabled: true
 
 logging:
   level:

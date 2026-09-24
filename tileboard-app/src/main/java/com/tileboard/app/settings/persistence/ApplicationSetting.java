@@ -12,9 +12,11 @@ import java.time.Instant;
  * Generic key/value row backing every {@link com.tileboard.app.settings.SettingKey}.
  *
  * <p>Intentionally schema-less (the value is opaque JSON): adding a new setting must
- * never require a migration. The alternative - one column/table per setting - would
- * mean every new configurable value needs its own DB migration and repository, which
+ * never require a schema change. The alternative - one column/table per setting - would
+ * mean every new configurable value needs its own column/table and repository, which
  * is exactly the hard-coded shape this entity exists to avoid.
+ *
+ * <p>The table is created and extended by Hibernate ({@code spring.jpa.hibernate.ddl-auto=update}).
  */
 @Entity
 @Table(name = "app_settings")

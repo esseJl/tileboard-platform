@@ -14,7 +14,7 @@ import com.tileboard.app.service.serial.PortAssignment;
  *         SettingKey.of("my-feature.settings", MyNewSettings.class, MyNewSettings.defaults());
  * }</pre>
  * <p>
- * No JPA, controller, or migration code needs to change - {@link SettingsService}
+ * No JPA, controller, or schema code needs to change - {@link SettingsService}
  * already knows how to store/retrieve any type through this one table.
  */
 public final class SettingKeys {

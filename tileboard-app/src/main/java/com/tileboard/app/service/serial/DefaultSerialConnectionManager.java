@@ -1,9 +1,11 @@
 package com.tileboard.app.service.serial;
 
 import com.tileboard.app.config.DeviceConfiguration;
+import com.tileboard.app.config.SerialMonitorProperties;
+import com.tileboard.app.config.TileboardProperties;
+import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.exception.PortsNotAssignedException;
 import com.tileboard.app.exception.SerialPortOperationException;
-import com.tileboard.app.config.TileboardProperties;
 import com.tileboard.app.service.device.DeviceConfigurationService;
 import com.tileboard.app.settings.SettingKeys;
 import com.tileboard.app.settings.SettingsService;
@@ -24,9 +26,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 /**
  * Default {@link SerialConnectionManager}.
@@ -35,6 +43,19 @@ import java.util.Map;
  * (so it survives a restart, same as device configuration); the actually-open OS handles
  * and the running {@link TileGatewayClient} are NOT persisted - a live serial connection
  * cannot be reattached after a JVM restart, so those stay purely in-memory.
+ *
+ * <h2>Truthful connection state</h2>
+ * A remembered {@code client != null} says nothing about the cable. The reported state is
+ * therefore <em>verified</em>: {@link #linkStatus()} checks that every port of the live
+ * session is still enumerated by the host OS (a USB-serial adapter that is unplugged
+ * disappears from that list), and {@link #releaseIfLinkLost()} lets a watchdog free a
+ * dead session so the game engine stops driving a port that no longer exists.
+ *
+ * <h2>Threading</h2>
+ * Mutations ({@link #connect()}, {@link #disconnect()}, {@link #assign}, {@link #releaseIfLinkLost()})
+ * are serialized on this monitor. The read side ({@link #linkStatus()}, {@link #connectionState()})
+ * is lock-free - it reads a {@code volatile} immutable {@link LinkSession} - so a health probe never
+ * waits behind a slow {@code connect()}.
  */
 @Service
 public class DefaultSerialConnectionManager implements SerialConnectionManager {
@@ -46,37 +67,41 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
     private final DeviceConfigurationService deviceConfigurationService;
     private final SettingsService settingsService;
     private final ApplicationEventPublisher eventPublisher;
+    private final long scanCacheTtlNanos;
 
-    private final Map<PortRole, SerialTransport> openTransports = new EnumMap<>(PortRole.class);
-    private TileGatewayClient client;
+    /** Written only while holding this monitor; read lock-free. {@code null} = no session. */
+    private volatile LinkSession session;
+
+    /** Most recent host port enumeration (rate-limits OS scans). */
+    private volatile PortScan lastScan;
+    private final ReentrantLock scanLock = new ReentrantLock();
 
     public DefaultSerialConnectionManager(SerialPortRegistry portRegistry,
                                           TileboardProperties properties,
+                                          SerialMonitorProperties monitorProperties,
                                           DeviceConfigurationService deviceConfigurationService,
                                           SettingsService settingsService,
                                           ApplicationEventPublisher eventPublisher) {
         this.portRegistry = portRegistry;
         this.properties = properties;
+        this.scanCacheTtlNanos = monitorProperties.scanCacheTtl().toNanos();
         this.deviceConfigurationService = deviceConfigurationService;
         this.settingsService = settingsService;
         this.eventPublisher = eventPublisher;
     }
 
+    // ------------------------------------------------------------------ discovery / assignment
+
     @Override
     public List<SerialPortSummary> listAvailablePorts() {
-        return portRegistry.listPorts().stream()
-                .map(SerialPortInfo::systemName)
-                .distinct()
-                .map(name -> new SerialPortSummary(name, describe(name)))
+        // One OS enumeration for the whole list (it used to re-enumerate once per port).
+        Map<String, String> descriptionByName = new LinkedHashMap<>();
+        for (SerialPortInfo info : portRegistry.listPorts()) {
+            descriptionByName.putIfAbsent(info.systemName(), info.description());
+        }
+        return descriptionByName.entrySet().stream()
+                .map(e -> new SerialPortSummary(e.getKey(), e.getValue() == null ? "" : e.getValue()))
                 .toList();
-    }
-
-    private String describe(String systemName) {
-        return portRegistry.listPorts().stream()
-                .filter(info -> info.systemName().equals(systemName))
-                .map(SerialPortInfo::description)
-                .findFirst()
-                .orElse("");
     }
 
     @Override
@@ -85,24 +110,115 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         settingsService.set(SettingKeys.SERIAL_PORT_ASSIGNMENT, updated);
     }
 
+    /** Not synchronized on purpose: a status read must not wait for a slow {@code connect()}. */
     @Override
-    public synchronized PortAssignment currentAssignment() {
+    public PortAssignment currentAssignment() {
         return settingsService.getOrDefault(SettingKeys.SERIAL_PORT_ASSIGNMENT);
     }
 
+    // ------------------------------------------------------------------ verified status
+
     @Override
-    public synchronized ConnectionState connectionState() {
-        return client != null ? ConnectionState.CONNECTED : ConnectionState.DISCONNECTED;
+    public ConnectionState connectionState() {
+        return linkStatus().state();
     }
 
     @Override
-    public synchronized void connect() {
-        if (client != null) {
-            return;
+    public SerialLinkStatus linkStatus() {
+        LinkSession live = session;
+        Instant now = Instant.now();
+        if (live == null) {
+            return SerialLinkStatus.notConnected(now);
         }
 
-        if (deviceConfigurationService.current().isEmpty()) {
-            log.info("Device not Configured - can not connect.");
+        PortScan scan = scanPorts();
+        if (!scan.ok()) {
+            // Cannot prove anything either way: do not claim "healthy", do not claim "lost".
+            return statusOf(ConnectionState.CONNECTED, LinkCondition.UNVERIFIED, live, Set.of(), now,
+                    "Host serial port list could not be read: " + scan.error());
+        }
+
+        Set<String> missing = missingPorts(live, scan);
+        if (missing.isEmpty()) {
+            return statusOf(ConnectionState.CONNECTED, LinkCondition.HEALTHY, live, Set.of(), now,
+                    "All session ports are present on the host.");
+        }
+        return statusOf(ConnectionState.DISCONNECTED, LinkCondition.LINK_LOST, live, missing, now,
+                "Serial port(s) " + missing + " are no longer present on the host "
+                        + "(adapter unplugged or device re-enumerated).");
+    }
+
+    private static SerialLinkStatus statusOf(ConnectionState state, LinkCondition condition, LinkSession live,
+                                             Set<String> missing, Instant now, String detail) {
+        return new SerialLinkStatus(state, condition, live.inPort(), live.outPort(), missing,
+                live.connectedSince(), now, detail);
+    }
+
+    private static Set<String> missingPorts(LinkSession live, PortScan scan) {
+        Set<String> missing = new LinkedHashSet<>();
+        for (String port : live.portNames()) {
+            if (!scan.names().contains(port)) {
+                missing.add(port);
+            }
+        }
+        return missing;
+    }
+
+    /** Returns a recent enumeration, re-scanning at most once per {@code scan-cache-ttl}. */
+    private PortScan scanPorts() {
+        PortScan cached = lastScan;
+        if (isFresh(cached)) {
+            return cached;
+        }
+        if (!scanLock.tryLock()) {
+            // Another thread is already enumerating (possibly slowly, e.g. Windows + Bluetooth ports).
+            // Serve the previous result instead of piling up; only wait if there is none at all.
+            if (cached != null) {
+                return cached;
+            }
+            scanLock.lock();
+        }
+        try {
+            cached = lastScan;
+            if (isFresh(cached)) {
+                return cached;
+            }
+            PortScan fresh = scanNow();
+            lastScan = fresh;
+            return fresh;
+        } finally {
+            scanLock.unlock();
+        }
+    }
+
+    private boolean isFresh(PortScan scan) {
+        return scan != null && System.nanoTime() - scan.takenAtNanos() < scanCacheTtlNanos;
+    }
+
+    /** Forced enumeration; never throws. */
+    private PortScan scanNow() {
+        try {
+            Set<String> names = portRegistry.listPorts().stream()
+                    .map(SerialPortInfo::systemName)
+                    .collect(Collectors.toUnmodifiableSet());
+            return new PortScan(names, System.nanoTime(), null);
+        } catch (RuntimeException e) {
+            log.warn("Serial port enumeration failed: {}", e.toString());
+            return new PortScan(Set.of(), System.nanoTime(), e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
+    // ------------------------------------------------------------------ connect / disconnect
+
+    @Override
+    public synchronized void connect() {
+        if (session != null) {
+            // A remembered session is NOT proof of a working link: without this check a
+            // stale session would make connect() a no-op forever after a cable pull.
+            if (!tearDownIfLinkLost()) {
+                return; // genuinely connected - idempotent
+            }
+            log.warn("Previous serial link was lost; establishing a new one.");
         }
 
         PortAssignment assignment = currentAssignment();
@@ -111,6 +227,11 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         if (outPort == null) {
             throw new PortsNotAssignedException();
         }
+
+        // Fail BEFORE any port is opened. (This used to be discovered only after the client had
+        // been stored, via Optional.get(), leaving a half-connected state behind.)
+        DeviceConfiguration device = deviceConfigurationService.current()
+                .orElseThrow(DeviceNotConfiguredException::new);
 
         SerialPortConfig config = SerialPortConfig.builder()
                 .baudRate(properties.baudRate())
@@ -147,7 +268,7 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
             }
 
             newClient = builder.build();
-            enableHandshakeIfDeviceKnown(newClient);
+            enableIdHandshake(newClient, device);
             success = true;
         } finally {
             if (!success) {
@@ -155,21 +276,87 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
             }
         }
 
-        openTransports.putAll(openedThisAttempt);
-        this.client = newClient;
+        LinkSession live = new LinkSession(newClient, Map.copyOf(openedThisAttempt), inPort, outPort, Instant.now());
+        this.session = live;
+        this.lastScan = null; // a scan taken before the ports were opened must not judge this session
 
-        eventPublisher.publishEvent(
-                new GatewayConnectedEvent(newClient,
-                        deviceConfigurationService.current().get().width(),
-                        deviceConfigurationService.current().get().height()));
-        newClient.start();
+        try {
+            eventPublisher.publishEvent(new GatewayConnectedEvent(newClient, device.width(), device.height()));
+            newClient.start();
+        } catch (RuntimeException e) {
+            // Do not leave a "connected" session behind whose client never started.
+            log.error("Gateway failed to come up on '{}'; rolling the connection back", outPort, e);
+            tearDown(live, false);
+            throw new SerialPortOperationException("serial.port_operation_failed", new Object[]{outPort},
+                    "Failed to start the tile gateway on '" + outPort + "'", e);
+        }
+
         log.info("Tile board gateway connected (input={}, output={})", inPort, outPort);
         try {
-            DeviceConfiguration device = deviceConfigurationService.current().get();
             newClient.send(Command.INTRODUCTION, CommandType.SET);
             log.info("sent INTRODUCTION to hardware ({}X{} board)", device.width(), device.height());
         } catch (RuntimeException e) {
             log.warn("failed to send INTRODUCTION command (gateway may have closed)");
+        }
+    }
+
+    @Override
+    public synchronized void disconnect() {
+        LinkSession live = session;
+        if (live == null) {
+            return; // idempotent
+        }
+        tearDown(live, true);
+    }
+
+    @Override
+    public synchronized boolean releaseIfLinkLost() {
+        return tearDownIfLinkLost();
+    }
+
+    /** Caller must hold this monitor. Forces a fresh scan; acts only on a successful scan that misses a port. */
+    private boolean tearDownIfLinkLost() {
+        LinkSession live = session;
+        if (live == null) {
+            return false;
+        }
+        PortScan fresh = scanNow();
+        lastScan = fresh;
+        if (!fresh.ok()) {
+            return false; // cannot verify -> never destroy a session on a failed check
+        }
+        Set<String> missing = missingPorts(live, fresh);
+        if (missing.isEmpty()) {
+            return false;
+        }
+        log.error("Serial link lost: port(s) {} no longer present on the host - releasing the gateway", missing);
+        tearDown(live, false);
+        return true;
+    }
+
+    /** Caller must hold this monitor. */
+    private void tearDown(LinkSession live, boolean sendStop) {
+        session = null;   // first: from this instant nobody can observe a half-closed link as connected
+        lastScan = null;
+        try {
+            if (sendStop) {
+                try {
+                    live.client().send(Command.STOP, CommandType.SET);
+                    log.info("sent STOP to hardware on disconnect.");
+                } catch (RuntimeException e) {
+                    log.warn("Failed to send STOP on disconnect: {}", e.getMessage());
+                }
+            }
+            try {
+                live.client().close();
+            } catch (RuntimeException e) {
+                log.warn("Closing the gateway client failed: {}", e.getMessage());
+            }
+            // Idempotent safety net: never rely on the client to have released the OS handles.
+            closeQuietly(live.transports().values());
+        } finally {
+            log.info("Tile board gateway disconnected");
+            eventPublisher.publishEvent(new GatewayDisconnectedEvent());
         }
     }
 
@@ -178,25 +365,20 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
             try {
                 transport.close();
             } catch (RuntimeException e) {
-                log.warn("Failed to close {} while rolling back a failed connect attempt", transport.portName(), e);
+                log.warn("Failed to close {}", transport.portName(), e);
             }
         }
     }
 
-    private void enableHandshakeIfDeviceKnown(TileGatewayClient gatewayClient) {
-        deviceConfigurationService.current().ifPresentOrElse(
-                device -> {
-                    int minimumSequence = properties.handshakeMinSequence() > 0
-                            ? properties.handshakeMinSequence()
-                            : Math.max(2, Math.min(device.width(), device.height()));
-                    log.info("Enabling id handshake for a {}x{} board (minimumSequence={})",
-                            device.width(), device.height(), minimumSequence);
-                    gatewayClient.enableIdHandshake(
-                            () -> DeviceAddress.forBoard(device.width(), device.height()),
-                            new SequentialIdSequenceValidator(minimumSequence));
-                },
-                () -> log.warn("Connecting without a device configuration - the id handshake will not "
-                        + "be enabled until the device is configured and the gateway is reconnected."));
+    private void enableIdHandshake(TileGatewayClient gatewayClient, DeviceConfiguration device) {
+        int minimumSequence = properties.handshakeMinSequence() > 0
+                ? properties.handshakeMinSequence()
+                : Math.max(2, Math.min(device.width(), device.height()));
+        log.info("Enabling id handshake for a {}x{} board (minimumSequence={})",
+                device.width(), device.height(), minimumSequence);
+        gatewayClient.enableIdHandshake(
+                () -> DeviceAddress.forBoard(device.width(), device.height()),
+                new SequentialIdSequenceValidator(minimumSequence));
     }
 
     private SerialTransport openPort(String portName, SerialPortConfig config) {
@@ -208,24 +390,36 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         }
     }
 
-    @Override
-    public synchronized void disconnect() {
-        if (client == null) {
-            return;
-        }
-        try {
-            try {
-                client.send(Command.STOP, CommandType.SET);
-                log.info("sent STOP to hardware on disconnected.");
-            } catch (RuntimeException e) {
-                log.warn("Failed to send STOP on disconnected: {}", e.getMessage());
+    /** Test seam (package-private): installs a session without opening real hardware. */
+    synchronized void attachSessionForTest(TileGatewayClient client, String inPort, String outPort) {
+        this.session = new LinkSession(client, Map.of(), inPort, outPort, Instant.now());
+        this.lastScan = null;
+    }
+
+    // ------------------------------------------------------------------ value types
+
+    /** Immutable description of the one live gateway session. */
+    private record LinkSession(TileGatewayClient client,
+                               Map<PortRole, SerialTransport> transports,
+                               String inPort,
+                               String outPort,
+                               Instant connectedSince) {
+
+        /** Distinct system names this session depends on (IN == OUT for a shared full-duplex port). */
+        Set<String> portNames() {
+            Set<String> names = new LinkedHashSet<>();
+            names.add(outPort);
+            if (inPort != null) {
+                names.add(inPort);
             }
-            client.close();
-        } finally {
-            client = null;
-            openTransports.clear();
-            log.info("Tile board gateway disconnected");
-            eventPublisher.publishEvent(new GatewayDisconnectedEvent());
+            return names;
+        }
+    }
+
+    /** Result of one host port enumeration. {@code error == null} means it succeeded. */
+    private record PortScan(Set<String> names, long takenAtNanos, String error) {
+        boolean ok() {
+            return error == null;
         }
     }
 }

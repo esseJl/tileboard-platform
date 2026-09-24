@@ -14,11 +14,7 @@ spring:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
     open-in-view: false
     hibernate:
-      ddl-auto: validate
-
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
+      ddl-auto: update    # Hibernate creates/extends the schema from the entities
 logging:
   level:
     root: INFO
