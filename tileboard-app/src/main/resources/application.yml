@@ -2,7 +2,7 @@ spring:
   application:
     name: tileboard-game-engine
   datasource:
-    url: jdbc:sqlite:./data/app.db
+    url: jdbc:sqlite:app.db
     driver-class-name: org.sqlite.JDBC
   jpa:
     database-platform: org.hibernate.community.dialect.SQLiteDialect
