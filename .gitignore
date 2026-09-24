@@ -19,3 +19,4 @@ target/
 /tileboard-app/data/app.db
 /data/app.db
 /app.db
+/tileboard-app/app.db
