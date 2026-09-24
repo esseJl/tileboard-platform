@@ -18,7 +18,7 @@
 10. [Typical Workflow](#typical-workflow)
 11. [Practical Example - SequentialTouchGame](#practical-example)
 12. [Animations](#animations)
-13. [Concurrency and Thread-Safety Across the Platform](#concurrency)
+13. [Concurrency and Thread-Safety Across the Platform](#concurrency-and-thread-safety-across-the-platform)
 14. [Tests and Build](#tests-and-build)
 15. [Repository Structure](#repository-structure)
 16. [Roadmap](#roadmap)
