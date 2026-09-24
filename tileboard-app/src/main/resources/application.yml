@@ -2,13 +2,13 @@ spring:
   application:
     name: tileboard-game-engine
   datasource:
-    url: ${TILEBOARD_DB_URL:jdbc:h2:file:./data/tileboard;MODE=PostgreSQL}
-    username: ${TILEBOARD_DB_USER:sa}
-    password: ${TILEBOARD_DB_PASSWORD:}
+    url: jdbc:sqlite:./data/app.db
+    driver-class-name: org.sqlite.JDBC
   jpa:
+    database-platform: org.hibernate.community.dialect.SQLiteDialect
+    open-in-view: false
     hibernate:
       ddl-auto: validate
-    open-in-view: false
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -18,7 +18,7 @@ server:
 
 tileboard:
   settings:
-    store: memory    #  dev/demo/test    ---- jpa on production
+    store: jpa    #  dev/demo/test    ---- jpa on production
   cache:
     settings-ttl-seconds: 300
     settings-max-size: 100

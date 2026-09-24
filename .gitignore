@@ -15,3 +15,6 @@ target/
 .DS_Store
 /identifier.sqlite
 /tileboard-app/data/tileboard.mv.db
+/data/tileboard.mv.db
+/tileboard-app/data/app.db
+/data/app.db
