@@ -87,12 +87,6 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
-        <!--
-            Read-only health/info endpoints for load balancers, container
-            orchestrators (k8s liveness/readiness probes) and ops monitoring.
-            No write/actuator-management endpoints are exposed - see
-            application.yml's management.endpoints.web.exposure.include.
-        -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
@@ -102,11 +96,6 @@
             <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
         </dependency>
-        <!--
-            2.0.2 predates Spring Boot 3.3's Spring Framework version and can
-            fail to start (NoSuchMethodError / incompatible auto-configuration)
-            against it; 2.6.0 is the first line verified against Boot 3.3.x.
-        -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
