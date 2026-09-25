@@ -1,14 +1,10 @@
 package com.tileboard.engine.feature;
 
-import com.tileboard.engine.model.TileColor;
-import com.tileboard.serial.board.Board;
-
-import java.util.function.Consumer;
-
 @FunctionalInterface
 public interface BoardAnimation {
     /**
-     * Runs until {@code token.sleep(...)} returns false (cancelled) or the effect completes naturally.
+     * Runs until {@code token.sleep(...)}/{@code token.pause(...)} signals cancellation
+     * or the effect completes naturally.
      */
-    void run(AnimationSystem.RunToken token, int width, int height, Consumer<Board<TileColor>> publisher);
+    void run(AnimationSystem.RunToken token, AnimationContext ctx);
 }
