@@ -158,7 +158,7 @@ class HardwareAnimationShowcaseTest {
             animationSystem.play(key);
             Thread.sleep(holdMillis);
         }
-        animationSystem.cancelCurrent();
+        animationSystem.play((token, ctx) -> token.clear());
     }
 
     @Test
