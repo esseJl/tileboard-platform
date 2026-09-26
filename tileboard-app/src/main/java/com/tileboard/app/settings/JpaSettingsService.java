@@ -2,14 +2,11 @@ package com.tileboard.app.settings;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tileboard.app.config.CacheConfig;
 import com.tileboard.app.settings.persistence.ApplicationSetting;
 import com.tileboard.app.settings.persistence.SettingRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,9 +20,15 @@ import java.util.Optional;
  * {@code tileboard.settings.store} - because unlike {@link InMemorySettingsService},
  * values survive an application restart.
  *
- * <p>Reads go through a Caffeine-backed cache (see {@code CacheConfig}) since settings
- * are read far more often than written; writes evict the affected key so the very next
- * read is always consistent with what was just persisted.
+ * <p>Reads go through {@link SettingRepository#findById}, which - since {@link ApplicationSetting}
+ * is {@code @Cacheable} - is served from Hibernate's second-level cache after the first load
+ * instead of hitting the database every time (see {@code application.yml} for the region-factory/
+ * provider wiring). {@code set()}/{@code clear()} save/delete through the same repository, so
+ * Hibernate evicts the L2C entry itself; no manual cache bookkeeping is needed here.
+ *
+ * <p>Note this means a setting that was never set is NOT negatively cached: every {@link #get}
+ * for a still-unset key does hit the database (a cheap primary-key lookup that finds nothing),
+ * unlike the previous Caffeine-backed version which also cached {@code Optional.empty()}.
  */
 @Service
 @ConditionalOnProperty(prefix = "tileboard.settings", name = "store", havingValue = "jpa", matchIfMissing = true)
@@ -35,31 +38,17 @@ public class JpaSettingsService implements SettingsService {
 
     private final SettingRepository repository;
     private final ObjectMapper objectMapper;
-    private final Cache cache;
 
-    public JpaSettingsService(SettingRepository repository,
-                              ObjectMapper settingsObjectMapper,
-                              CacheManager cacheManager) {
+    public JpaSettingsService(SettingRepository repository, ObjectMapper settingsObjectMapper) {
         this.repository = repository;
         this.objectMapper = settingsObjectMapper;
-        this.cache = cacheManager.getCache(CacheConfig.SETTINGS_CACHE);
-        if (this.cache == null) {
-            throw new IllegalStateException("Cache '" + CacheConfig.SETTINGS_CACHE + "' is not configured");
-        }
     }
 
     @Override
     @Transactional(readOnly = true)
-    @SuppressWarnings("unchecked")
     public <T> Optional<T> get(SettingKey<T> key) {
-        Cache.ValueWrapper cached = cache.get(key.id());
-        if (cached != null) {
-            return (Optional<T>) cached.get();
-        }
-        Optional<T> loaded = repository.findById(key.id())
+        return repository.findById(key.id())
                 .map(entity -> deserialize(key, entity.getValue()));
-        cache.put(key.id(), loaded);
-        return loaded;
     }
 
     @Override
@@ -79,8 +68,6 @@ public class JpaSettingsService implements SettingsService {
             // surfacing a 500 for what is really a benign race.
             log.warn("Concurrent update detected for setting '{}', retrying once", key.id());
             persist(key.id(), json);
-        } finally {
-            cache.evict(key.id());
         }
     }
 
@@ -96,7 +83,6 @@ public class JpaSettingsService implements SettingsService {
     @Transactional
     public void clear(SettingKey<?> key) {
         repository.deleteById(key.id());
-        cache.evict(key.id());
     }
 
     @Override

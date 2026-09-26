@@ -1,13 +1,10 @@
 # tileboard-app - Comprehensive Spring Boot Backend Documentation
 
-> **Module Mission:** Spring Boot application that drives an LED tile board over serial. Built on top of
-> `tileboard-serial-protocol` and `tileboard-game-engine`. Includes REST API for device configuration, serial port
-> management, game control, and SSE streaming. This module is the bridge between hardware and the web world.
+> **Module Mission:** Spring Boot application that drives an LED tile board over serial. Built on top of `tileboard-serial-protocol` and `tileboard-game-engine`. Includes REST API for device configuration, serial port management, game control, and SSE streaming. This module is the bridge between hardware and the web world.
 
 ---
 
 ## Table of Contents
-
 1. [Overall Architecture and Platform Position](#overall-architecture)
 2. [Tech Stack](#tech-stack)
 3. [Package Structure](#package-structure)
@@ -81,41 +78,27 @@
 
 **Typical Data Flow:**
 
-1. Operator configures device: `POST /api/v1/device {width, height}` → `SettingsBackedDeviceConfigurationService` →
-   `SettingsService.set(DEVICE_CONFIGURATION)` → JSON row in `app_settings` (H2 dev / SQLite prod) + cache eviction;
-   with `tileboard.settings.store=jpa` it survives restarts
+1. Operator configures device: `POST /api/v1/device {width, height}` → `SettingsBackedDeviceConfigurationService` → `SettingsService.set(DEVICE_CONFIGURATION)` → JSON row in `app_settings` (H2 dev / SQLite prod) + cache eviction; with `tileboard.settings.store=jpa` it survives restarts
 2. Lists serial ports: `GET /api/v1/ports`
-3. Assigns ports: `POST /api/v1/ports/OUT/assign {portName}` (+ optionally `IN`) →
-   `DefaultSerialConnectionManager.assign()` → `settingsService.set(SERIAL_PORT_ASSIGNMENT, ...)`
-4. Connects: `POST /api/v1/ports/connect` → `DefaultSerialConnectionManager.connect()` → `TileGatewayClient` created →
-   handshake enabled → `GatewayConnectedEvent` published → `GameEngineManager` creates new `GameEngineImpl` →
-   `client.start()` → `INTRODUCTION`/`SET` sent
+3. Assigns ports: `POST /api/v1/ports/OUT/assign {portName}` (+ optionally `IN`) → `DefaultSerialConnectionManager.assign()` → `settingsService.set(SERIAL_PORT_ASSIGNMENT, ...)`
+4. Connects: `POST /api/v1/ports/connect` → `DefaultSerialConnectionManager.connect()` → `TileGatewayClient` created → handshake enabled → `GatewayConnectedEvent` published → `GameEngineManager` creates new `GameEngineImpl` → `client.start()` → `INTRODUCTION`/`SET` sent
 5. Lists games: `GET /api/v1/games` (from `GameRegistry` — works even before connect)
-6. Starts game: `POST /api/v1/games/sessions {gameId, players:[{name, role}]}` → `GameEngine.startGame()` →
-   `GameSessionImpl` created → `START`/`SET` sent → game's `onStart()` called → `SESSION_STARTED` event
-7. Connects SSE: `GET /api/v1/stream/board` (or `/board/{sessionId}`) → `SESSION_LIFECYCLE`/`BOARD_UPDATE`/`TICK`/…
-   events in real time
-8. Player touches tiles → `TileGatewayClient` receives `DATA_IN` frame → `EngineFrameRouter` reassembles →
-   `Board<Boolean>` → `TouchFrameRouter` routes to exclusive owner → `GameSessionImpl.handleTileEvent` (records
-   history + reaction speed) → `game.onTileEvent` (both `TOUCH` and `RELEASE` are delivered)
-9. Game wins/loses/stops → `finishSession` (exactly once via CAS) → `game.onStop` → board cleared → `STOP`/`SET` sent →
-   `SESSION_FINISHED`/`SESSION_STOPPED` event → engine releases the board
+6. Starts game: `POST /api/v1/games/sessions {gameId, players:[{name, role}]}` → `GameEngine.startGame()` → `GameSessionImpl` created → `START`/`SET` sent → game's `onStart()` called → `SESSION_STARTED` event
+7. Connects SSE: `GET /api/v1/stream/board` (or `/board/{sessionId}`) → `SESSION_LIFECYCLE`/`BOARD_UPDATE`/`TICK`/… events in real time
+8. Player touches tiles → `TileGatewayClient` receives `DATA_IN` frame → `EngineFrameRouter` reassembles → `Board<Boolean>` → `TouchFrameRouter` routes to exclusive owner → `GameSessionImpl.handleTileEvent` (records history + reaction speed) → `game.onTileEvent` (both `TOUCH` and `RELEASE` are delivered)
+9. Game wins/loses/stops → `finishSession` (exactly once via CAS) → `game.onStop` → board cleared → `STOP`/`SET` sent → `SESSION_FINISHED`/`SESSION_STOPPED` event → engine releases the board
 
 ---
 
 ## Tech Stack
 
-- **Java 17**, **Spring Boot 3.3.4** (parent), **Spring MVC**, **Spring Actuator** (health, info),
-  **spring-boot-starter-validation**
-- **jSerialComm 2.11.0** for serial communication (declared here — it is `optional` in the protocol library, and the app
-  is the module that talks to real hardware)
+- **Java 17**, **Spring Boot 3.3.4** (parent), **Spring MVC**, **Spring Actuator** (health, info), **spring-boot-starter-validation**
+- **jSerialComm 2.11.0** for serial communication (declared here — it is `optional` in the protocol library, and the app is the module that talks to real hardware)
 - **springdoc-openapi 2.6.0** (`springdoc-openapi-starter-webmvc-ui`) — Swagger UI at the springdoc default path
 - **Jackson** for JSON (via `spring-boot-starter-web` + engine's `jackson-databind`/`jsr310`)
-- **spring-boot-starter-data-jpa** (Hibernate ORM) with `spring.jpa.hibernate.ddl-auto: update` — Hibernate creates the
-  `app_settings` table (and adds missing columns) from the entity
+- **spring-boot-starter-data-jpa** (Hibernate ORM) with `spring.jpa.hibernate.ddl-auto: update` — Hibernate creates the `app_settings` table (and adds missing columns) from the entity
 - **H2** (runtime scope) as the dev file DB — `jdbc:h2:file:./data/tileboard;MODE=PostgreSQL`
-- **SQLite** (`org.xerial:sqlite-jdbc`, version managed by the Boot BOM) + `hibernate-community-dialects`
-  (`SQLiteDialect`) as the prod DB — `jdbc:sqlite:./data/app.db`
+- **SQLite** (`org.xerial:sqlite-jdbc`, version managed by the Boot BOM) + `hibernate-community-dialects` (`SQLiteDialect`) as the prod DB — `jdbc:sqlite:./data/app.db`
 - **spring-boot-starter-cache** + **Caffeine** for the `settings` read cache
 - **SLF4J** for logging
 - **Maven** for build
@@ -124,21 +107,21 @@
 
 ## Package Structure
 
-| Package                | Responsibility                                                                                                                                                                                                                                        |
-|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `com.tileboard.app`    | `TileboardApplication` (main, `@SpringBootApplication` + `@ConfigurationPropertiesScan`)                                                                                                                                                              |
-| `config`               | `TileboardProperties` (`tileboard.serial`), `DeviceConfiguration`, `SerialGatewayConfig`, `GeneralConfiguration` (CORS filter, `@EnableWebMvc`), `CacheConfig` + `CacheSettingsProperties` (`tileboard.cache`, `@EnableCaching`)                      |
-| `controller`           | REST controllers: `DeviceController`, `SerialPortController`, `GameController`, `StreamController`                                                                                                                                                    |
-| `dto`                  | API DTOs: `ApiResponse`, `ApiResponses`, `Status`, `DeviceConfigurationRequest/Response`, `AssignPortRequest`, `SerialPortResponse`, `ConnectionStatusResponse`, `GameDescriptorResponse`, `StartGameRequest`, `PlayerRequest`, `GameSessionResponse` |
-| `service.device`       | `DeviceConfigurationService` + `SettingsBackedDeviceConfigurationService`                                                                                                                                                                             |
-| `service.serial`       | `SerialConnectionManager` + `DefaultSerialConnectionManager`, `PortRole`, `PortAssignment`, `ConnectionState`, `SerialPortSummary`                                                                                                                    |
-| `service.streaming`    | `BoardStateBroadcaster` + `SseBoardStateBroadcaster`                                                                                                                                                                                                  |
-| `settings`             | `SettingsService` (generic typed store), `SettingKey<T>`, `SettingKeys` (append-only registry), `InMemorySettingsService` (`store=memory`), `JpaSettingsService` (`store=jpa`, default), `SettingsPersistenceException`                               |
-| `settings.conf`        | `SettingsSerializationConfig` — the settings-only `ObjectMapper` (`settingsObjectMapper`: `Jdk8Module`, `JavaTimeModule`, `FAIL_ON_UNKNOWN_PROPERTIES=false`)                                                                                         |
-| `settings.persistence` | `ApplicationSetting` (`@Entity @Table(name="app_settings")`, `@Version`), `SettingRepository` (`JpaRepository<ApplicationSetting, String>`)                                                                                                           |
-| `exception`            | `ApiException` + subclasses (`DeviceNotConfiguredException`, `GatewayNotConnectedException`, `NoActiveGameException`, `PortsNotAssignedException`, `SerialPortOperationException`) + `handler.GlobalExceptionHandler`                                 |
-| `i18n`                 | `Messages` (fixed-`fa` `MessageSource` wrapper)                                                                                                                                                                                                       |
-| `game`                 | Sample game: `SequentialTouchGame` (default 3×3) + `GameBeansConfig` (`@Bean` registration)                                                                                                                                                           |
+| Package | Responsibility |
+|------|---------|
+| `com.tileboard.app` | `TileboardApplication` (main, `@SpringBootApplication` + `@ConfigurationPropertiesScan`) |
+| `config` | `TileboardProperties` (`tileboard.serial`), `DeviceConfiguration`, `SerialGatewayConfig`, `GeneralConfiguration` (CORS filter, `@EnableWebMvc`), `CacheConfig` + `CacheSettingsProperties` (`tileboard.cache`, `@EnableCaching`) |
+| `controller` | REST controllers: `DeviceController`, `SerialPortController`, `GameController`, `StreamController` |
+| `dto` | API DTOs: `ApiResponse`, `ApiResponses`, `Status`, `DeviceConfigurationRequest/Response`, `AssignPortRequest`, `SerialPortResponse`, `ConnectionStatusResponse`, `GameDescriptorResponse`, `StartGameRequest`, `PlayerRequest`, `GameSessionResponse` |
+| `service.device` | `DeviceConfigurationService` + `SettingsBackedDeviceConfigurationService` |
+| `service.serial` | `SerialConnectionManager` + `DefaultSerialConnectionManager`, `PortRole`, `PortAssignment`, `ConnectionState`, `SerialPortSummary` |
+| `service.streaming` | `BoardStateBroadcaster` + `SseBoardStateBroadcaster` |
+| `settings` | `SettingsService` (generic typed store), `SettingKey<T>`, `SettingKeys` (append-only registry), `InMemorySettingsService` (`store=memory`), `JpaSettingsService` (`store=jpa`, default), `SettingsPersistenceException` |
+| `settings.conf` | `SettingsSerializationConfig` — the settings-only `ObjectMapper` (`settingsObjectMapper`: `Jdk8Module`, `JavaTimeModule`, `FAIL_ON_UNKNOWN_PROPERTIES=false`) |
+| `settings.persistence` | `ApplicationSetting` (`@Entity @Table(name="app_settings")`, `@Version`), `SettingRepository` (`JpaRepository<ApplicationSetting, String>`) |
+| `exception` | `ApiException` + subclasses (`DeviceNotConfiguredException`, `GatewayNotConnectedException`, `NoActiveGameException`, `PortsNotAssignedException`, `SerialPortOperationException`) + `handler.GlobalExceptionHandler` |
+| `i18n` | `Messages` (fixed-`fa` `MessageSource` wrapper) |
+| `game` | Sample game: `SequentialTouchGame` (default 3×3) + `GameBeansConfig` (`@Bean` registration) |
 
 ---
 
@@ -193,16 +176,10 @@ logging:
     com.tileboard: DEBUG
 ```
 
-- **Datasource:** an H2 **file** DB (`./data/tileboard`, `MODE=PostgreSQL`) created on first start; everything is
-  overridable with `TILEBOARD_DB_URL` / `TILEBOARD_DB_USER` / `TILEBOARD_DB_PASSWORD` without touching the file.
-- **`ddl-auto: update`:** Hibernate owns the schema - on startup it creates `app_settings` from `ApplicationSetting` if
-  missing and adds new mapped columns. It never drops or renames anything, so removing/renaming a column or changing a
-  type must be done by hand.
-- **`tileboard.settings.store: memory`:** the **dev default** keeps settings in a `ConcurrentHashMap` — Hibernate still
-  creates the table anyway, but nothing is written to `app_settings`. Use `jpa` (or the `prod` profile) to persist.
-- **`tileboard.cache`:** the Caffeine cache sitting in front of settings reads — `settings-ttl-seconds` bounds how long
-  another instance's write can stay invisible, `settings-max-size` is a safety bound (non-positive values are clamped
-  back to 300/100 by `CacheSettingsProperties`).
+- **Datasource:** an H2 **file** DB (`./data/tileboard`, `MODE=PostgreSQL`) created on first start; everything is overridable with `TILEBOARD_DB_URL` / `TILEBOARD_DB_USER` / `TILEBOARD_DB_PASSWORD` without touching the file.
+- **`ddl-auto: update`:** Hibernate owns the schema - on startup it creates `app_settings` from `ApplicationSetting` if missing and adds new mapped columns. It never drops or renames anything, so removing/renaming a column or changing a type must be done by hand.
+- **`tileboard.settings.store: memory`:** the **dev default** keeps settings in a `ConcurrentHashMap` — Hibernate still creates the table anyway, but nothing is written to `app_settings`. Use `jpa` (or the `prod` profile) to persist.
+- **`tileboard.cache`:** the Caffeine cache sitting in front of settings reads — `settings-ttl-seconds` bounds how long another instance's write can stay invisible, `settings-max-size` is a safety bound (non-positive values are clamped back to 300/100 by `CacheSettingsProperties`).
 
 ### application-prod.yml
 
@@ -237,30 +214,22 @@ tileboard:
     settings-max-size: 100
 ```
 
-- The comment above ("only overrides logging") is the file's own historical wording — since the persistence work it also
-  switches the datasource to **SQLite** and the settings store to **jpa**. `username`/`password` are inherited from the
-  base file (`sa` / empty), which SQLite ignores.
-- The SQLite URL is pinned (no env override) and expects a writable `./data/` next to the working directory — mount it
-  as a volume in containers so `app.db` outlives the container.
-- `org.hibernate.community.dialect.SQLiteDialect` comes from the `hibernate-community-dialects` dependency; the H2 dev
-  profile needs no explicit dialect (Hibernate auto-detects H2).
+- The comment above ("only overrides logging") is the file's own historical wording — since the persistence work it also switches the datasource to **SQLite** and the settings store to **jpa**. `username`/`password` are inherited from the base file (`sa` / empty), which SQLite ignores.
+- The SQLite URL is pinned (no env override) and expects a writable `./data/` next to the working directory — mount it as a volume in containers so `app.db` outlives the container.
+- `org.hibernate.community.dialect.SQLiteDialect` comes from the `hibernate-community-dialects` dependency; the H2 dev profile needs no explicit dialect (Hibernate auto-detects H2).
 
-**Why DEBUG in dev?** Because `JSerialCommTransport` logs TX/RX bytes in hex at DEBUG level, useful for protocol
-debugging but noisy in production.
+**Why DEBUG in dev?** Because `JSerialCommTransport` logs TX/RX bytes in hex at DEBUG level, useful for protocol debugging but noisy in production.
 
-**Locale note:** user-facing messages are always Persian because `Messages.APP_LOCALE` is hardcoded to `fa` in code.
-There is intentionally no `spring.mvc.locale*` setting in `application.yml` — the locale is fixed in one place
-(`Messages`), not via Spring's locale resolver.
+**Locale note:** user-facing messages are always Persian because `Messages.APP_LOCALE` is hardcoded to `fa` in code. There is intentionally no `spring.mvc.locale*` setting in `application.yml` — the locale is fixed in one place (`Messages`), not via Spring's locale resolver.
 
 ### TileboardProperties
 
 ```java
-
 @ConfigurationProperties(prefix = "tileboard.serial")
 public record TileboardProperties(
-        int baudRate, int dataBits, int stopBits,
-        int readTimeoutMillis, int writeTimeoutMillis,
-        int handshakeMinSequence) {
+    int baudRate, int dataBits, int stopBits,
+    int readTimeoutMillis, int writeTimeoutMillis,
+    int handshakeMinSequence) {
 
     public TileboardProperties {
         if (baudRate <= 0) baudRate = 115_200;
@@ -273,8 +242,7 @@ public record TileboardProperties(
 }
 ```
 
-- `record` with compact constructor for defaults (`0`/negative → sensible default; `handshakeMinSequence = 0` means
-  "auto").
+- `record` with compact constructor for defaults (`0`/negative → sensible default; `handshakeMinSequence = 0` means "auto").
 - Enabled via `@ConfigurationPropertiesScan` in `TileboardApplication` (no `@EnableConfigurationProperties` needed).
 
 ---
@@ -285,32 +253,23 @@ public record TileboardProperties(
 public record DeviceConfiguration(int width, int height) {
     public DeviceConfiguration {
         if (width <= 0 || height <= 0) throw new IllegalArgumentException(...);
-        if (width * height > 255)
-            throw new IllegalArgumentException("width * height must be <= 255 (protocol addressing limit), ...");
+        if (width * height > 255) throw new IllegalArgumentException("width * height must be <= 255 (protocol addressing limit), ...");
     }
-
-    public int tileCount() {
-        return width * height;
-    }
+    public int tileCount() { return width * height; }
 }
 ```
 
 - Physical geometry of board: how many tiles wide and tall.
-- Limit 255 comes from `DeviceAddress` encoding the total tile count in one byte (protocol ceiling: both `totalTiles`and
-  `tilesPerRow` must fit in `[1, 255]`).
-- This is the one piece of information every other module (handshake `max(2, min(w,h))`, game engine board size) needs
-  before doing anything useful.
+- Limit 255 comes from `DeviceAddress` encoding the total tile count in one byte (protocol ceiling: both `totalTiles` and `tilesPerRow` must fit in `[1, 255]`).
+- This is the one piece of information every other module (handshake `max(2, min(w,h))`, game engine board size) needs before doing anything useful.
 - DTO validation mirrors it: `DeviceConfigurationRequest(width, height)` with `@Min(1)`/`@Max(255)` on both fields.
-- It is **persisted**: the record is the value of `SettingKeys.DEVICE_CONFIGURATION` (`"device.configuration"`, stored
-  as `{"width":3,"height":3}` in `app_settings`), so with `tileboard.settings.store=jpa` both `GET /api/v1/device` and
-  `GameBeansConfig`'s startup sizing see the geometry from the previous run.
+- It is **persisted**: the record is the value of `SettingKeys.DEVICE_CONFIGURATION` (`"device.configuration"`, stored as `{"width":3,"height":3}` in `app_settings`), so with `tileboard.settings.store=jpa` both `GET /api/v1/device` and `GameBeansConfig`'s startup sizing see the geometry from the previous run.
 
 ---
 
 ## SerialGatewayConfig
 
 ```java
-
 @Configuration
 public class SerialGatewayConfig {
     @Bean
@@ -320,9 +279,7 @@ public class SerialGatewayConfig {
 }
 ```
 
-**This is the only place in the whole app that knows `JSerialCommPortRegistry` is used.** If you want to swap serial
-library (or build a Mock for a hardware-less demo), you only change this Bean. The rest of the code only knows the
-`SerialPortRegistry`/`SerialTransport` interfaces.
+**This is the only place in the whole app that knows `JSerialCommPortRegistry` is used.** If you want to swap serial library (or build a Mock for a hardware-less demo), you only change this Bean. The rest of the code only knows the `SerialPortRegistry`/`SerialTransport` interfaces.
 
 ---
 
@@ -333,12 +290,8 @@ library (or build a Mock for a hardware-less demo), you only change this Bean. T
 ```java
 public interface DeviceConfigurationService {
     Optional<DeviceConfiguration> current();
-
     DeviceConfiguration configure(int width, int height);
-
-    default boolean isConfigured() {
-        return current().isPresent();
-    }
+    default boolean isConfigured() { return current().isPresent(); }
 }
 
 @Service
@@ -363,53 +316,35 @@ public class SettingsBackedDeviceConfigurationService implements DeviceConfigura
 }
 ```
 
-- The earlier `InMemoryDeviceConfigurationService` (an `AtomicReference` held in the service) is gone: the geometry now
-  lives in the generic `SettingsService`, so it survives a restart when `tileboard.settings.store=jpa` and disappears
-  with the process when `memory`.
-- This class is intentionally *thin*: it knows `SettingsService` and `SettingKeys` — **not** JPA, JSON or caching.
-  Thread-safety and persistence semantics are entirely the store's business.
-- `Optional` for "not yet configured" state (surfaced as `DeviceNotConfiguredException` → 409 by `DeviceController`),
-  backed by `SettingKey.defaultValue() == null`.
-- Every consumer still only knows the interface, so swapping the store (memory ↔ jpa ↔ a future Redis) never touches
-  this service or its callers — see [Persistence, Settings and Cache](#persistence-settings-and-cache).
+- The earlier `InMemoryDeviceConfigurationService` (an `AtomicReference` held in the service) is gone: the geometry now lives in the generic `SettingsService`, so it survives a restart when `tileboard.settings.store=jpa` and disappears with the process when `memory`.
+- This class is intentionally *thin*: it knows `SettingsService` and `SettingKeys` — **not** JPA, JSON or caching. Thread-safety and persistence semantics are entirely the store's business.
+- `Optional` for "not yet configured" state (surfaced as `DeviceNotConfiguredException` → 409 by `DeviceController`), backed by `SettingKey.defaultValue() == null`.
+- Every consumer still only knows the interface, so swapping the store (memory ↔ jpa ↔ a future Redis) never touches this service or its callers — see [Persistence, Settings and Cache](#persistence-settings-and-cache).
 
 ### SerialConnectionManager
 
 ```java
 public interface SerialConnectionManager {
     List<SerialPortSummary> listAvailablePorts();
-
     void assign(PortRole role, String portName);
-
     PortAssignment currentAssignment();
-
     ConnectionState connectionState();
-
     void connect();     // no-op if already connected; throws PortsNotAssignedException without OUT
-
     void disconnect();  // publishes GatewayDisconnectedEvent
 }
 
-public enum PortRole {IN, OUT}
-
-public enum ConnectionState {DISCONNECTED, CONNECTED}
-
+public enum PortRole { IN, OUT }
+public enum ConnectionState { DISCONNECTED, CONNECTED }
 public record PortAssignment(Optional<String> inPort, Optional<String> outPort) {
-    public static PortAssignment empty() { ...}
-
-    public boolean isOutAssigned() {
-        return outPort.isPresent();
-    }
+    public static PortAssignment empty() { ... }
+    public boolean isOutAssigned() { return outPort.isPresent(); }
 }
-
-public record SerialPortSummary(String systemName, String description) {
-}
+public record SerialPortSummary(String systemName, String description) {}
 ```
 
 #### DefaultSerialConnectionManager - Implementation
 
 ```java
-
 @Service
 public class DefaultSerialConnectionManager implements SerialConnectionManager {
     private final SerialPortRegistry portRegistry;
@@ -421,32 +356,26 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
     private final Map<PortRole, SerialTransport> openTransports = new EnumMap<>(PortRole.class);
     private TileGatewayClient client;
 
-    @Override
-    public List<SerialPortSummary> listAvailablePorts() {
+    @Override public List<SerialPortSummary> listAvailablePorts() {
         return portRegistry.listPorts().stream()
-                .map(SerialPortInfo::systemName).distinct()
-                .map(name -> new SerialPortSummary(name, describe(name)))
-                .toList();
+            .map(SerialPortInfo::systemName).distinct()
+            .map(name -> new SerialPortSummary(name, describe(name)))
+            .toList();
     }
 
-    @Override
-    public synchronized void assign(PortRole role, String portName) {
+    @Override public synchronized void assign(PortRole role, String portName) {
         PortAssignment updated = currentAssignment().withRole(role, portName);
         settingsService.set(SettingKeys.SERIAL_PORT_ASSIGNMENT, updated);   // persisted
     }
 
-    @Override
-    public synchronized PortAssignment currentAssignment() {
+    @Override public synchronized PortAssignment currentAssignment() {
         return settingsService.getOrDefault(SettingKeys.SERIAL_PORT_ASSIGNMENT);   // PortAssignment.empty() default
     }
-
-    @Override
-    public synchronized ConnectionState connectionState() {
+    @Override public synchronized ConnectionState connectionState() {
         return client != null ? CONNECTED : DISCONNECTED;
     }
 
-    @Override
-    public synchronized void connect() {
+    @Override public synchronized void connect() {
         if (client != null) return; // idempotent
         if (deviceConfigurationService.current().isEmpty()) {
             log.info("Device not Configured - can not connect."); // logged, NOT thrown here
@@ -457,9 +386,9 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         if (outPort == null) throw new PortsNotAssignedException();
 
         SerialPortConfig config = SerialPortConfig.builder()
-                .baudRate(properties.baudRate()).dataBits(...).stopBits(...)
+            .baudRate(properties.baudRate()).dataBits(...).stopBits(...)
             .parity(Parity.NONE)
-                .readTimeoutMillis(...).writeTimeoutMillis(...).build();
+            .readTimeoutMillis(...).writeTimeoutMillis(...).build();
 
         Map<PortRole, SerialTransport> openedThisAttempt = new EnumMap<>(PortRole.class);
         TileGatewayClient newClient;
@@ -494,8 +423,8 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         // NOTE: .get() below throws NoSuchElementException when no device is configured,
         // so in practice the device MUST be configured before connect:
         eventPublisher.publishEvent(new GatewayConnectedEvent(newClient,
-                deviceConfigurationService.current().get().width(),
-                deviceConfigurationService.current().get().height()));
+            deviceConfigurationService.current().get().width(),
+            deviceConfigurationService.current().get().height()));
         newClient.start();
         log.info("Tile board gateway connected (input={}, output={})", inPort, outPort);
         try {
@@ -509,28 +438,23 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
     private void enableHandshakeIfDeviceKnown(TileGatewayClient gatewayClient) {
         deviceConfigurationService.current().ifPresentOrElse(
-                device -> {
-                    int minimumSequence = properties.handshakeMinSequence() > 0
-                            ? properties.handshakeMinSequence()
-                            : Math.max(2, Math.min(device.width(), device.height()));
-                    log.info("Enabling id handshake for a {}x{} board (minimumSequence={})", ...);
-                    gatewayClient.enableIdHandshake(
-                            () -> DeviceAddress.forBoard(device.width(), device.height()),
-                            new SequentialIdSequenceValidator(minimumSequence));
-                },
-                () -> log.warn("Connecting without a device configuration - the id handshake will not ..."));
+            device -> {
+                int minimumSequence = properties.handshakeMinSequence() > 0
+                    ? properties.handshakeMinSequence()
+                    : Math.max(2, Math.min(device.width(), device.height()));
+                log.info("Enabling id handshake for a {}x{} board (minimumSequence={})", ...);
+                gatewayClient.enableIdHandshake(
+                    () -> DeviceAddress.forBoard(device.width(), device.height()),
+                    new SequentialIdSequenceValidator(minimumSequence));
+            },
+            () -> log.warn("Connecting without a device configuration - the id handshake will not ..."));
     }
 
-    @Override
-    public synchronized void disconnect() {
+    @Override public synchronized void disconnect() {
         if (client == null) return; // idempotent
         try {
-            try {
-                client.send(Command.STOP, CommandType.SET);
-                log.info("sent STOP to hardware on disconnected.");
-            } catch (RuntimeException e) {
-                log.warn("Failed to sned STOP on disconnected: {}", e.getMessage());
-            }
+            try { client.send(Command.STOP, CommandType.SET); log.info("sent STOP to hardware on disconnected."); }
+            catch (RuntimeException e) { log.warn("Failed to sned STOP on disconnected: {}", e.getMessage()); }
             client.close();
         } finally {
             client = null;
@@ -544,36 +468,22 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
 **Behavior notes (exactly as coded):**
 
-1. **synchronized on mutating methods:** `assign`, `currentAssignment`, `connectionState`, `connect`, `disconnect` are
-   all `synchronized`. These are operator-driven admin operations, so a plain monitor is enough.
-2. **Where the assignment lives:** there is no `assignedPorts` map in the service any more — `assign`/
-   `currentAssignment` read and write `SettingKeys.SERIAL_PORT_ASSIGNMENT` through `SettingsService`, so IN/OUT
-   assignment survives a restart (`store=jpa`) exactly like the device geometry. Only the *open* transports stay in the
-   in-memory `EnumMap<PortRole, SerialTransport>`, because a live OS handle cannot be reattached after a JVM restart.
+1. **synchronized on mutating methods:** `assign`, `currentAssignment`, `connectionState`, `connect`, `disconnect` are all `synchronized`. These are operator-driven admin operations, so a plain monitor is enough.
+2. **Where the assignment lives:** there is no `assignedPorts` map in the service any more — `assign`/`currentAssignment` read and write `SettingKeys.SERIAL_PORT_ASSIGNMENT` through `SettingsService`, so IN/OUT assignment survives a restart (`store=jpa`) exactly like the device geometry. Only the *open* transports stay in the in-memory `EnumMap<PortRole, SerialTransport>`, because a live OS handle cannot be reattached after a JVM restart.
 3. **Two topologies transparently:**
-    - IN and OUT same name → one shared `SerialTransport` opened once, `builder.transport(shared)` (full-duplex).
-    - Different names → two transports. Only OUT → loud warning that the client is OUTPUT ONLY (no touches/handshake
-      will ever be received).
-4. **Rollback on failed connect:** `openedThisAttempt` + `success` flag +`finally { if (!success) closeQuietly(...) }` —
-   a failed `connect` never leaks an OS port handle that would break the next attempt. `openPort` wraps any failure in
-   `SerialPortOperationException` (HTTP 502).
-5. **Handshake before start:** `enableHandshakeIfDeviceKnown(newClient)` runs before `newClient.start()`, so the board's
-   initial `ID`/`CLEAR` frames are never dropped. Auto `minimumSequence = max(2, min(width, height))`.
-6. **Device must be configured first:** when unconfigured, `connect()` only *logs* at the top — but then
-   `deviceConfigurationService.current().get()` at event-publish time throws `NoSuchElementException`. So the practical
-   rule is: **configure the device before connecting** (the tutorial below does exactly that).
-7. **Hardware protocol on (dis)connect:** `INTRODUCTION`/`SET` is sent after connect; `STOP`/`SET` is sent (best-effort)
-   before disconnect. Note the exact log shapes: `Tile board gateway connected (input=…, output=…)` and
-   `sent INTRODUCTION to hardware ({}X{} board)`.
-8. **Event publishing:** `GatewayConnectedEvent(client, width, height)` wakes `GameEngineManager`;
-   `GatewayDisconnectedEvent` unbinds it. Both event types live in the engine module to avoid a circular dependency.
+   - IN and OUT same name → one shared `SerialTransport` opened once, `builder.transport(shared)` (full-duplex).
+   - Different names → two transports. Only OUT → loud warning that the client is OUTPUT ONLY (no touches/handshake will ever be received).
+4. **Rollback on failed connect:** `openedThisAttempt` + `success` flag + `finally { if (!success) closeQuietly(...) }` — a failed `connect` never leaks an OS port handle that would break the next attempt. `openPort` wraps any failure in `SerialPortOperationException` (HTTP 502).
+5. **Handshake before start:** `enableHandshakeIfDeviceKnown(newClient)` runs before `newClient.start()`, so the board's initial `ID`/`CLEAR` frames are never dropped. Auto `minimumSequence = max(2, min(width, height))`.
+6. **Device must be configured first:** when unconfigured, `connect()` only *logs* at the top — but then `deviceConfigurationService.current().get()` at event-publish time throws `NoSuchElementException`. So the practical rule is: **configure the device before connecting** (the tutorial below does exactly that).
+7. **Hardware protocol on (dis)connect:** `INTRODUCTION`/`SET` is sent after connect; `STOP`/`SET` is sent (best-effort) before disconnect. Note the exact log shapes: `Tile board gateway connected (input=…, output=…)` and `sent INTRODUCTION to hardware ({}X{} board)`.
+8. **Event publishing:** `GatewayConnectedEvent(client, width, height)` wakes `GameEngineManager`; `GatewayDisconnectedEvent` unbinds it. Both event types live in the engine module to avoid a circular dependency.
 
 ### BoardStateBroadcaster (SSE board frames)
 
 ```java
 public interface BoardStateBroadcaster {
     SseEmitter subscribe();                 // registers a subscriber, returns its emitter
-
     void broadcast(byte[] flatBoardBytes);   // row-major frame (Board.toWireBytes) to every subscriber
 }
 
@@ -585,11 +495,10 @@ public class SseBoardStateBroadcaster implements BoardStateBroadcaster {
     public SseBoardStateBroadcaster(BoardFrameBroadcaster boardFrameBroadcaster) {
         // every actually-transmitted board frame is fanned out automatically:
         boardFrameBroadcaster.subscribe((sessionId, board) ->
-                broadcast(board.toWireBytes(ColorTileCodec.instance())));
+            broadcast(board.toWireBytes(ColorTileCodec.instance())));
     }
 
-    @Override
-    public SseEmitter subscribe() {
+    @Override public SseEmitter subscribe() {
         SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
         emitter.onCompletion(() -> emitters.remove(emitter));
         emitter.onTimeout(() -> emitters.remove(emitter));
@@ -598,51 +507,39 @@ public class SseBoardStateBroadcaster implements BoardStateBroadcaster {
         return emitter;
     }
 
-    @Override
-    public void broadcast(byte[] flatBoardBytes) {
+    @Override public void broadcast(byte[] flatBoardBytes) {
         if (emitters.isEmpty()) return;
         int[] unsignedTiles = toUnsignedInts(flatBoardBytes); // byte -> 0..255 int
         for (SseEmitter emitter : emitters) {
-            try {
-                emitter.send(SseEmitter.event().name("board-frame").data(unsignedTiles));
-            } catch (IOException | RuntimeException e) {
-                emitters.remove(emitter);
-            } // drop dead clients
+            try { emitter.send(SseEmitter.event().name("board-frame").data(unsignedTiles)); }
+            catch (IOException | RuntimeException e) { emitters.remove(emitter); } // drop dead clients
         }
     }
 }
 ```
 
-Important wiring fact: this broadcaster is fully functional (subscribed to the application-lifetime
-`BoardFrameBroadcaster`), but **no controller currently injects it** — `StreamController` serves game events via
-`SseGameEventPublisher` instead. It is the intended seam for a future raw-board-mirror endpoint (SSE today, WebSocket
-tomorrow) without touching the engine.
+Important wiring fact: this broadcaster is fully functional (subscribed to the application-lifetime `BoardFrameBroadcaster`), but **no controller currently injects it** — `StreamController` serves game events via `SseGameEventPublisher` instead. It is the intended seam for a future raw-board-mirror endpoint (SSE today, WebSocket tomorrow) without touching the engine.
 
 ### ApiResponse envelope
 
 ```java
-public record ApiResponse(Status status, String message, Object data, Object extra, String debugMessage) { ...
-}
-
-public enum Status {SUCCESS, INFO, WARNING, ERROR}
+public record ApiResponse(Status status, String message, Object data, Object extra, String debugMessage) { ... }
+public enum Status { SUCCESS, INFO, WARNING, ERROR }
 ```
 
 - `message`: localized (Persian) user-facing text.
-- `debugMessage`: raw English diagnostic for developers (logs, dev tools, bug reports) — never shown directly to end
-  users; `null` on plain successes.
+- `debugMessage`: raw English diagnostic for developers (logs, dev tools, bug reports) — never shown directly to end users; `null` on plain successes.
 - `extra`: optional third payload slot (currently unused by controllers).
-- `ApiResponses` factory: `ok(...)`, `info(...)`, `warning(...)`, `error(...)`, `badRequest`, `unauthorized`,
-  `forbidden`, `notFound`, `conflict`, `internalServerError`, `badGateway` (each with an optional `debugMessage`
-  overload).
+- `ApiResponses` factory: `ok(...)`, `info(...)`, `warning(...)`, `error(...)`, `badRequest`, `unauthorized`, `forbidden`, `notFound`, `conflict`, `internalServerError`, `badGateway` (each with an optional `debugMessage` overload).
 
 ---
 
 ## Persistence, Settings and Cache
 
-The application persists its configuration — and only its configuration — in a single generic key/value table.
-Everything configurable (board geometry today, serial port assignment today, anything added tomorrow) is stored as
-opaque JSON with a stable string key, through one interface, so a new setting never means a new table, entity,
-repository or schema change.
+The application persists its configuration — and only its configuration — in a single generic
+key/value table. Everything configurable (board geometry today, serial port assignment today,
+anything added tomorrow) is stored as opaque JSON with a stable string key, through one interface,
+so a new setting never means a new table, entity, repository or schema change.
 
 ```
 DeviceController ──────→ SettingsBackedDeviceConfigurationService ─┐
@@ -663,18 +560,18 @@ SerialPortController ──→ DefaultSerialConnectionManager ──────
 
 ### Package Tour
 
-| Class                                     | Package                | Role                                                                                                                           |
-|-------------------------------------------|------------------------|--------------------------------------------------------------------------------------------------------------------------------|
-| `SettingsService`                         | `settings`             | Generic typed store: `get` / `getOrDefault` / `set` / `clear` / `isSet`, keyed by `SettingKey<T>`                              |
-| `SettingKey<T>`                           | `settings`             | `record (id, type, defaultValue)` + `of(...)` factories; **not** an enum — adding a setting is one constant                    |
-| `SettingKeys`                             | `settings`             | The append-only registry: `DEVICE_CONFIGURATION` (`device.configuration`), `SERIAL_PORT_ASSIGNMENT` (`serial.port-assignment`) |
-| `InMemorySettingsService`                 | `settings`             | `ConcurrentHashMap`-backed store, active for `tileboard.settings.store=memory`                                                 |
-| `JpaSettingsService`                      | `settings`             | Production store: JSON + cache + `app_settings`, active for `store=jpa` (or when the property is unset)                        |
-| `SettingsPersistenceException`            | `settings`             | Wraps (de)serialization failures from either store                                                                             |
-| `SettingsSerializationConfig`             | `settings.conf`        | The settings-only `ObjectMapper` bean (`settingsObjectMapper`)                                                                 |
-| `ApplicationSetting`                      | `settings.persistence` | The JPA entity (`@Table(name = "app_settings")`, `@Version`)                                                                   |
-| `SettingRepository`                       | `settings.persistence` | `JpaRepository<ApplicationSetting, String>` (the key is the id)                                                                |
-| `CacheConfig` / `CacheSettingsProperties` | `config`               | `@EnableCaching` + Caffeine cache manager, `tileboard.cache.*`                                                                 |
+| Class | Package | Role |
+|-----|------|-----|
+| `SettingsService` | `settings` | Generic typed store: `get` / `getOrDefault` / `set` / `clear` / `isSet`, keyed by `SettingKey<T>` |
+| `SettingKey<T>` | `settings` | `record (id, type, defaultValue)` + `of(...)` factories; **not** an enum — adding a setting is one constant |
+| `SettingKeys` | `settings` | The append-only registry: `DEVICE_CONFIGURATION` (`device.configuration`), `SERIAL_PORT_ASSIGNMENT` (`serial.port-assignment`) |
+| `InMemorySettingsService` | `settings` | `ConcurrentHashMap`-backed store, active for `tileboard.settings.store=memory` |
+| `JpaSettingsService` | `settings` | Production store: JSON + cache + `app_settings`, active for `store=jpa` (or when the property is unset) |
+| `SettingsPersistenceException` | `settings` | Wraps (de)serialization failures from either store |
+| `SettingsSerializationConfig` | `settings.conf` | The settings-only `ObjectMapper` bean (`settingsObjectMapper`) |
+| `ApplicationSetting` | `settings.persistence` | The JPA entity (`@Table(name = "app_settings")`, `@Version`) |
+| `SettingRepository` | `settings.persistence` | `JpaRepository<ApplicationSetting, String>` (the key is the id) |
+| `CacheConfig` / `CacheSettingsProperties` | `config` | `@EnableCaching` + Caffeine cache manager, `tileboard.cache.*` |
 
 ### Schema — created by Hibernate
 
@@ -683,8 +580,7 @@ There are no SQL migrations. `spring.jpa.hibernate.ddl-auto: update` makes Hiber
 
 ```sql
 -- what Hibernate generates (approximately; exact types depend on the dialect)
-CREATE TABLE app_settings
-(
+CREATE TABLE app_settings (
     setting_key VARCHAR(200) NOT NULL PRIMARY KEY,
     value_json  TEXT         NOT NULL,
     updated_at  TIMESTAMP    NOT NULL,
@@ -692,19 +588,14 @@ CREATE TABLE app_settings
 );
 ```
 
-- `update` only **creates** tables and **adds** missing columns; it never drops/renames columns or changes types. Those
-  changes are manual.
-- SQLite cannot add a `NOT NULL` column without a default to an existing table - give new mapped columns a default
-  (`columnDefinition`) or make them nullable.
-- `value_json` is `TEXT` (not JSON-typed) on purpose: the DB never parses it, which is exactly why new settings need no
-  schema change.
-- Databases created earlier by Flyway keep working unchanged: `app_settings` already exists, and the leftover
-  `flyway_schema_history` table is inert (drop it whenever you like: `DROP TABLE flyway_schema_history;`).
+- `update` only **creates** tables and **adds** missing columns; it never drops/renames columns or changes types. Those changes are manual.
+- SQLite cannot add a `NOT NULL` column without a default to an existing table - give new mapped columns a default (`columnDefinition`) or make them nullable.
+- `value_json` is `TEXT` (not JSON-typed) on purpose: the DB never parses it, which is exactly why new settings need no schema change.
+- Databases created earlier by Flyway keep working unchanged: `app_settings` already exists, and the leftover `flyway_schema_history` table is inert (drop it whenever you like: `DROP TABLE flyway_schema_history;`).
 
 ### The Entity
 
 ```java
-
 @Entity
 @Table(name = "app_settings")
 public class ApplicationSetting {
@@ -725,19 +616,18 @@ public class ApplicationSetting {
 
     protected ApplicationSetting() { /* JPA */ }
 
-    public ApplicationSetting(String key, String value, Instant updatedAt) { ...}
+    public ApplicationSetting(String key, String value, Instant updatedAt) { ... }
 }
 ```
 
-`@Version` is the interesting line: settings can be written by two admins (or two requests) at the same time, so JPA
-optimistic locking is what makes a lost update visible instead of silent — and
-`JpaSettingsService` turns that signal into a single retry (below). The `protected` no-arg constructor is JPA's
-requirement; application code uses the 3-arg one.
+`@Version` is the interesting line: settings can be written by two admins (or two requests) at the same
+time, so JPA optimistic locking is what makes a lost update visible instead of silent — and
+`JpaSettingsService` turns that signal into a single retry (below). The `protected` no-arg constructor
+is JPA's requirement; application code uses the 3-arg one.
 
 ### `JpaSettingsService` — The Production Store
 
 ```java
-
 @Service
 @ConditionalOnProperty(prefix = "tileboard.settings", name = "store", havingValue = "jpa", matchIfMissing = true)
 public class JpaSettingsService implements SettingsService {
@@ -751,8 +641,7 @@ public class JpaSettingsService implements SettingsService {
         if (this.cache == null) throw new IllegalStateException("Cache 'settings' is not configured");
     }
 
-    @Override
-    @Transactional(readOnly = true)
+    @Override @Transactional(readOnly = true)
     public <T> Optional<T> get(SettingKey<T> key) {
         Cache.ValueWrapper cached = cache.get(key.id());
         if (cached != null) return (Optional<T>) cached.get();
@@ -762,8 +651,7 @@ public class JpaSettingsService implements SettingsService {
         return loaded;
     }
 
-    @Override
-    @Transactional
+    @Override @Transactional
     public <T> void set(SettingKey<T> key, T value) {
         String json = serialize(key, value);
         try {
@@ -788,49 +676,36 @@ public class JpaSettingsService implements SettingsService {
 
 **Behavior notes (exactly as coded):**
 
-1. **Cache-first reads, cache evicted on write.** Settings are read far more often than written (every connect, every
-   game start), so reads go through Caffeine while every write/clear evicts the key in a `finally` — a failed write can
-   never leave a stale entry.
-2. **Negative caching.** An absent key is cached as `Optional.empty()` for the TTL, so a never-written setting does not
-   hit the DB on every call.
-3. **`isSet` ignores the cache** (`repository.existsById`) and `getOrDefault` is just `get` +
-   `SettingKey.defaultValue()`.
-4. **Retry once on `OptimisticLockingFailureException`,** then evict — the row's `@Version` guards against lost updates
-   without forcing callers to handle a conflict.
-5. **The cache is mandatory.** A `CacheManager` that does not know the `settings` cache fails the bean at startup
-   (`IllegalStateException`), not the first read.
-6. **Serialization failures are explicit:** unknown type / corrupt JSON / incompatible old value →
-   `SettingsPersistenceException("Failed to deserialize setting '...' of type ... - stored value may be corrupt or from an incompatible version")`.
+1. **Cache-first reads, cache evicted on write.** Settings are read far more often than written (every connect, every game start), so reads go through Caffeine while every write/clear evicts the key in a `finally` — a failed write can never leave a stale entry.
+2. **Negative caching.** An absent key is cached as `Optional.empty()` for the TTL, so a never-written setting does not hit the DB on every call.
+3. **`isSet` ignores the cache** (`repository.existsById`) and `getOrDefault` is just `get` + `SettingKey.defaultValue()`.
+4. **Retry once on `OptimisticLockingFailureException`,** then evict — the row's `@Version` guards against lost updates without forcing callers to handle a conflict.
+5. **The cache is mandatory.** A `CacheManager` that does not know the `settings` cache fails the bean at startup (`IllegalStateException`), not the first read.
+6. **Serialization failures are explicit:** unknown type / corrupt JSON / incompatible old value → `SettingsPersistenceException("Failed to deserialize setting '...' of type ... - stored value may be corrupt or from an incompatible version")`.
 
 ### `InMemorySettingsService` — The Dev Default
 
 ```java
-
 @Service
 @ConditionalOnProperty(prefix = "tileboard.settings", name = "store", havingValue = "memory")
 public class InMemorySettingsService implements SettingsService {
     private final Map<String, Object> values = new ConcurrentHashMap<>();
 
-    public <T> Optional<T> get(SettingKey<T> key) {
-        return Optional.ofNullable((T) values.get(key.id()));
-    }
-
-    public <T> void set(SettingKey<T> key, T value) {
-        values.put(key.id(), value);
-    }
+    public <T> Optional<T> get(SettingKey<T> key) { return Optional.ofNullable((T) values.get(key.id())); }
+    public <T> void set(SettingKey<T> key, T value) { values.put(key.id(), value); }
     ...
 }
 ```
 
-`ConcurrentHashMap` is all the thread-safety this store needs, and it requires no database at all — which is why
-`application.yml` ships with `store: memory`. Note the trade-off documented in the file's own Javadoc: values do **not**
-survive a restart, while `JpaSettingsService` (the production default, `matchIfMissing = true`) does. With any other
-value (e.g. a typo) *neither* bean matches and the context fails to start — a deliberate fail-fast.
+`ConcurrentHashMap` is all the thread-safety this store needs, and it requires no database at all —
+which is why `application.yml` ships with `store: memory`. Note the trade-off documented in the
+file's own Javadoc: values do **not** survive a restart, while `JpaSettingsService` (the production
+default, `matchIfMissing = true`) does. With any other value (e.g. a typo) *neither* bean matches and
+the context fails to start — a deliberate fail-fast.
 
 ### The Dedicated Settings `ObjectMapper`
 
 ```java
-
 @Configuration
 public class SettingsSerializationConfig {
     @Bean
@@ -843,15 +718,14 @@ public class SettingsSerializationConfig {
 }
 ```
 
-Settings are a persistence concern, not an API concern, so they get their own mapper instead of the web layer's — a
-future custom (de)serializer for an API DTO can never silently change how values are stored.
-`FAIL_ON_UNKNOWN_PROPERTIES=false` is what makes an *additive* change to a stored settings type (a new field) load
-cleanly from older JSON.
+Settings are a persistence concern, not an API concern, so they get their own mapper instead of the
+web layer's — a future custom (de)serializer for an API DTO can never silently change how values are
+stored. `FAIL_ON_UNKNOWN_PROPERTIES=false` is what makes an *additive* change to a stored settings
+type (a new field) load cleanly from older JSON.
 
 ### Cache Configuration
 
 ```java
-
 @Configuration
 @EnableCaching
 public class CacheConfig {
@@ -877,16 +751,17 @@ tileboard:
 ```
 
 `CacheSettingsProperties` is a record whose compact constructor clamps non-positive values back to
-`300` / `100`, so a `0` in YAML degrades to the default rather than to an eagerly-expiring (or unbounded) cache.
+`300` / `100`, so a `0` in YAML degrades to the default rather than to an eagerly-expiring (or
+unbounded) cache.
 
 ### What Is Persisted (and What Deliberately Is Not)
 
-| State                                       | Where it lives                                                                               | Survives restart?                                                      |
-|---------------------------------------------|----------------------------------------------------------------------------------------------|------------------------------------------------------------------------|
-| Device geometry                             | `SettingKeys.DEVICE_CONFIGURATION` → `app_settings` (`{"width":3,"height":3}`)               | ✅ with `store=jpa`, ❌ with `memory`                                  |
-| Serial port assignment                      | `SettingKeys.SERIAL_PORT_ASSIGNMENT` → `app_settings` (`{"inPort":"COM3","outPort":"COM3"}`) | ✅ with `store=jpa`, ❌ with `memory`                                  |
-| Open OS handles, `TileGatewayClient`        | `openTransports` `EnumMap` + `client` field                                                  | ❌ by design — a live serial link cannot be reattached after a restart |
-| Game sessions, board state, SSE subscribers | engine (`GameEngineManager`, `GameSessionImpl`)                                              | ❌ by design                                                           |
+| State | Where it lives | Survives restart? |
+|-----|------|------|
+| Device geometry | `SettingKeys.DEVICE_CONFIGURATION` → `app_settings` (`{"width":3,"height":3}`) | ✅ with `store=jpa`, ❌ with `memory` |
+| Serial port assignment | `SettingKeys.SERIAL_PORT_ASSIGNMENT` → `app_settings` (`{"inPort":"COM3","outPort":"COM3"}`) | ✅ with `store=jpa`, ❌ with `memory` |
+| Open OS handles, `TileGatewayClient` | `openTransports` `EnumMap` + `client` field | ❌ by design — a live serial link cannot be reattached after a restart |
+| Game sessions, board state, SSE subscribers | engine (`GameEngineManager`, `GameSessionImpl`) | ❌ by design |
 
 ### Verifying Persistence End-to-End
 
@@ -902,16 +777,16 @@ curl http://localhost:8080/api/v1/device        # → 200 with {"width":3,"heigh
 curl http://localhost:8080/api/v1/ports/status  # → 200 data{state:"DISCONNECTED", outPort:"COM3"}
 ```
 
-The data files (`./data/tileboard.mv.db` in dev, `./data/app.db` in prod) are created on demand; the H2 file is listed
-in `.gitignore`. `TileboardApplicationTests` (`@SpringBootTest`) boots this whole stack, so a broken entity mapping or a
-datasource problem fails `mvn test` immediately, without any external database.
+The data files (`./data/tileboard.mv.db` in dev, `./data/app.db` in prod) are created on demand; the
+H2 file is listed in `.gitignore`. `TileboardApplicationTests` (`@SpringBootTest`) boots this whole
+stack, so a broken entity mapping or a datasource problem fails `mvn test` immediately, without any
+external database.
 
 ---
 
 ## Controllers
 
-All controllers return the `ApiResponse` envelope — **except** `GET /api/v1/games/sessions/{sessionId}`, which returns a
-raw `GameSessionResponse`.
+All controllers return the `ApiResponse` envelope — **except** `GET /api/v1/games/sessions/{sessionId}`, which returns a raw `GameSessionResponse`.
 
 ### DeviceController — `/api/v1/device`
 
@@ -925,8 +800,7 @@ Body: { "width": 3, "height": 3 }   (@Min(1) @Max(255) on both — 400 on violat
 → 200 {status:SUCCESS, message:"Device successfully configured.", data:{width, height, tileCount}}
 ```
 
-Note the path is singular `/api/v1/device` (not `/devices/...`), with the operation on the bare resource (no`/configure`
-suffix).
+Note the path is singular `/api/v1/device` (not `/devices/...`), with the operation on the bare resource (no `/configure` suffix).
 
 ### SerialPortController — `/api/v1/ports` (produces JSON)
 
@@ -950,8 +824,7 @@ POST /api/v1/ports/disconnect
 → 200 (same ConnectionStatusResponse body as /status; idempotent)
 ```
 
-There is **no** `GET /ports/assignment` endpoint and no `POST /ports/assign` with a `role` body field — assignment is
-`POST /ports/{role}/assign` with `{portName}` only. `disconnect` returns `200` with the status body (not `204`).
+There is **no** `GET /ports/assignment` endpoint and no `POST /ports/assign` with a `role` body field — assignment is `POST /ports/{role}/assign` with `{portName}` only. `disconnect` returns `200` with the status body (not `204`).
 
 ### GameController — `/api/v1/games` (produces JSON)
 
@@ -981,10 +854,8 @@ POST /api/v1/games/sessions/{sessionId}/stop
 → 409 when the session doesn't exist; 409 engine.not_ready when disconnected
 ```
 
-- `PlayerRequest(name, role)`: `name` `@NotBlank`, `role` `@NotNull PlayerRole`. Valid roles:
-  `SOLO, PLAYER_ONE, PLAYER_TWO, TEAM_A, TEAM_B, SPECTATOR`.
-- `GameSessionResponse` carries only `(sessionId, gameId, status)` — scores/players are observed via SSE
-  `SessionSnapshot`, not via this DTO.
+- `PlayerRequest(name, role)`: `name` `@NotBlank`, `role` `@NotNull PlayerRole`. Valid roles: `SOLO, PLAYER_ONE, PLAYER_TWO, TEAM_A, TEAM_B, SPECTATOR`.
+- `GameSessionResponse` carries only `(sessionId, gameId, status)` — scores/players are observed via SSE `SessionSnapshot`, not via this DTO.
 
 ### StreamController — `/api/v1/stream` (SSE)
 
@@ -993,8 +864,7 @@ GET /api/v1/stream/board                 (Accept: text/event-stream) → all ses
 GET /api/v1/stream/board/{sessionId}     (Accept: text/event-stream) → one session's events
 ```
 
-Both delegate to `SseGameEventPublisher` (`global()` / `forSession(sessionId)`). There is **no** `/api/v1/games/events`
-endpoint. See the SSE section for event names and payload shape.
+Both delegate to `SseGameEventPublisher` (`global()` / `forSession(sessionId)`). There is **no** `/api/v1/games/events` endpoint. See the SSE section for event names and payload shape.
 
 ---
 
@@ -1003,60 +873,45 @@ endpoint. See the SSE section for event names and payload shape.
 Two SSE mechanisms exist in the codebase:
 
 **1. Game events (exposed via `StreamController`, powered by the engine).**
-
 - Endpoints: `GET /api/v1/stream/board`, `GET /api/v1/stream/board/{sessionId}`.
-- Infinite-timeout `SseEmitter`, per-client bus subscription (capacity 32, `DROP_OLDEST`), `: ping` heartbeat comment
-  every 15 s.
-- Each event: SSE event *name* = `SseGameEventType`, `data` = JSON
-  `SseGameEvent(sessionId, gameId, type, data: SessionSnapshot, timestamp)`:
+- Infinite-timeout `SseEmitter`, per-client bus subscription (capacity 32, `DROP_OLDEST`), `: ping` heartbeat comment every 15 s.
+- Each event: SSE event *name* = `SseGameEventType`, `data` = JSON `SseGameEvent(sessionId, gameId, type, data: SessionSnapshot, timestamp)`:
 
-| SSE event name          | Triggered by (internal type)                                  |
-|-------------------------|---------------------------------------------------------------|
-| `SESSION_LIFECYCLE`     | `SESSION_STARTED`, `SESSION_FINISHED`, `SESSION_STOPPED`      |
-| `BOARD_UPDATE`          | `BOARD_UPDATED` (every `publishBoard`/`setTile`/`fillBoard`)  |
-| `TICK`                  | `TICK` (every `tickInterval` while `RUNNING`)                 |
-| `SCORE_UPDATE`          | `SCORE_CHANGED` (reserved — not emitted by any feature today) |
-| `GAME_STATE` / `CUSTOM` | fallback / custom                                             |
+| SSE event name | Triggered by (internal type) |
+|------|------|
+| `SESSION_LIFECYCLE` | `SESSION_STARTED`, `SESSION_FINISHED`, `SESSION_STOPPED` |
+| `BOARD_UPDATE` | `BOARD_UPDATED` (every `publishBoard`/`setTile`/`fillBoard`) |
+| `TICK` | `TICK` (every `tickInterval` while `RUNNING`) |
+| `SCORE_UPDATE` | `SCORE_CHANGED` (reserved — not emitted by any feature today) |
+| `GAME_STATE` / `CUSTOM` | fallback / custom |
 
 ```javascript
 const es = new EventSource('/api/v1/stream/board');
 es.addEventListener('BOARD_UPDATE', e => console.log(JSON.parse(e.data)));       // SseGameEvent JSON
-es.addEventListener('SESSION_LIFECYCLE', e => {
-    console.log(JSON.parse(e.data));
-    es.close();
-});
+es.addEventListener('SESSION_LIFECYCLE', e => { console.log(JSON.parse(e.data)); es.close(); });
 ```
 
 **2. Raw board frames (`SseBoardStateBroadcaster`, currently unexposed).**
-
-- `subscribe()` returns a `Long.MAX_VALUE`-timeout emitter; `broadcast(byte[])` sends SSE event `board-frame` with an
-  `int[]` of unsigned tile wire codes.
-- It already receives every actually-transmitted frame via `BoardFrameBroadcaster`, but no controller injects it yet —
-  the seam is ready for a future board-mirror endpoint.
+- `subscribe()` returns a `Long.MAX_VALUE`-timeout emitter; `broadcast(byte[])` sends SSE event `board-frame` with an `int[]` of unsigned tile wire codes.
+- It already receives every actually-transmitted frame via `BoardFrameBroadcaster`, but no controller injects it yet — the seam is ready for a future board-mirror endpoint.
 
 ---
 
 ## GameEngineManager
 
-Lives in `tileboard-game-engine` (`com.tileboard.engine.spring`), but its behavior is what makes the app's game
-endpoints work:
+Lives in `tileboard-game-engine` (`com.tileboard.engine.spring`), but its behavior is what makes the app's game endpoints work:
 
-- `volatile GameEngineImpl engine`, `synchronized` `@EventListener` methods for `GatewayConnectedEvent`/
-  `GatewayDisconnectedEvent` (event types also live in the engine module, so app and engine share one definition).
-- `current(): Optional<GameEngine>`, `require(): GameEngine` (throws `EngineNotReadyException` → HTTP 409 when no
-  gateway is connected).
-- `shutdownCurrentEngine()` is null-safe/idempotent and nulls `engine` **before** the slow `close()`, so no thread ever
-  observes a half-closed engine.
+- `volatile GameEngineImpl engine`, `synchronized` `@EventListener` methods for `GatewayConnectedEvent`/`GatewayDisconnectedEvent` (event types also live in the engine module, so app and engine share one definition).
+- `current(): Optional<GameEngine>`, `require(): GameEngine` (throws `EngineNotReadyException` → HTTP 409 when no gateway is connected).
+- `shutdownCurrentEngine()` is null-safe/idempotent and nulls `engine` **before** the slow `close()`, so no thread ever observes a half-closed engine.
 - `@PreDestroy shutdownOnContextClose()` releases everything when Spring stops.
-- Engine tuning comes from `TileboardEngineProperties` (`tileboard.engine.*` in `application.yml`): tick 100 ms, TTL 30
-  m, reassembly 500 ms, bus capacity 256, touch-history 2000.
+- Engine tuning comes from `TileboardEngineProperties` (`tileboard.engine.*` in `application.yml`): tick 100 ms, TTL 30 m, reassembly 500 ms, bus capacity 256, touch-history 2000.
 
 ---
 
 ## Error Handling
 
 ```java
-
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler {
@@ -1067,9 +922,7 @@ public class GlobalExceptionHandler {
         return ApiResponses.error(localized, ex.getMessage(), status);
     }
 
-    @ExceptionHandler(ApiException.class) →
-
-    respond(ex.status(),ex)               // status pinned on the exception
+    @ExceptionHandler(ApiException.class) → respond(ex.status(), ex)               // status pinned on the exception
     @ExceptionHandler(EngineNotReadyException.class) → 409
     @ExceptionHandler(GameNotFoundException.class) → 404
     @ExceptionHandler(GameSessionException.class) → 409
@@ -1079,40 +932,25 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentTypeMismatchException.class) → 400            // e.g. bad {role} path variable
     @ExceptionHandler(HttpMessageNotReadableException.class) → 400                // empty/malformed JSON
     @ExceptionHandler(IllegalArgumentException.class) → 400
-    @ExceptionHandler(AsyncRequestTimeoutException.class) →
-
-    void(debug log)       // SSE timeouts
-
-    @ExceptionHandler(AsyncRequestNotUsableException.class) →
-
-    void(debug log)     // SSE client gone
-
-    @ExceptionHandler(Exception.class) → 500(null
-    when response
-    already committed, e.g.mid-SSE)
+    @ExceptionHandler(AsyncRequestTimeoutException.class) → void (debug log)       // SSE timeouts
+    @ExceptionHandler(AsyncRequestNotUsableException.class) → void (debug log)     // SSE client gone
+    @ExceptionHandler(Exception.class) → 500 (null when response already committed, e.g. mid-SSE)
 }
 ```
 
 Actual status mapping for the app's own exceptions (each pins its status in its constructor):
 
-| Exception                      | Status          | errorCode                                                                                                     |
-|--------------------------------|-----------------|---------------------------------------------------------------------------------------------------------------|
-| `DeviceNotConfiguredException` | 409 CONFLICT    | `device.not_configured`                                                                                       |
-| `GatewayNotConnectedException` | 409 CONFLICT    | `gateway.not_connected` (defined but never thrown today — readiness is signaled by `EngineNotReadyException`) |
-| `NoActiveGameException`        | 409 CONFLICT    | `game.no_active` (note: 409, not 404)                                                                         |
-| `PortsNotAssignedException`    | 409 CONFLICT    | `ports.not_assigned`                                                                                          |
-| `SerialPortOperationException` | 502 BAD_GATEWAY | passed through, e.g. `serial.port_operation_failed`                                                           |
+| Exception | Status | errorCode |
+|------|------|------|
+| `DeviceNotConfiguredException` | 409 CONFLICT | `device.not_configured` |
+| `GatewayNotConnectedException` | 409 CONFLICT | `gateway.not_connected` (defined but never thrown today — readiness is signaled by `EngineNotReadyException`) |
+| `NoActiveGameException` | 409 CONFLICT | `game.no_active` (note: 409, not 404) |
+| `PortsNotAssignedException` | 409 CONFLICT | `ports.not_assigned` |
+| `SerialPortOperationException` | 502 BAD_GATEWAY | passed through, e.g. `serial.port_operation_failed` |
 
-Persistence failures are **not** translated: `SettingsPersistenceException` (and a missing `settings` cache, which
-throws `IllegalStateException` during bean creation) has no dedicated handler, so it lands in the catch-all → 500 with
-`server.internal_error` as the localized message and the raw (English) text in `debugMessage`. A corrupt/incompatible
-stored value therefore looks like a server error, which is exactly what it is — fix the row or the type, then restart.
+Persistence failures are **not** translated: `SettingsPersistenceException` (and a missing `settings` cache, which throws `IllegalStateException` during bean creation) has no dedicated handler, so it lands in the catch-all → 500 with `server.internal_error` as the localized message and the raw (English) text in `debugMessage`. A corrupt/incompatible stored value therefore looks like a server error, which is exactly what it is — fix the row or the type, then restart.
 
-**i18n:** every error body is
-`{status: ERROR, message: <Persian>, data: null, extra: null, debugMessage: <raw English>}`. `message` is resolved from
-`messages_fa.properties` (fallback `messages.properties`, identical content) via
-`Messages.resolve(errorCode, args, fallback)` — a missing key degrades to the raw English message instead of a 500.
-Bean-validation messages use `{key}` placeholders resolved against the same catalog.
+**i18n:** every error body is `{status: ERROR, message: <Persian>, data: null, extra: null, debugMessage: <raw English>}`. `message` is resolved from `messages_fa.properties` (fallback `messages.properties`, identical content) via `Messages.resolve(errorCode, args, fallback)` — a missing key degrades to the raw English message instead of a 500. Bean-validation messages use `{key}` placeholders resolved against the same catalog.
 
 ---
 
@@ -1122,8 +960,7 @@ Bean-validation messages use `{key}` placeholders resolved against the same cata
 
 - Java 17+, Maven 3.8+
 - Tileboard board connected via USB (or a Mock `SerialTransport` for hardware-less tests — unit tests need no hardware)
-- No database server: the app creates its own file DB (H2 `./data/tileboard` in dev, SQLite `./data/app.db` in prod) via
-  Hibernate on first start
+- No database server: the app creates its own file DB (H2 `./data/tileboard` in dev, SQLite `./data/app.db` in prod) via Hibernate on first start
 
 ### Step 1: Build
 
@@ -1145,14 +982,11 @@ java -jar target/tileboard-app-1.0.0.jar
 java -jar target/tileboard-app-1.0.0.jar --spring.profiles.active=prod
 ```
 
-App runs on `http://localhost:8080`. On startup Hibernate creates the `app_settings` table from the entity; the H2 file
-appears at `./data/tileboard.mv.db`.
+App runs on `http://localhost:8080`. On startup Hibernate creates the `app_settings` table from the entity; the H2 file appears at `./data/tileboard.mv.db`.
 
 - Swagger UI: springdoc default (starter `2.6.0` is on the classpath)
 - Actuator: `http://localhost:8080/actuator/health` (only `health,info` are exposed)
-- Persistence: the base profile uses `tileboard.settings.store: memory` (nothing is written to the DB); start with
-  `--tileboard.settings.store=jpa` (or `TILEBOARD_SETTINGS_STORE=jpa`) to keep device geometry and port assignment
-  across restarts — see [Persistence, Settings and Cache](#persistence-settings-and-cache)
+- Persistence: the base profile uses `tileboard.settings.store: memory` (nothing is written to the DB); start with `--tileboard.settings.store=jpa` (or `TILEBOARD_SETTINGS_STORE=jpa`) to keep device geometry and port assignment across restarts — see [Persistence, Settings and Cache](#persistence-settings-and-cache)
 
 ### Step 3: Configure Device
 
@@ -1163,24 +997,18 @@ curl -X POST http://localhost:8080/api/v1/device \
 ```
 
 Response:
-
 ```json
 {
   "status": "SUCCESS",
   "message": "Device successfully configured.",
-  "data": {
-    "width": 3,
-    "height": 3,
-    "tileCount": 9
-  },
+  "data": { "width": 3, "height": 3, "tileCount": 9 },
   "extra": null,
   "debugMessage": null
 }
 ```
 
-Current configuration is readable at any time via `GET /api/v1/device` (409 before the first configure). The write goes
-through `SettingsService` (`{"width":3,"height":3}` in `app_settings`), so with `store=jpa` this step is needed only
-once per database — and `GameBeansConfig` sizes the sample game from the stored geometry at the next boot.
+Current configuration is readable at any time via `GET /api/v1/device` (409 before the first configure).
+The write goes through `SettingsService` (`{"width":3,"height":3}` in `app_settings`), so with `store=jpa` this step is needed only once per database — and `GameBeansConfig` sizes the sample game from the stored geometry at the next boot.
 
 ### Step 4: List Ports
 
@@ -1189,28 +1017,20 @@ curl http://localhost:8080/api/v1/ports
 ```
 
 Response:
-
 ```json
 {
   "status": "SUCCESS",
   "message": "2 ports are available",
   "data": [
-    {
-      "systemName": "COM3",
-      "description": "USB Serial Port"
-    },
-    {
-      "systemName": "COM4",
-      "description": "USB Serial Port"
-    }
+    { "systemName": "COM3", "description": "USB Serial Port" },
+    { "systemName": "COM4", "description": "USB Serial Port" }
   ]
 }
 ```
 
 ### Step 5: Assign Ports
 
-Role is a **path variable** (`IN`/`OUT`), the body carries only `portName`. For a single full-duplex port (common case),
-assign the same port to both roles:
+Role is a **path variable** (`IN`/`OUT`), the body carries only `portName`. For a single full-duplex port (common case), assign the same port to both roles:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/ports/OUT/assign \
@@ -1236,20 +1056,14 @@ curl -X POST http://localhost:8080/api/v1/ports/connect
 ```
 
 Response:
-
 ```json
 {
   "status": "SUCCESS",
-  "data": {
-    "state": "CONNECTED",
-    "inPort": "COM3",
-    "outPort": "COM3"
-  }
+  "data": { "state": "CONNECTED", "inPort": "COM3", "outPort": "COM3" }
 }
 ```
 
 Logs should show (for a 3×3 device):
-
 ```
 Enabling id handshake for a 3x3 board (minimumSequence=3)
 Tile board gateway connected (input=COM3, output=COM3)
@@ -1257,8 +1071,7 @@ sent INTRODUCTION to hardware (3X3 board)
 Game engine bound to the newly connected tile gateway (3x3)
 ```
 
-(`minimumSequence` is `max(2, min(3,3)) = 3` in auto mode. Connection state is also readable any time via
-`GET /api/v1/ports/status`.)
+(`minimumSequence` is `max(2, min(3,3)) = 3` in auto mode. Connection state is also readable any time via `GET /api/v1/ports/status`.)
 
 ### Step 7: List Games
 
@@ -1267,7 +1080,6 @@ curl http://localhost:8080/api/v1/games
 ```
 
 Response:
-
 ```json
 {
   "status": "SUCCESS",
@@ -1286,8 +1098,7 @@ Response:
 }
 ```
 
-(The `requiredWidth/Height` mirror the device configuration active at startup, defaulting to 3×3 — see
-`GameBeansConfig`.)
+(The `requiredWidth/Height` mirror the device configuration active at startup, defaulting to 3×3 — see `GameBeansConfig`.)
 
 ### Step 8: Start Game
 
@@ -1303,20 +1114,14 @@ curl -X POST http://localhost:8080/api/v1/games/sessions \
 ```
 
 Response:
-
 ```json
 {
   "status": "SUCCESS",
-  "data": {
-    "sessionId": "a1b2c3d4-...",
-    "gameId": "sequential-touch",
-    "status": "RUNNING"
-  }
+  "data": { "sessionId": "a1b2c3d4-...", "gameId": "sequential-touch", "status": "RUNNING" }
 }
 ```
 
 At this moment on the board:
-
 1. Standby animation (BREATHING) — 2 seconds
 2. Countdown animation (3→2→1 + green blink) — ~3.9 s at 1000 ms/digit
 3. First tile lights up (e.g., (0,0) red)
@@ -1336,12 +1141,12 @@ Or with JS in the browser:
 ```javascript
 const eventSource = new EventSource('/api/v1/stream/board');
 eventSource.addEventListener('BOARD_UPDATE', e => {
-    const sseEvent = JSON.parse(e.data); // {sessionId, gameId, type, data: SessionSnapshot, timestamp}
-    console.log('Board updated:', sseEvent.data.board);
+  const sseEvent = JSON.parse(e.data); // {sessionId, gameId, type, data: SessionSnapshot, timestamp}
+  console.log('Board updated:', sseEvent.data.board);
 });
 eventSource.addEventListener('SESSION_LIFECYCLE', e => {
-    console.log('Lifecycle:', JSON.parse(e.data));
-    eventSource.close();
+  console.log('Lifecycle:', JSON.parse(e.data));
+  eventSource.close();
 });
 ```
 
@@ -1369,14 +1174,11 @@ curl -X POST http://localhost:8080/api/v1/ports/disconnect   # 200 + status body
 
 ## Comprehensive Game Tutorial
 
-This section explains step-by-step how **SequentialTouchGame** (default 3×3, device-sized via `GameBeansConfig`) is
-built, including all animations. It quotes the actual code in `src/main/java/com/tileboard/app/game/`.
+This section explains step-by-step how **SequentialTouchGame** (default 3×3, device-sized via `GameBeansConfig`) is built, including all animations. It quotes the actual code in `src/main/java/com/tileboard/app/game/`.
 
 ### Game Scenario
 
-> Each tile lights up sequentially with a color; as soon as it is touched, the player gets points and the next tile's
-> turn comes, until all tiles are lit and touched, then the game ends. Also use lose, win, stand-by animations in the
-> game, and before game start use a countDown animation.
+> Each tile lights up sequentially with a color; as soon as it is touched, the player gets points and the next tile's turn comes, until all tiles are lit and touched, then the game ends. Also use lose, win, stand-by animations in the game, and before game start use a countDown animation.
 
 ### Step 1: Create Game Class
 
@@ -1390,97 +1192,92 @@ public class SequentialTouchGame implements Game {
     private static final String KEY_TOTAL = "sequential.total";
 
     private static final TileColor[] PALETTE = {
-            TileColor.RED, TileColor.GREEN, TileColor.BLUE,
-            TileColor.YELLOW, TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.WHITE
+        TileColor.RED, TileColor.GREEN, TileColor.BLUE,
+        TileColor.YELLOW, TileColor.PINK, TileColor.LIGHT_BLUE, TileColor.WHITE
     };
 
     private final GameDescriptor descriptor;   // the ONLY field — the game is stateless otherwise
 
     public SequentialTouchGame() {
         this.descriptor = GameDescriptor.builder("sequential-touch", "Sequential Touch Challenge")
-                .category("TUTORIAL")
-                .description("Tiles light up sequentially; touch it to score and advance. Includes countdown, standby, win and lose animations.")
-                .boardSize(3, 3)   // default 3x3
-                .players(1, 1)
-                .build();
+            .category("TUTORIAL")
+            .description("Tiles light up sequentially; touch it to score and advance. Includes countdown, standby, win and lose animations.")
+            .boardSize(3, 3)   // default 3x3
+            .players(1, 1)
+            .build();
     }
 
     public SequentialTouchGame(int width, int height) {
         this.descriptor = GameDescriptor.builder("sequential-touch", "Sequential Touch Challenge")
-                .category("TUTORIAL")
-                .description("Tiles light up sequentially; touch it to score and advance to next tile.")
-                .boardSize(width, height)
-                .players(1, 1)
-                .build();
+            .category("TUTORIAL")
+            .description("Tiles light up sequentially; touch it to score and advance to next tile.")
+            .boardSize(width, height)
+            .players(1, 1)
+            .build();
     }
 
-    @Override
-    public GameDescriptor descriptor() {
-        return descriptor;
-    }
+    @Override public GameDescriptor descriptor() { return descriptor; }
 ```
 
 ### Step 2: Implement onStart - Including standby and countdown
 
 ```java
+    @Override
+    public void onStart(GameContext ctx) {
+        ctx.fillBoard(TileColor.OFF);
+        ctx.scores().resetAll();
+        ctx.state().clear();
 
-@Override
-public void onStart(GameContext ctx) {
-    ctx.fillBoard(TileColor.OFF);
-    ctx.scores().resetAll();
-    ctx.state().clear();
-
-    // 1. Standby animation: BREATHING for 2 seconds (infinite until cancelled)
-    try {
-        ctx.animations().playStandbyAnimation(AnimationSystem.StandbyAnimationType.BREATHING)
+        // 1. Standby animation: BREATHING for 2 seconds (infinite until cancelled)
+        try {
+            ctx.animations().playStandbyAnimation(AnimationSystem.StandbyAnimationType.BREATHING)
                 .get(2, TimeUnit.SECONDS);
-    } catch (Exception e) {
-        ctx.animations().cancelCurrent();
-    }
+        } catch (Exception e) {
+            ctx.animations().cancelCurrent();
+        }
 
-    // 2. Countdown animation: 3 -> 2 -> 1 -> green blink (1000 ms per digit)
-    try {
-        ctx.animations().playCountdown(1000).join();
-    } catch (Exception e) {
-        log.warn("[{}] Countdown interrupted", ctx.sessionId(), e);
-    }
+        // 2. Countdown animation: 3 -> 2 -> 1 -> green blink (1000 ms per digit)
+        try {
+            ctx.animations().playCountdown(1000).join();
+        } catch (Exception e) {
+            log.warn("[{}] Countdown interrupted", ctx.sessionId(), e);
+        }
 
-    // 3. List all positions row-major
-    List<Position> allPositions = new ArrayList<>();
-    for (int r = 0; r < ctx.boardHeight(); r++)
-        for (int c = 0; c < ctx.boardWidth(); c++)
-            allPositions.add(new Position(r, c));
+        // 3. List all positions row-major
+        List<Position> allPositions = new ArrayList<>();
+        for (int r = 0; r < ctx.boardHeight(); r++)
+            for (int c = 0; c < ctx.boardWidth(); c++)
+                allPositions.add(new Position(r, c));
 
-    ctx.state().put(KEY_POSITIONS, allPositions);
-    ctx.state().put(KEY_INDEX, 0);
-    ctx.state().put(KEY_TOTAL, allPositions.size());
+        ctx.state().put(KEY_POSITIONS, allPositions);
+        ctx.state().put(KEY_INDEX, 0);
+        ctx.state().put(KEY_TOTAL, allPositions.size());
 
-    // 4. Global timer: 90 seconds, then lose (checked every tick by runTick -> checkExpiry)
-    ctx.timer().startCountdown(Duration.ofSeconds(90), () -> {
-        ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.DESCENDING_CURTAIN)
+        // 4. Global timer: 90 seconds, then lose (checked every tick by runTick -> checkExpiry)
+        ctx.timer().startCountdown(Duration.ofSeconds(90), () -> {
+            ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.DESCENDING_CURTAIN)
                 .thenRun(() -> ctx.loseSession());
-    });
+        });
 
-    // 5. Light first tile
-    lightCurrentTile(ctx);
-}
+        // 5. Light first tile
+        lightCurrentTile(ctx);
+    }
 
-private void lightCurrentTile(GameContext ctx) {
-    @SuppressWarnings("unchecked")
-    List<Position> positions = ctx.state().get(KEY_POSITIONS, List.class).orElse(List.of());
-    int index = ctx.state().getOrDefault(KEY_INDEX, Integer.class, 0);
-    if (index < 0 || index >= positions.size()) return;
+    private void lightCurrentTile(GameContext ctx) {
+        @SuppressWarnings("unchecked")
+        List<Position> positions = ctx.state().get(KEY_POSITIONS, List.class).orElse(List.of());
+        int index = ctx.state().getOrDefault(KEY_INDEX, Integer.class, 0);
+        if (index < 0 || index >= positions.size()) return;
 
-    Position pos = positions.get(index);
-    TileColor color = PALETTE[index % PALETTE.length];
-    ctx.setTile(pos.row(), pos.col(), color);   // BoardChannel: stateLock + gatewayWriteLock
-}
+        Position pos = positions.get(index);
+        TileColor color = PALETTE[index % PALETTE.length];
+        ctx.setTile(pos.row(), pos.col(), color);   // BoardChannel: stateLock + gatewayWriteLock
+    }
 ```
 
 **Concurrency notes in onStart:**
 
-- `onStart` runs on the thread calling `startGame` (usually the HTTP request thread), so the blocking `get(2, SECONDS)`
-  and `join()` do not stall the tick thread.
+- `onStart` runs on the thread calling `startGame` (usually the HTTP request thread), so the blocking `get(2, SECONDS)` and `join()` do not stall the tick thread.
 - `ctx.state()` is `GameState` (all methods `synchronized`) → thread-safe.
 - `ctx.animations()` runs a single animation at a time with generation-based cancellation.
 - `ctx.timer()` is `GameTimer` (`volatile` + `AtomicReference`/`AtomicBoolean`, exactly-once expiry).
@@ -1488,85 +1285,83 @@ private void lightCurrentTile(GameContext ctx) {
 ### Step 3: Implement onTileEvent - Core Game Logic
 
 ```java
+    @Override
+    public void onTileEvent(GameContext ctx, TileEvent event) {
+        // Only called while RUNNING (checked in GameSessionImpl.handleTileEvent),
+        // which already recorded touchHistory + reactionSpeed.
 
-@Override
-public void onTileEvent(GameContext ctx, TileEvent event) {
-    // Only called while RUNNING (checked in GameSessionImpl.handleTileEvent),
-    // which already recorded touchHistory + reactionSpeed.
+        @SuppressWarnings("unchecked")
+        List<Position> positions = ctx.state().get(KEY_POSITIONS, List.class).orElse(List.of());
+        int currentIndex = ctx.state().getOrDefault(KEY_INDEX, Integer.class, 0);
+        if (positions.isEmpty() || currentIndex >= positions.size()) return; // already finished
 
-    @SuppressWarnings("unchecked")
-    List<Position> positions = ctx.state().get(KEY_POSITIONS, List.class).orElse(List.of());
-    int currentIndex = ctx.state().getOrDefault(KEY_INDEX, Integer.class, 0);
-    if (positions.isEmpty() || currentIndex >= positions.size()) return; // already finished
+        Position expected = positions.get(currentIndex);
+        Position touched = null;
+        if (event.type() == TileEventType.TOUCH || event.type() == TileEventType.HOLD) {
+            touched = event.position();   // RELEASE events are ignored (touched stays null)
+        }
 
-    Position expected = positions.get(currentIndex);
-    Position touched = null;
-    if (event.type() == TileEventType.TOUCH || event.type() == TileEventType.HOLD) {
-        touched = event.position();   // RELEASE events are ignored (touched stays null)
+        if (Objects.nonNull(touched) && touched.equals(expected)) {
+            handleCorrectTouch(ctx, currentIndex, positions);
+        } else if (Objects.nonNull(touched)) {
+            handleWrongTouch(ctx);
+        }
     }
 
-    if (Objects.nonNull(touched) && touched.equals(expected)) {
-        handleCorrectTouch(ctx, currentIndex, positions);
-    } else if (Objects.nonNull(touched)) {
-        handleWrongTouch(ctx);
+    private void handleCorrectTouch(GameContext ctx, int currentIndex, List<Position> positions) {
+        String playerId = ctx.players().get(0).id();
+        int newScore = ctx.scores().add(playerId, 10);   // ConcurrentHashMap + AtomicInteger
+
+        Position justTouched = positions.get(currentIndex);
+        ctx.setTile(justTouched.row(), justTouched.col(), TileColor.OFF);
+
+        int nextIndex = currentIndex + 1;
+        ctx.state().put(KEY_INDEX, nextIndex);
+
+        if (nextIndex >= positions.size()) handleWin(ctx);
+        else lightCurrentTile(ctx);
     }
-}
 
-private void handleCorrectTouch(GameContext ctx, int currentIndex, List<Position> positions) {
-    String playerId = ctx.players().get(0).id();
-    int newScore = ctx.scores().add(playerId, 10);   // ConcurrentHashMap + AtomicInteger
-
-    Position justTouched = positions.get(currentIndex);
-    ctx.setTile(justTouched.row(), justTouched.col(), TileColor.OFF);
-
-    int nextIndex = currentIndex + 1;
-    ctx.state().put(KEY_INDEX, nextIndex);
-
-    if (nextIndex >= positions.size()) handleWin(ctx);
-    else lightCurrentTile(ctx);
-}
-
-private void handleWrongTouch(GameContext ctx) {
-    ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.FADE_TO_RED)
+    private void handleWrongTouch(GameContext ctx) {
+        ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.FADE_TO_RED)
             .thenRun(() -> lightCurrentTile(ctx));   // thenRun runs on the animation thread; setTile is thread-safe
-}
+    }
 
-private void handleWin(GameContext ctx) {
-    ctx.timer().stop();
-    ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.RADIAL_BURST)
+    private void handleWin(GameContext ctx) {
+        ctx.timer().stop();
+        ctx.animations().playWinAnimation(AnimationSystem.WinAnimationType.RADIAL_BURST)
             .thenRun(() -> ctx.winSession(ctx.players()));  // finishSession CAS runs exactly once
-}
+    }
 ```
 
 ### Step 4: Implement onStop and onError
 
 ```java
-
-@Override
-public void onStop(GameContext ctx, GameResult result) {
-    // GameResult fields: sessionId, gameId, finalStatus, winners, scoreByPlayerId, duration, finishedAt
-    log.info("[{}] SequentialTouchGame onStop - status={}, scores={}",
+    @Override
+    public void onStop(GameContext ctx, GameResult result) {
+        // GameResult fields: sessionId, gameId, finalStatus, winners, scoreByPlayerId, duration, finishedAt
+        log.info("[{}] SequentialTouchGame onStop - status={}, scores={}",
             ctx.sessionId(), result.finalStatus(), result.scoreByPlayerId().get(0));
-    try {
-        ctx.fillBoard(TileColor.OFF);
-    } catch (Exception e) {
-        log.warn("[{}] Could not clear board on stop (gateway may be disconnected)", ctx.sessionId());
+        try {
+            ctx.fillBoard(TileColor.OFF);
+        } catch (Exception e) {
+            log.warn("[{}] Could not clear board on stop (gateway may be disconnected)", ctx.sessionId());
+        }
+        ctx.animations().cancelCurrent();
     }
-    ctx.animations().cancelCurrent();
-}
 
-@Override
-public void onError(GameContext ctx, Throwable error) {
-    log.error("[{}] Game error", ctx.sessionId(), error);
-    try {
-        ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.PULSE_RED)
+    @Override
+    public void onError(GameContext ctx, Throwable error) {
+        log.error("[{}] Game error", ctx.sessionId(), error);
+        try {
+            ctx.animations().playLoseAnimation(AnimationSystem.LoseAnimationType.PULSE_RED)
                 .get(2, TimeUnit.SECONDS);
-    } catch (Exception e) {
-        log.warn("[{}] Lose animation interrupted on error", ctx.sessionId());
-    } finally {
-        ctx.stopSession();
+        } catch (Exception e) {
+            log.warn("[{}] Lose animation interrupted on error", ctx.sessionId());
+        } finally {
+            ctx.stopSession();
+        }
     }
-}
 }
 ```
 
@@ -1575,7 +1370,6 @@ public void onError(GameContext ctx, Throwable error) {
 File: `src/main/java/com/tileboard/app/game/GameBeansConfig.java`
 
 ```java
-
 @Configuration
 public class GameBeansConfig {
 
@@ -1602,7 +1396,6 @@ public class GameBeansConfig {
 **Why this works?** Because `TileboardEngineAutoConfiguration.gameRegistry()` auto-registers all beans of type `Game`:
 
 ```java
-
 @Bean
 @ConditionalOnMissingBean
 public GameRegistry gameRegistry(@Autowired(required = false) List<Game> games) {
@@ -1618,9 +1411,7 @@ public GameRegistry gameRegistry(@Autowired(required = false) List<Game> games) 
 
 So just defining the game as a `@Bean` makes it appear in `GET /api/v1/games`.
 
-**Startup-sizing caveat:** the bean is created once at startup, so the game's `requiredWidth/Height` reflect the device
-configuration *at startup time* (3×3 when unconfigured — which in practice means "configure the 3×3 device", since
-`validateBoardSize` requires an exact match). Restart the app after changing the device size.
+**Startup-sizing caveat:** the bean is created once at startup, so the game's `requiredWidth/Height` reflect the device configuration *at startup time* (3×3 when unconfigured — which in practice means "configure the 3×3 device", since `validateBoardSize` requires an exact match). Restart the app after changing the device size.
 
 ### Step 6: Build and Run
 
@@ -1659,24 +1450,15 @@ curl -N -H "Accept: text/event-stream" http://localhost:8080/api/v1/stream/board
 
 ## Using Animations
 
-All animation behavior lives in the engine's `AnimationSystem` (single daemon thread `tileboard-animation`,
-generation-based cooperative cancellation, `CompletableFuture` chaining). In the app they are reached via
-`GameContext.animations()`, whose `boardPublisher` is `GameSessionImpl::publishBoard` → `BoardChannel` →
-`TileGatewayClient.sendBoard`.
+All animation behavior lives in the engine's `AnimationSystem` (single daemon thread `tileboard-animation`, generation-based cooperative cancellation, `CompletableFuture` chaining). In the app they are reached via `GameContext.animations()`, whose `boardPublisher` is `GameSessionImpl::publishBoard` → `BoardChannel` → `TileGatewayClient.sendBoard`.
 
 ### Available Animations
 
 #### Countdown
 
 ```java
-ctx.animations().
-
-playCountdown()      // 1000 ms per digit
-ctx.
-
-animations().
-
-playCountdown(700)   // custom duration
+ctx.animations().playCountdown()      // 1000 ms per digit
+ctx.animations().playCountdown(700)   // custom duration
 ```
 
 - Boards smaller than 3×5: whole board lights RED → BLUE → GREEN.
@@ -1692,16 +1474,8 @@ public enum WinAnimationType {
     FIREWORKS        // 3 fireworks at random interior points
 }
 
-ctx.
-
-animations().
-
-playWinAnimation() // default RADIAL_BURST
-ctx.
-
-animations().
-
-playWinAnimation(WinAnimationType.FIREWORKS)
+ctx.animations().playWinAnimation() // default RADIAL_BURST
+ctx.animations().playWinAnimation(WinAnimationType.FIREWORKS)
 ```
 
 #### Lose
@@ -1714,16 +1488,8 @@ public enum LoseAnimationType {
     PULSE_RED             // 4x red pulse blinks
 }
 
-ctx.
-
-animations().
-
-playLoseAnimation()
-ctx.
-
-animations().
-
-playLoseAnimation(LoseAnimationType.CRUMBLE)
+ctx.animations().playLoseAnimation()
+ctx.animations().playLoseAnimation(LoseAnimationType.CRUMBLE)
 ```
 
 #### Standby
@@ -1736,35 +1502,18 @@ public enum StandbyAnimationType {
     RANDOM_TWINKLE  // random white twinkles
 }
 
-ctx.
-
-animations().
-
-playStandbyAnimation()
-ctx.
-
-animations().
-
-playStandbyAnimation(StandbyAnimationType.WAVE_BORDER)
+ctx.animations().playStandbyAnimation()
+ctx.animations().playStandbyAnimation(StandbyAnimationType.WAVE_BORDER)
 ```
 
 **Standby animations run infinitely until cancelled.** The "idle before start" pattern:
 
 ```java
-try{
-        ctx.animations().
-
-playStandbyAnimation(StandbyAnimationType.BREATHING)
-        .
-
-get(2,TimeUnit.SECONDS); // TimeoutException after 2 seconds — expected
-}catch(
-Exception e){
-        ctx.
-
-animations().
-
-cancelCurrent(); // cancel the still-running animation
+try {
+    ctx.animations().playStandbyAnimation(StandbyAnimationType.BREATHING)
+        .get(2, TimeUnit.SECONDS); // TimeoutException after 2 seconds — expected
+} catch (Exception e) {
+    ctx.animations().cancelCurrent(); // cancel the still-running animation
 }
 ```
 
@@ -1785,16 +1534,9 @@ private CompletableFuture<Void> run(Consumer<RunToken> body) {
 }
 
 public final class RunToken {
-    boolean isCancelled() {
-        return generation.get() != myGeneration;
-    }
-
-    boolean sleep(long ms) { ...}   // false when cancelled/interrupted
-
-    void pause(long ms) {
-        if (!sleep(ms)) throw new AnimationCancelledException();
-    }
-
+    boolean isCancelled() { return generation.get() != myGeneration; }
+    boolean sleep(long ms) { ... }   // false when cancelled/interrupted
+    void pause(long ms) { if (!sleep(ms)) throw new AnimationCancelledException(); }
     void show(Board<TileColor> board) {
         if (isCancelled()) throw new AnimationCancelledException();
         boardPublisher.accept(board);
@@ -1802,14 +1544,11 @@ public final class RunToken {
 }
 ```
 
-Animations cooperatively check for cancellation and exit cleanly (cancelled future) instead of being force-killed.
-`shutdown()` (via `FeatureBundle.closeAll()` at session end) cancels and stops the executor. See the engine README for
-the full per-animation timings.
+Animations cooperatively check for cancellation and exit cleanly (cancelled future) instead of being force-killed. `shutdown()` (via `FeatureBundle.closeAll()` at session end) cancels and stops the executor. See the engine README for the full per-animation timings.
 
 ### Using Animations in the Spring App
 
-Animations are per-session objects — use them inside games via `ctx.animations()`. There is intentionally no admin
-endpoint that plays animations outside a session.
+Animations are per-session objects — use them inside games via `ctx.animations()`. There is intentionally no admin endpoint that plays animations outside a session.
 
 ---
 
@@ -1817,27 +1556,20 @@ endpoint that plays animations outside a session.
 
 ### 1. DefaultSerialConnectionManager - synchronized + rollback + dual topology
 
-**Problem:** `connect()` may be called concurrently (two admins at once). Opening ports may partially fail (first opens,
-second throws).
+**Problem:** `connect()` may be called concurrently (two admins at once). Opening ports may partially fail (first opens, second throws).
 
 **Solution:**
 
-- `synchronized` on `connect()`, `disconnect()`, `assign()`, `currentAssignment()`, `connectionState()` → one thread
-  mutates state at a time.
-- `openedThisAttempt` + `success` flag + `finally` rollback → transports opened by a failed attempt are closed, so no OS
-  handle leaks.
-- `EnumMap` for the open transports (`openTransports`) → array-backed, optimal for enum keys. The *assignment* itself is
-  no longer an in-service map: `assign`/`currentAssignment` go through `SettingsService` (`serial.port-assignment`), so
-  the operator's choice survives a restart while the open handles do not.
+- `synchronized` on `connect()`, `disconnect()`, `assign()`, `currentAssignment()`, `connectionState()` → one thread mutates state at a time.
+- `openedThisAttempt` + `success` flag + `finally` rollback → transports opened by a failed attempt are closed, so no OS handle leaks.
+- `EnumMap` for the open transports (`openTransports`) → array-backed, optimal for enum keys. The *assignment* itself is no longer an in-service map: `assign`/`currentAssignment` go through `SettingsService` (`serial.port-assignment`), so the operator's choice survives a restart while the open handles do not.
 - Shared-transport detection: IN == OUT name → opened once, `builder.transport(shared)`.
 - `INTRODUCTION` after connect / `STOP` before disconnect (best-effort, warn on failure).
 
 ### 2. SettingsBackedDeviceConfigurationService + JpaSettingsService - @Transactional + @Version + Caffeine
 
 ```java
-
-@Override
-@Transactional(readOnly = true)
+@Override @Transactional(readOnly = true)
 public <T> Optional<T> get(SettingKey<T> key) {
     Cache.ValueWrapper cached = cache.get(key.id());
     if (cached != null) return (Optional<T>) cached.get();          // hit, incl. cached "absent"
@@ -1847,33 +1579,27 @@ public <T> Optional<T> get(SettingKey<T> key) {
     return loaded;
 }
 
-@Override
-@Transactional
+@Override @Transactional
 public <T> void set(SettingKey<T> key, T value) {
     String json = serialize(key, value);
-    try {
-        persist(key.id(), json);
-    } catch (OptimisticLockingFailureException e) {
-        persist(key.id(), json);
-    }  // retry once
-    finally {
-        cache.evict(key.id());
-    }
+    try { persist(key.id(), json); }
+    catch (OptimisticLockingFailureException e) { persist(key.id(), json); }  // retry once
+    finally { cache.evict(key.id()); }
 }
 ```
 
 - `AtomicReference` (the old in-memory implementation) is gone: the device geometry is now just
-  `SettingKeys.DEVICE_CONFIGURATION`, and `SettingsBackedDeviceConfigurationService` is a two-method delegate with
-  **no** state of its own.
-- **Compile-time typing, runtime JSON:** `SettingKey<T>` carries the `Class<T>`, so `get`/`set` stay type-safe while the
-  row stays opaque text.
-- **`ConcurrentHashMap` vs. DB + cache:** the memory store is lock-free; the JPA store leans on the cache for read
-  throughput, on `@Transactional` for atomic writes and on `@Version` for concurrent-writer detection (with a one-shot
-  retry because last-write-wins is acceptable here).
-- **Read-your-own-writes (single instance):** every `set`/`clear` evicts the key, so the next read hits the DB; other
-  instances converge within `settings-ttl-seconds`.
-- **`Optional` models "not yet configured"** (`defaultValue == null` for `DEVICE_CONFIGURATION`), which is what
-  `DeviceController` turns into a 409.
+  `SettingKeys.DEVICE_CONFIGURATION`, and `SettingsBackedDeviceConfigurationService` is a two-method
+  delegate with **no** state of its own.
+- **Compile-time typing, runtime JSON:** `SettingKey<T>` carries the `Class<T>`, so `get`/`set` stay
+  type-safe while the row stays opaque text.
+- **`ConcurrentHashMap` vs. DB + cache:** the memory store is lock-free; the JPA store leans on the
+  cache for read throughput, on `@Transactional` for atomic writes and on `@Version` for
+  concurrent-writer detection (with a one-shot retry because last-write-wins is acceptable here).
+- **Read-your-own-writes (single instance):** every `set`/`clear` evicts the key, so the next read
+  hits the DB; other instances converge within `settings-ttl-seconds`.
+- **`Optional` models "not yet configured"** (`defaultValue == null` for `DEVICE_CONFIGURATION`),
+  which is what `DeviceController` turns into a 409.
 
 ### 3. GameEngineManager - volatile + synchronized + null-before-close
 
@@ -1882,39 +1608,22 @@ private volatile GameEngineImpl engine;
 
 @EventListener
 public synchronized void onGatewayConnected(GatewayConnectedEvent event) {
-    if (engine != null) {
-        log.warn("... already bound ...");
-        shutdownCurrentEngine();
-    }
+    if (engine != null) { log.warn("... already bound ..."); shutdownCurrentEngine(); }
     engine = new GameEngineImpl(registry, event.client(), eventBus, boardFrameBroadcaster, ...);
 }
 
 private void shutdownCurrentEngine() {
     GameEngineImpl current = this.engine;
-    if (current == null) {
-        log.debug("... nothing to do");
-        return;
-    }
+    if (current == null) { log.debug("... nothing to do"); return; }
     this.engine = null; // immediately visible, BEFORE the slow close()
-    try {
-        current.close();
-    } catch (RuntimeException e) {
-        log.warn(...)}
+    try { current.close(); } catch (RuntimeException e) { log.warn(...) }
 }
 
-public synchronized Optional<GameEngine> current() {
-    return Optional.ofNullable(engine);
-}
-
-public synchronized GameEngine require() {
-    if (engine == null) throw new EngineNotReadyException();
-    return engine;
-}
+public synchronized Optional<GameEngine> current() { return Optional.ofNullable(engine); }
+public synchronized GameEngine require() { if (engine == null) throw new EngineNotReadyException(); return engine; }
 
 @PreDestroy
-public synchronized void shutdownOnContextClose() {
-    shutdownCurrentEngine();
-}
+public synchronized void shutdownOnContextClose() { shutdownCurrentEngine(); }
 ```
 
 - `volatile` + `synchronized` writers → connect/disconnect races are impossible.
@@ -1923,28 +1632,20 @@ public synchronized void shutdownOnContextClose() {
 
 ### 4. BoardChannel - ReentrantLock + gatewayWriteLock + coalescing
 
-Detailed in the game engine README. Summary: `stateLock` guards the buffer, `gatewayWriteLock` serializes wire writes,
-`sendLatest()` re-reads the snapshot (coalescing), and `BoardFrameBroadcaster` dispatch happens outside the write lock.
+Detailed in the game engine README. Summary: `stateLock` guards the buffer, `gatewayWriteLock` serializes wire writes, `sendLatest()` re-reads the snapshot (coalescing), and `BoardFrameBroadcaster` dispatch happens outside the write lock.
 
 ### 5. GameState - synchronized HashMap
 
 ```java
 public final class GameState {
     private final Map<String, Object> store = new HashMap<>();
-
-    public synchronized <T> void put(String key, T value) { ...}
-
-    public synchronized <T> Optional<T> get(String key, Class<T> type) { ...}
-
-    public synchronized <T> T getOrDefault(String key, Class<T> type, T defaultValue) { ...}
-
-    public synchronized boolean containsKey(String key) { ...}
-
-    public synchronized void remove(String key) { ...}
-
-    public synchronized void clear() { ...}
-
-    public synchronized Map<String, Object> snapshot() { ...} // unmodifiable copy
+    public synchronized <T> void put(String key, T value) { ... }
+    public synchronized <T> Optional<T> get(String key, Class<T> type) { ... }
+    public synchronized <T> T getOrDefault(String key, Class<T> type, T defaultValue) { ... }
+    public synchronized boolean containsKey(String key) { ... }
+    public synchronized void remove(String key) { ... }
+    public synchronized void clear() { ... }
+    public synchronized Map<String, Object> snapshot() { ... } // unmodifiable copy
 }
 ```
 
@@ -1952,27 +1653,21 @@ Plain `HashMap` with `synchronized` methods → safe for concurrent tick-thread/
 
 ### 6. AnimationSystem - generation + CompletableFuture + SingleThreadExecutor
 
-Detailed in the game engine README: `AtomicLong generation`, `runLock`, single daemon thread, per-animation
-`CompletableFuture` (normal/cancelled/exceptional).
+Detailed in the game engine README: `AtomicLong generation`, `runLock`, single daemon thread, per-animation `CompletableFuture` (normal/cancelled/exceptional).
 
 ### 7. ScoreSystem - ConcurrentHashMap + AtomicInteger
 
 ```java
 private final Map<String, AtomicInteger> scores = new ConcurrentHashMap<>();
-
 public int add(String playerId, int delta) {
     int result = getOrCreate(playerId).addAndGet(delta);
     if (delta != 0) onChange.run();
     return result;
 }
-
-private AtomicInteger getOrCreate(String playerId) {
-    return scores.computeIfAbsent(playerId, k -> new AtomicInteger(0));
-}
+private AtomicInteger getOrCreate(String playerId) { return scores.computeIfAbsent(playerId, k -> new AtomicInteger(0)); }
 ```
 
-- `ConcurrentHashMap` + `computeIfAbsent` (atomic) + CAS-based `addAndGet` → no global lock; `onChange` fires on the
-  caller's thread.
+- `ConcurrentHashMap` + `computeIfAbsent` (atomic) + CAS-based `addAndGet` → no global lock; `onChange` fires on the caller's thread.
 
 ### 8. GameTimer - volatile + AtomicReference + AtomicBoolean
 
@@ -1980,7 +1675,6 @@ private AtomicInteger getOrCreate(String playerId) {
 private final AtomicReference<Runnable> onExpire = new AtomicReference<>();
 private final AtomicBoolean expiryNotified = new AtomicBoolean(false);
 private volatile Instant startedAt;
-
 public void checkExpiry() {
     if (!isExpired()) return;
     if (expiryNotified.compareAndSet(false, true)) engineExpiryNotifier.run();
@@ -1995,7 +1689,6 @@ public void checkExpiry() {
 ### 9. CORS Filter - FilterRegistrationBean
 
 ```java
-
 @EnableWebMvc
 @Configuration
 public class GeneralConfiguration implements WebMvcConfigurer {
@@ -2029,16 +1722,11 @@ mvn test -pl tileboard-app
 
 Actual test classes:
 
-- `TileboardApplicationTests`: `contextLoads` — a full `@SpringBootTest` context, so it also proves Hibernate can create
-  the schema from the entity
+- `TileboardApplicationTests`: `contextLoads` — a full `@SpringBootTest` context, so it also proves Hibernate can create the schema from the entity
 - `TileboardPropertiesTest`: record defaults (115200/8/1/50/50/0)
-- `ControllerUnitTest`: pure unit tests (Mockito, no MockMvc) for `DeviceController`, `SerialPortController`,
-  `GameController` (device read/update, port list/assign/status/connect/disconnect, game list/start/sessions/get/stop +
-  disconnected-engine cases)
-- `InMemoryDeviceGeneralConfigurationServiceTest`: `DeviceConfiguration` geometry limits (the settings-backed
-  configure/current test is currently commented out in the source)
-- `DefaultSerialConnectionManagerTest`: distinct-port listing, assignment reporting, OUT-required connect, idempotent
-  disconnect
+- `ControllerUnitTest`: pure unit tests (Mockito, no MockMvc) for `DeviceController`, `SerialPortController`, `GameController` (device read/update, port list/assign/status/connect/disconnect, game list/start/sessions/get/stop + disconnected-engine cases)
+- `InMemoryDeviceGeneralConfigurationServiceTest`: `DeviceConfiguration` geometry limits (the settings-backed configure/current test is currently commented out in the source)
+- `DefaultSerialConnectionManagerTest`: distinct-port listing, assignment reporting, OUT-required connect, idempotent disconnect
 
 ### Execution
 
@@ -2073,8 +1761,8 @@ docker run -p 8080:8080 --device=/dev/ttyUSB0 -v "$PWD/data:/data" tileboard-app
 
 The container's working directory is `/`, so the app's relative `./data/app.db` (prod profile)
 resolves to `/data/app.db` — mounting a volume there (or overriding
-`--spring.datasource.url=jdbc:sqlite:/data/app.db`) is what keeps `app.db` and, with it, the persisted device geometry
-and port assignment across container restarts. Without the volume, the
+`--spring.datasource.url=jdbc:sqlite:/data/app.db`) is what keeps `app.db` and, with it, the
+persisted device geometry and port assignment across container restarts. Without the volume, the
 `prod` profile starts from a fresh, empty database every time.
 
 ---
@@ -2083,69 +1771,68 @@ and port assignment across container restarts. Without the volume, the
 
 ### Device (`/api/v1/device`)
 
-| Method | Path           | Body            | Response                                                |
-|--------|----------------|-----------------|---------------------------------------------------------|
-| POST   | /api/v1/device | {width, height} | `ApiResponse{data: DeviceConfigurationResponse}`        |
-| GET    | /api/v1/device | -               | `ApiResponse{data: DeviceConfigurationResponse}` or 409 |
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| POST | /api/v1/device | {width, height} | `ApiResponse{data: DeviceConfigurationResponse}` |
+| GET | /api/v1/device | - | `ApiResponse{data: DeviceConfigurationResponse}` or 409 |
 
 ### Ports (`/api/v1/ports`)
 
-| Method | Path                        | Body                                  | Response                                                                    |
-|--------|-----------------------------|---------------------------------------|-----------------------------------------------------------------------------|
-| GET    | /api/v1/ports               | -                                     | `ApiResponse{message: "N ports are available", data: [SerialPortResponse]}` |
-| POST   | /api/v1/ports/{role}/assign | {portName} (`role` = IN/OUT path var) | `ApiResponse` empty success                                                 |
-| GET    | /api/v1/ports/status        | -                                     | `ApiResponse{data: ConnectionStatusResponse{state, inPort, outPort}}`       |
-| POST   | /api/v1/ports/connect       | -                                     | same as /status (409 without OUT)                                           |
-| POST   | /api/v1/ports/disconnect    | -                                     | same as /status (200, idempotent)                                           |
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| GET | /api/v1/ports | - | `ApiResponse{message: "N ports are available", data: [SerialPortResponse]}` |
+| POST | /api/v1/ports/{role}/assign | {portName} (`role` = IN/OUT path var) | `ApiResponse` empty success |
+| GET | /api/v1/ports/status | - | `ApiResponse{data: ConnectionStatusResponse{state, inPort, outPort}}` |
+| POST | /api/v1/ports/connect | - | same as /status (409 without OUT) |
+| POST | /api/v1/ports/disconnect | - | same as /status (200, idempotent) |
 
 ### Games (`/api/v1/games`)
 
-| Method | Path                             | Body                             | Response                                                             |
-|--------|----------------------------------|----------------------------------|----------------------------------------------------------------------|
-| GET    | /api/v1/games                    | -                                | `ApiResponse{data: [GameDescriptorResponse]}`                        |
-| POST   | /api/v1/games/sessions           | {gameId, players:[{name, role}]} | `ApiResponse{data: GameSessionResponse{sessionId, gameId, status}}`  |
-| GET    | /api/v1/games/sessions           | -                                | `ApiResponse{data: [GameSessionResponse]}` (empty when disconnected) |
-| GET    | /api/v1/games/sessions/{id}      | -                                | **raw** `GameSessionResponse` (no envelope) or 409                   |
-| POST   | /api/v1/games/sessions/{id}/stop | -                                | 204                                                                  |
+| Method | Path | Body | Response |
+|--------|------|------|----------|
+| GET | /api/v1/games | - | `ApiResponse{data: [GameDescriptorResponse]}` |
+| POST | /api/v1/games/sessions | {gameId, players:[{name, role}]} | `ApiResponse{data: GameSessionResponse{sessionId, gameId, status}}` |
+| GET | /api/v1/games/sessions | - | `ApiResponse{data: [GameSessionResponse]}` (empty when disconnected) |
+| GET | /api/v1/games/sessions/{id} | - | **raw** `GameSessionResponse` (no envelope) or 409 |
+| POST | /api/v1/games/sessions/{id}/stop | - | 204 |
 
 ### Stream (SSE, `text/event-stream`)
 
-| Method | Path                             | Response                                                               |
-|--------|----------------------------------|------------------------------------------------------------------------|
-| GET    | /api/v1/stream/board             | SSE: `SESSION_LIFECYCLE`/`BOARD_UPDATE`/`TICK`/… (`SseGameEvent` JSON) |
-| GET    | /api/v1/stream/board/{sessionId} | SSE for one session                                                    |
+| Method | Path | Response |
+|--------|------|----------|
+| GET | /api/v1/stream/board | SSE: `SESSION_LIFECYCLE`/`BOARD_UPDATE`/`TICK`/… (`SseGameEvent` JSON) |
+| GET | /api/v1/stream/board/{sessionId} | SSE for one session |
 
 ### Actuator
 
-| Method | Path                                                   |
-|--------|--------------------------------------------------------|
-| GET    | /actuator/health                                       |
-| GET    | /actuator/info                                         |
-| GET    | /actuator/health/liveness , /actuator/health/readiness |
+| Method | Path |
+|--------|------|
+| GET | /actuator/health |
+| GET | /actuator/info |
+| GET | /actuator/health/liveness , /actuator/health/readiness |
 
 #### `serialLink` health component (verified, not remembered)
 
-`/actuator/health` contains a `serialLink` component built by `com.tileboard.app.health.SerialLinkHealthIndicator`. It
-is computed on every call from `SerialConnectionManager.linkStatus()`, which checks that every port of the live session
-is still enumerated by the host OS (rate-limited by `tileboard.serial-monitor.scan-cache-ttl`). Unplugging the adapter
-therefore turns it `DOWN` without anyone calling `/disconnect`.
+`/actuator/health` contains a `serialLink` component built by `com.tileboard.app.health.SerialLinkHealthIndicator`.
+It is computed on every call from `SerialConnectionManager.linkStatus()`, which checks that every port of the
+live session is still enumerated by the host OS (rate-limited by `tileboard.serial-monitor.scan-cache-ttl`).
+Unplugging the adapter therefore turns it `DOWN` without anyone calling `/disconnect`.
 
-| Condition       | Health status                                           | Meaning                                                                |
-|-----------------|---------------------------------------------------------|------------------------------------------------------------------------|
-| `HEALTHY`       | `UP`                                                    | session exists and all its ports are present                           |
-| `LINK_LOST`     | `DOWN`                                                  | session exists in memory but a port vanished (`missingPorts` lists it) |
-| `UNVERIFIED`    | `UNKNOWN`                                               | the host port list could not be read - nothing is claimed either way   |
-| `NOT_CONNECTED` | `DOWN` (or `UNKNOWN` if `not-connected-is-down: false`) | no session                                                             |
+| Condition | Health status | Meaning |
+|-----------|---------------|---------|
+| `HEALTHY` | `UP` | session exists and all its ports are present |
+| `LINK_LOST` | `DOWN` | session exists in memory but a port vanished (`missingPorts` lists it) |
+| `UNVERIFIED` | `UNKNOWN` | the host port list could not be read - nothing is claimed either way |
+| `NOT_CONNECTED` | `DOWN` (or `UNKNOWN` if `not-connected-is-down: false`) | no session |
 
 `SerialLinkMonitor` (scheduled every `tileboard.serial-monitor.interval`) additionally *acts* on `LINK_LOST`: after
 `loss-confirmations` consecutive misses it calls `releaseIfLinkLost()`, which closes the dead client and publishes
-`GatewayDisconnectedEvent` so the game engine unbinds. After re-plugging, `POST /api/v1/ports/connect` works again. Use
-`/actuator/health/liveness|readiness` for container probes - they do not include `serialLink`.
+`GatewayDisconnectedEvent` so the game engine unbinds. After re-plugging, `POST /api/v1/ports/connect` works again.
+Use `/actuator/health/liveness|readiness` for container probes - they do not include `serialLink`.
 
 ### Error envelope
 
-Every error: `{status: ERROR, message: <Persian>, data: null, extra: null, debugMessage: <raw English>}` with the status
-from the exception (409/404/502/400/500 — see the Error Handling section).
+Every error: `{status: ERROR, message: <Persian>, data: null, extra: null, debugMessage: <raw English>}` with the status from the exception (409/404/502/400/500 — see the Error Handling section).
 
 ---
 
@@ -2153,19 +1840,12 @@ from the exception (409/404/502/400/500 — see the Error Handling section).
 
 This application:
 
-1. **Abstracts hardware:** Only knows `SerialPortRegistry`/`SerialTransport` interfaces, not jSerialComm (single seam:
-   `SerialGatewayConfig`).
-2. **Is thread-safe:** Correctly uses `synchronized`, `ConcurrentHashMap`, `volatile`, CAS, Caffeine/`@Transactional`/
-   `@Version` for persistence — documented per class above.
-3. **Is extensible:** Adding a new game is just a `@Bean` (auto-registered by the engine); adding a new *setting* is
-   just one `SettingKeys` constant (no schema change, no table).
-4. **Is production-ready:** Per-session TTL, connect rollback, idempotent (dis)connect, `INTRODUCTION`/`START`/`STOP`
-   hardware protocol, CORS, Actuator (`health,info`), Swagger starter, prod logging profile, localized error catalog,
-   embedded H2/SQLite stores with a Hibernate-managed schema.
-5. **Persists what matters:** Device geometry and serial port assignment live in one generic `app_settings` table
-   (JPA/Hibernate) with a Caffeine read cache; live serial handles and running sessions deliberately stay in memory.
-6. **Is educational:** Sample game `SequentialTouchGame` (3×3 default) demonstrates standby/countdown/win/lose
-   animations and the concurrency patterns.
+1. **Abstracts hardware:** Only knows `SerialPortRegistry`/`SerialTransport` interfaces, not jSerialComm (single seam: `SerialGatewayConfig`).
+2. **Is thread-safe:** Correctly uses `synchronized`, `ConcurrentHashMap`, `volatile`, CAS, Caffeine/`@Transactional`/`@Version` for persistence — documented per class above.
+3. **Is extensible:** Adding a new game is just a `@Bean` (auto-registered by the engine); adding a new *setting* is just one `SettingKeys` constant (no schema change, no table).
+4. **Is production-ready:** Per-session TTL, connect rollback, idempotent (dis)connect, `INTRODUCTION`/`START`/`STOP` hardware protocol, CORS, Actuator (`health,info`), Swagger starter, prod logging profile, localized error catalog, embedded H2/SQLite stores with a Hibernate-managed schema.
+5. **Persists what matters:** Device geometry and serial port assignment live in one generic `app_settings` table (JPA/Hibernate) with a Caffeine read cache; live serial handles and running sessions deliberately stay in memory.
+6. **Is educational:** Sample game `SequentialTouchGame` (3×3 default) demonstrates standby/countdown/win/lose animations and the concurrency patterns.
 
 For more questions, see the READMEs of the `tileboard-serial-protocol` and `tileboard-game-engine` modules.
 
@@ -2176,8 +1856,3 @@ For more questions, see the READMEs of the `tileboard-serial-protocol` and `tile
 **Java:** 17+  
 **Spring Boot:** 3.3.4  
 **Persistence:** JPA/Hibernate (`ddl-auto: update`) + H2 (dev) / SQLite (prod) + Caffeine cache
-
-mvn -pl tileboard-app test -Dtest=HardwareAnimationShowcaseTest#playsEveryRegisteredAnimationInOrder \
--Dtileboard.hardware.test=true \
--Dtileboard.hardware.port=COM40 \
--Dtileboard.hardware.width=3 -Dtileboard.hardware.height=3

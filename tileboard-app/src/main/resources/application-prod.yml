@@ -23,6 +23,3 @@ logging:
 tileboard:
   settings:
     store: jpa
-  cache:
-    settings-ttl-seconds: 300
-    settings-max-size: 100

@@ -27,6 +27,7 @@
     <properties>
         <java.version>17</java.version>
         <jserialcomm.version>2.11.0</jserialcomm.version>
+        <caffeine-jcache.version>3.1.8</caffeine-jcache.version>
     </properties>
 
     <dependencies>
@@ -35,12 +36,17 @@
             <artifactId>spring-boot-starter-data-jpa</artifactId>
         </dependency>
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-cache</artifactId>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-jcache</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>javax.cache</groupId>
+            <artifactId>cache-api</artifactId>
         </dependency>
         <dependency>
             <groupId>com.github.ben-manes.caffeine</groupId>
-            <artifactId>caffeine</artifactId>
+            <artifactId>jcache</artifactId>
+            <version>${caffeine-jcache.version}</version>
         </dependency>
         <!-- SQLite JDBC -->
         <dependency>

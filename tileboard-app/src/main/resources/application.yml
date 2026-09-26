@@ -9,6 +9,24 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: update    # Hibernate creates/extends the schema from the entities
+    properties:
+      # Hibernate's second-level cache (entity/query cache). Only entities explicitly
+      # annotated with @Cacheable (see ApplicationSetting) are actually cached, hence
+      # ENABLE_SELECTIVE rather than ALL. This is the ONLY cache in the app - there is
+      # no separate Spring/Caffeine service-level cache anymore.
+      jakarta:
+        persistence:
+          sharedCache:
+            mode: ENABLE_SELECTIVE
+      hibernate:
+        cache:
+          use_second_level_cache: true
+          use_query_cache: true
+          region:
+            factory_class: jcache
+        javax:
+          cache:
+            provider: com.github.benmanes.caffeine.jcache.spi.CaffeineCachingProvider
 
 server:
   port: 8080
@@ -16,9 +34,6 @@ server:
 tileboard:
   settings:
     store: jpa    #  dev/demo/test    ---- jpa on production
-  cache:
-    settings-ttl-seconds: 300
-    settings-max-size: 100
   serial:
     baud-rate: 115200
     data-bits: 8
