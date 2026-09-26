@@ -68,10 +68,11 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
     private final SettingsService settingsService;
     private final ApplicationEventPublisher eventPublisher;
     private final long scanCacheTtlNanos;
-
-    /** Written only while holding this monitor; read lock-free. {@code null} = no session. */
+    private final ReentrantLock scanLock = new ReentrantLock();
+    /**
+     * Written only while holding this monitor; read lock-free. {@code null} = no session.
+     */
     private volatile LinkSession session;
-
     /**
      * Operator intent: {@code true} = the link SHOULD be up, so {@link #reconnectIfNeeded()} may
      * bring it back after an unexpected loss. Set by {@link #armAutoReconnect()} (startup) and by
@@ -80,10 +81,10 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
      * Written under this monitor, read lock-free.
      */
     private volatile boolean autoReconnectArmed;
-
-    /** Most recent host port enumeration (rate-limits OS scans). */
+    /**
+     * Most recent host port enumeration (rate-limits OS scans).
+     */
     private volatile PortScan lastScan;
-    private final ReentrantLock scanLock = new ReentrantLock();
 
     public DefaultSerialConnectionManager(SerialPortRegistry portRegistry,
                                           TileboardProperties properties,
@@ -99,7 +100,29 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         this.eventPublisher = eventPublisher;
     }
 
+
     // ------------------------------------------------------------------ discovery / assignment
+
+    private static SerialLinkStatus statusOf(ConnectionState state, LinkCondition condition, LinkSession live,
+                                             Set<String> missing, Instant now, String detail) {
+        return new SerialLinkStatus(state, condition, live.inPort(), live.outPort(), missing,
+                live.connectedSince(), now, detail);
+    }
+
+    private static Set<String> missingPorts(LinkSession live, PortScan scan) {
+        Set<String> missing = new LinkedHashSet<>();
+        for (String port : live.portNames()) {
+            if (!scan.names().contains(port)) {
+                missing.add(port);
+            }
+        }
+        for (SerialTransport transport : live.transports().values()) {
+            if (!transport.isPhysicallyConnected()) {
+                missing.add(transport.portName());
+            }
+        }
+        return missing;
+    }
 
     @Override
     public List<SerialPortSummary> listAvailablePorts() {
@@ -113,19 +136,21 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
                 .toList();
     }
 
+    // ------------------------------------------------------------------ verified status
+
     @Override
     public synchronized void assign(PortRole role, String portName) {
         PortAssignment updated = currentAssignment().withRole(role, portName);
         settingsService.set(SettingKeys.SERIAL_PORT_ASSIGNMENT, updated);
     }
 
-    /** Not synchronized on purpose: a status read must not wait for a slow {@code connect()}. */
+    /**
+     * Not synchronized on purpose: a status read must not wait for a slow {@code connect()}.
+     */
     @Override
     public PortAssignment currentAssignment() {
         return settingsService.getOrDefault(SettingKeys.SERIAL_PORT_ASSIGNMENT);
     }
-
-    // ------------------------------------------------------------------ verified status
 
     @Override
     public ConnectionState connectionState() {
@@ -157,23 +182,9 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
                         + "(adapter unplugged or device re-enumerated).");
     }
 
-    private static SerialLinkStatus statusOf(ConnectionState state, LinkCondition condition, LinkSession live,
-                                             Set<String> missing, Instant now, String detail) {
-        return new SerialLinkStatus(state, condition, live.inPort(), live.outPort(), missing,
-                live.connectedSince(), now, detail);
-    }
-
-    private static Set<String> missingPorts(LinkSession live, PortScan scan) {
-        Set<String> missing = new LinkedHashSet<>();
-        for (String port : live.portNames()) {
-            if (!scan.names().contains(port)) {
-                missing.add(port);
-            }
-        }
-        return missing;
-    }
-
-    /** Returns a recent enumeration, re-scanning at most once per {@code scan-cache-ttl}. */
+    /**
+     * Returns a recent enumeration, re-scanning at most once per {@code scan-cache-ttl}.
+     */
     private PortScan scanPorts() {
         PortScan cached = lastScan;
         if (isFresh(cached)) {
@@ -204,7 +215,9 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         return scan != null && System.nanoTime() - scan.takenAtNanos() < scanCacheTtlNanos;
     }
 
-    /** Forced enumeration; never throws. */
+    /**
+     * Forced enumeration; never throws.
+     */
     private PortScan scanNow() {
         try {
             Set<String> names = portRegistry.listPorts().stream()
@@ -398,7 +411,9 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         return tearDownIfLinkLost();
     }
 
-    /** Caller must hold this monitor. Forces a fresh scan; acts only on a successful scan that misses a port. */
+    /**
+     * Caller must hold this monitor. Forces a fresh scan; acts only on a successful scan that misses a port.
+     */
     private boolean tearDownIfLinkLost() {
         LinkSession live = session;
         if (live == null) {
@@ -418,7 +433,9 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         return true;
     }
 
-    /** Caller must hold this monitor. */
+    /**
+     * Caller must hold this monitor.
+     */
     private void tearDown(LinkSession live, boolean sendStop) {
         session = null;   // first: from this instant nobody can observe a half-closed link as connected
         lastScan = null;
@@ -474,7 +491,9 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         }
     }
 
-    /** Test seam (package-private): installs a session without opening real hardware. */
+    /**
+     * Test seam (package-private): installs a session without opening real hardware.
+     */
     synchronized void attachSessionForTest(TileGatewayClient client, String inPort, String outPort) {
         this.session = new LinkSession(client, Map.of(), inPort, outPort, Instant.now());
         this.lastScan = null;
@@ -482,14 +501,18 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
 
     // ------------------------------------------------------------------ value types
 
-    /** Immutable description of the one live gateway session. */
+    /**
+     * Immutable description of the one live gateway session.
+     */
     private record LinkSession(TileGatewayClient client,
                                Map<PortRole, SerialTransport> transports,
                                String inPort,
                                String outPort,
                                Instant connectedSince) {
 
-        /** Distinct system names this session depends on (IN == OUT for a shared full-duplex port). */
+        /**
+         * Distinct system names this session depends on (IN == OUT for a shared full-duplex port).
+         */
         Set<String> portNames() {
             Set<String> names = new LinkedHashSet<>();
             names.add(outPort);
@@ -500,7 +523,9 @@ public class DefaultSerialConnectionManager implements SerialConnectionManager {
         }
     }
 
-    /** Result of one host port enumeration. {@code error == null} means it succeeded. */
+    /**
+     * Result of one host port enumeration. {@code error == null} means it succeeded.
+     */
     private record PortScan(Set<String> names, long takenAtNanos, String error) {
         boolean ok() {
             return error == null;

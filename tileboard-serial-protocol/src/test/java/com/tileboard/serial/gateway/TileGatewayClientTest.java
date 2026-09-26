@@ -22,42 +22,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TileGatewayClientTest {
 
-    /** Minimal in-memory {@link SerialTransport} - no real port is opened for this test. */
-    private static final class FakeTransport implements SerialTransport {
-        private DataListener listener;
-
-        void deliver(byte[] bytes) {
-            if (listener != null) {
-                listener.onDataReceived(bytes);
-            }
-        }
-
-        @Override
-        public String portName() {
-            return "FAKE";
-        }
-
-        @Override
-        public boolean isOpen() {
-            return true;
-        }
-
-        @Override
-        public void write(byte[] data) {
-            // not exercised by this test
-        }
-
-        @Override
-        public void setDataListener(DataListener listener) {
-            this.listener = listener;
-        }
-
-        @Override
-        public void close() {
-            listener = null;
-        }
-    }
-
     @Test
     void addBoardListenerDecodesADataInFrameArrivingOnTheTransport() throws InterruptedException {
         FakeTransport transport = new FakeTransport();
@@ -81,5 +45,48 @@ class TileGatewayClientTest {
         assertEquals(List.of(new Position(0, 1), new Position(1, 1)), touchBoard.positionsWhere(Boolean.TRUE::equals));
 
         client.close();
+    }
+
+    /**
+     * Minimal in-memory {@link SerialTransport} - no real port is opened for this test.
+     */
+    private static final class FakeTransport implements SerialTransport {
+        private DataListener listener;
+
+        void deliver(byte[] bytes) {
+            if (listener != null) {
+                listener.onDataReceived(bytes);
+            }
+        }
+
+        @Override
+        public String portName() {
+            return "FAKE";
+        }
+
+        @Override
+        public boolean isOpen() {
+            return true;
+        }
+
+        @Override
+        public boolean isPhysicallyConnected() {
+            return true;
+        }
+
+        @Override
+        public void write(byte[] data) {
+            // not exercised by this test
+        }
+
+        @Override
+        public void setDataListener(DataListener listener) {
+            this.listener = listener;
+        }
+
+        @Override
+        public void close() {
+            listener = null;
+        }
     }
 }
