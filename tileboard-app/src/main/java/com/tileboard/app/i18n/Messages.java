@@ -1,6 +1,8 @@
 package com.tileboard.app.i18n;
 
 import java.util.Locale;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.MessageSource;
 import org.springframework.stereotype.Component;
 
@@ -21,8 +23,10 @@ public class Messages {
     /** Fixed application locale. See {@code spring.mvc.locale} / {@code locale-resolver: fixed} in application.yml. */
     public static final Locale APP_LOCALE = Locale.forLanguageTag("fa");
 
+
     private final MessageSource messageSource;
 
+    @Autowired
     public Messages(MessageSource messageSource) {
         this.messageSource = messageSource;
     }

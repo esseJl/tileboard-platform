@@ -4,6 +4,7 @@ import com.tileboard.app.dto.*;
 import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.exception.NoActiveGameException;
 import com.tileboard.app.config.DeviceConfiguration;
+import com.tileboard.app.i18n.Messages;
 import com.tileboard.app.service.device.DeviceConfigurationService;
 import com.tileboard.app.service.serial.*;
 import com.tileboard.app.service.streaming.BoardStateBroadcaster;
@@ -11,6 +12,9 @@ import com.tileboard.engine.core.*;
 import com.tileboard.engine.model.PlayerRole;
 import com.tileboard.engine.spring.GameEngineManager;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.MessageSource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -21,12 +25,18 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+
+@SpringBootTest
 class ControllerUnitTest {
+
+
+    @Autowired
+    private Messages messages;
 
     @Test
     void deviceControllerReadsAndUpdatesConfiguration() {
         DeviceConfigurationService service = mock(DeviceConfigurationService.class);
-        DeviceController controller = new DeviceController(service);
+        DeviceController controller = new DeviceController(service,messages);
         when(service.current()).thenReturn(Optional.empty());
         assertThrows(DeviceNotConfiguredException.class, controller::getCurrentConfiguration);
 
@@ -40,7 +50,7 @@ class ControllerUnitTest {
     @Test
     void serialPortControllerDelegatesAllOperationsAndMapsStatus() {
         SerialConnectionManager manager = mock(SerialConnectionManager.class);
-        SerialPortController controller = new SerialPortController(manager);
+        SerialPortController controller = new SerialPortController(manager,messages);
         when(manager.listAvailablePorts()).thenReturn(List.of(new SerialPortSummary("COM1", "USB")));
         when(manager.currentAssignment()).thenReturn(new PortAssignment(Optional.of("COM2"), Optional.of("COM1")));
         when(manager.connectionState()).thenReturn(ConnectionState.CONNECTED);

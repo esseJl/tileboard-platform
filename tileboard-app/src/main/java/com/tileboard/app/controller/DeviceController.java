@@ -3,6 +3,7 @@ package com.tileboard.app.controller;
 import com.tileboard.app.dto.ApiResponse;
 import com.tileboard.app.dto.ApiResponses;
 import com.tileboard.app.config.DeviceConfiguration;
+import com.tileboard.app.i18n.Messages;
 import com.tileboard.app.service.device.DeviceConfigurationService;
 import com.tileboard.app.exception.DeviceNotConfiguredException;
 import com.tileboard.app.dto.DeviceConfigurationRequest;
@@ -23,14 +24,16 @@ import org.springframework.web.bind.annotation.*;
 public class DeviceController {
 
     private final DeviceConfigurationService deviceConfigurationService;
+    private final Messages messages;
 
-    public DeviceController(DeviceConfigurationService deviceConfigurationService) {
+    public DeviceController(DeviceConfigurationService deviceConfigurationService, Messages messages) {
         this.deviceConfigurationService = deviceConfigurationService;
+        this.messages = messages;
     }
 
     @GetMapping
     public ResponseEntity<ApiResponse> getCurrentConfiguration() {
-        return ApiResponses.ok("Device successfully configured.", deviceConfigurationService.current()
+        return ApiResponses.ok(messages.get("device.configured"), deviceConfigurationService.current()
                 .map(DeviceConfigurationResponse::from)
                 .orElseThrow(DeviceNotConfiguredException::new));
     }
@@ -40,6 +43,6 @@ public class DeviceController {
     public ResponseEntity<ApiResponse> configure(@RequestBody @Valid DeviceConfigurationRequest request) {
         DeviceConfiguration configuration =
                 deviceConfigurationService.configure(request.width(), request.height());
-        return ApiResponses.ok("Device successfully configured.", DeviceConfigurationResponse.from(configuration));
+        return ApiResponses.ok(messages.get("device.configured"), DeviceConfigurationResponse.from(configuration));
     }
 }

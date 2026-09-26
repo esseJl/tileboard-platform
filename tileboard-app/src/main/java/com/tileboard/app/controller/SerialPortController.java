@@ -1,6 +1,7 @@
 package com.tileboard.app.controller;
 
 import com.tileboard.app.dto.*;
+import com.tileboard.app.i18n.Messages;
 import com.tileboard.app.service.serial.PortRole;
 import com.tileboard.app.service.serial.SerialConnectionManager;
 import jakarta.validation.Valid;
@@ -23,9 +24,11 @@ import java.util.List;
 public class SerialPortController {
 
     private final SerialConnectionManager connectionManager;
+    private final Messages messages;
 
-    public SerialPortController(SerialConnectionManager connectionManager) {
+    public SerialPortController(SerialConnectionManager connectionManager, Messages messages) {
         this.connectionManager = connectionManager;
+        this.messages = messages;
     }
 
     @GetMapping
@@ -33,7 +36,7 @@ public class SerialPortController {
         List<SerialPortResponse> list = connectionManager.listAvailablePorts().stream()
                 .map(SerialPortResponse::from)
                 .toList();
-        return ApiResponses.ok(list.size() + " ports are available", list);
+        return ApiResponses.ok(messages.get("serial.all.available",list.size()), list);
     }
 
     @PostMapping("/{role}/assign")
