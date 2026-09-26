@@ -2,6 +2,7 @@ package com.tileboard.app;
 
 import com.tileboard.engine.codec.ColorTileCodec;
 import com.tileboard.engine.core.BoardChannel;
+import com.tileboard.engine.core.GameContext;
 import com.tileboard.engine.feature.AnimationSystem;
 import com.tileboard.engine.feature.StandardAnimations;
 import com.tileboard.serial.gateway.TileGatewayClient;
@@ -85,7 +86,7 @@ import java.util.concurrent.TimeoutException;
 class HardwareAnimationShowcaseTest {
 
     private static final long DEFAULT_HOLD_SECONDS = 3;
-    private static final int DEFAULT_BOARD_SIZE = 8;
+    private static final int DEFAULT_BOARD_SIZE = 3;
     private static final int DEFAULT_BAUD_RATE = 115_200;
 
     private TileGatewayClient gateway;
@@ -203,7 +204,7 @@ class HardwareAnimationShowcaseTest {
             animationSystem.play(key);
             Thread.sleep(holdMillis);
         }
-        animationSystem.cancelCurrent();
+       animationSystem.play((token, ctx) -> token.clear());
     }
 
     @Test
